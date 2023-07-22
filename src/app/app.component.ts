@@ -1,4 +1,5 @@
 import { Component } from '@angular/core';
+import { PanZoomConfig } from 'ngx-panzoom';
 
 @Component({
   selector: 'app-root',
@@ -7,4 +8,11 @@ import { Component } from '@angular/core';
 })
 export class AppComponent {
   title = 'buildinged-web';
+
+  panZoomConfig: PanZoomConfig = new PanZoomConfig();
+  constructor() {
+    this.panZoomConfig.dragMouseButton = 'middle';
+    this.panZoomConfig.freeMouseWheel = false;
+    this.panZoomConfig.invertMouseWheel = true;
+  }
 }

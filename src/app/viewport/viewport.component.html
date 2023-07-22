@@ -1,0 +1,66 @@
+<div style="display: flex; height: 100%; width: 70%;">
+  <svg style="max-width: 100%; max-height: 100%; width: 100%; height: 100%; overflow: visible;" width="10000" height="10000" x="5000" y="5000" viewBox="1500 1500"
+  >
+    <!-- Define the size of each square -->
+    <defs>
+      <path id="tile" d="M0,0 L100,50 L200,0 L100,-50 Z"/>
+      <mask id="tile-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="128">
+        <rect x="0" y="0" width="64" height="128" fill="white"/>
+      </mask>
+    </defs> 
+    
+
+    
+
+    <!--Placed Tiles-->
+    <ng-container *ngFor="let grid of rowArray; index as j">
+      <g class="grid-{{ j }}">
+        <ng-container *ngFor="let _ of colArray; index as i">
+          <image *ngIf="tileExists(i,j) && !ghostTileExists(i,j)" [attr.xlink:href]="getIndividualTile(getTileAt(i,j)!.name!)" width="200" 
+          [attr.x]="i*100 + 100" [attr.y]="i*50 - 300" image-rendering="pixelated" style="pointer-events: none;"/>
+          <image *ngIf="ghostTileExists(i,j)" [attr.xlink:href]="getIndividualTile(selectedTile)" width="200" 
+          [attr.x]="i*100 + 100" [attr.y]="i*50 - 300" image-rendering="pixelated" style="pointer-events: none;"/>
+        </ng-container>
+      </g>
+    </ng-container>
+
+    <!--Ghost Tile-->
+    <!-- <ng-container *ngFor="let grid of rowArray; index as j">
+      <g class="grid-{{ j }}">
+        <ng-container *ngFor="let _ of colArray; index as i">
+          <image *ngIf="ghostTileExists(i,j)" [attr.xlink:href]="getIndividualTile(selectedTile)" width="200" 
+          [attr.x]="i*100 + 100" [attr.y]="i*50 - 300" image-rendering="pixelated" style="pointer-events: none;"/>
+        </ng-container>
+      </g>
+    </ng-container> -->
+
+    <!-- Grid -->
+    <ng-container *ngFor="let grid of rowArray; index as j">
+      <g class="grid-{{ j }}">
+        <ng-container *ngFor="let _ of colArray; index as i">
+          <use href="#tile" [attr.fill]="getTileFill(i,j)" (click)="placeTile(i,j)" (mouseenter)="hoverTile(i,j)" 
+          (mousedown)="beginDrag($event, i, j)" (mouseup)="endDrag($event, i,j)"/>
+        </ng-container>
+      </g>
+    </ng-container>
+
+     <!-- <g class="grid-1">
+      <use href="#tile" fill="pink" stroke="#000000" />
+      <use href="#tile" fill="blue" stroke="#000000"/>
+      <use href="#tile" fill="green" stroke="#000000"/>
+    </g>
+    <g class="grid-2">
+      <use href="#tile" fill="pink" stroke="#000000"/>
+      <use href="#tile" fill="blue" stroke="#000000"/>
+      <use href="#tile" fill="green" stroke="#000000"/>
+    </g>
+    <g class="grid-3">
+      <use href="#tile" fill="pink" stroke="#000000"/>
+      <use href="#tile" fill="blue" stroke="#000000"/>
+      <use href="#tile" fill="green" stroke="#000000"/>
+    </g> -->
+
+    <!-- <g class="grid-1">
+      <image [attr.xlink:href]="getIndividualTile('tile_4.png')" width="200" x="0" y="-150" image-rendering="pixelated"/>
+    </g> -->
+</svg>
