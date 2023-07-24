@@ -10,6 +10,9 @@ import { NgxPanZoomModule } from 'ngx-panzoom';
 import { HttpClientModule } from '@angular/common/http';
 import { TileSelectionMenuComponent } from './tile-selection-menu/tile-selection-menu.component';
 import { IsometricCanvasDomComponent } from './isometric-canvas-dom/isometric-canvas-dom.component';
+import { Store, StoreModule } from '@ngrx/store';
+import { EffectsModule } from '@ngrx/effects';
+import { reducer } from './app.reducers';
 
 @NgModule({
   declarations: [
@@ -24,9 +27,14 @@ import { IsometricCanvasDomComponent } from './isometric-canvas-dom/isometric-ca
     BrowserModule,
     AppRoutingModule,
     NgxPanZoomModule,
-    HttpClientModule
+    HttpClientModule,
+    StoreModule.forRoot({}),
+    StoreModule.forFeature('root', reducer),
+    EffectsModule.forRoot([]),
+    //StoreModule.forRoot({ reducer: appRed })
   ],
   providers: [],
   bootstrap: [AppComponent]
 })
+
 export class AppModule { }

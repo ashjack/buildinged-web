@@ -8,7 +8,7 @@ $col: 10;
     }
 
     .grid-#{$j} use {
-      stroke: #00000060;
+      stroke: #000000;
       stroke-dasharray: 3;
       stroke-width: 0.5;
       transition: fill .2s, transform .2s;

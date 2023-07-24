@@ -1,6 +1,6 @@
 <app-menu></app-menu>
 
-<pan-zoom [config]="panZoomConfig" >
+<pan-zoom [config]="panZoomConfig" [ngClass]="isPanning ? 'grabbing' : ''" >
 <app-viewport></app-viewport>
 <!-- <app-isometric-canvas></app-isometric-canvas> -->
 <!-- <app-isometric-canvas-dom style="background: #343434;"></app-isometric-canvas-dom> -->

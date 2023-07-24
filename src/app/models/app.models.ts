@@ -6,11 +6,20 @@ export interface SvgTile {
     url: SafeResourceUrl;
     x: number;
     y: number;
+    layer: string;
+    hidden?: boolean;
 }
 
 export interface GridTile {
     x: number;
     y: number;
+}
+
+export interface GridRoom {
+    name: string;
+    tiles: GridTile[];
+    placedTiles: SvgTile[];
+    placedInteriorTiles: SvgTile[];
 }
 
 //Building File Specific

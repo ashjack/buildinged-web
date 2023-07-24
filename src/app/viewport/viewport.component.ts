@@ -1,7 +1,14 @@
-import { Component, AfterViewInit, ViewChild, ElementRef, OnInit } from '@angular/core';
+import { Component, AfterViewInit, ViewChild, ElementRef, OnInit, HostListener } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
-import { SvgTile } from '../models/app.models';
+import { GridRoom, GridTile, SvgTile } from '../models/app.models';
+import Tool from '../tools/tool';
+import ToolTile from '../tools/tool-tile';
+import ToolDraw from '../tools/tool-draw';
+import ToolDrawRoom from '../tools/tool-draw-room';
+import { Observable, Subject, takeUntil } from 'rxjs';
+import * as fromRoot from '../app.reducers';
+import { Store } from '@ngrx/store';
 
 @Component({
   selector: 'app-viewport',
@@ -10,61 +17,85 @@ import { SvgTile } from '../models/app.models';
 })
 export class ViewportComponent implements OnInit{
 
-  constructor(private http: HttpClient, private sanitizer: DomSanitizer) { }
 
   rowArray = Array(10).fill(0).map((x,i)=>i);
   colArray = Array(10).fill(0).map((x,i)=>i);
 
   tiles: SvgTile[] = [];
-  tileGhosts: SvgTile[] = [];
-  dragTiles: SvgTile[] = [];
-  beginDragCoords: number[] = [];
-  isDragging: boolean = false;
+  rooms: GridRoom[] = [];
+  key: string = '';
+  currentCoords: string = '0,0';
+  //tileGhosts: SvgTile[] = [];
+  //dragTiles: SvgTile[] = [];
+  //beginDragCoords: number[] = [];
+  //isDragging: boolean = false;
 
   selectedTile: string = 'tile_0.png';
 
+  //selectedTool: ToolDraw = new ToolTile(this);
+  selectedTool: ToolDraw = new ToolDrawRoom(this);
+  selectedTool$: Observable<string>;
+  private unsubscribe: Subject<void> = new Subject();
+
+  constructor(private http: HttpClient, private sanitizer: DomSanitizer, private store: Store<fromRoot.State>) { 
+    this.selectedTool$ = store.select(fromRoot.getCurrentTool);
+    console.log(this.selectedTool$)
+  }
+
+
   ngOnInit() {
     this.saveTilesToCache();
+    this.selectedTool$.pipe(
+      takeUntil(this.unsubscribe)
+    ).subscribe((x) => {
+      console.log(`selectedTool$ = ${x}`);
+      switch(x)
+      {
+        case 'tool-tile':
+          this.selectedTool = new ToolTile(this);
+          console.log('tool-tile');
+          break;
+        case 'tool-draw-room':
+          this.selectedTool = new ToolDrawRoom(this);
+          console.log('tool-draw-room');
+          break;
+        default:
+          this.selectedTool = new ToolDrawRoom(this);
+          console.log('tool-draw-room - default');
+          break;
+      }
+    });
   }
 
   hoverTile(x: number, y: number) {
-
     this.selectedTile = localStorage.getItem('selectedTile')!;
+    this.selectedTool.hoverTile(x, y);
+    this.currentCoords = `${x},${y}`;
 
-    if(this.isDragging)
-    {
-      this.dragTiles = [];
-      const x1 = this.beginDragCoords[0];
-      const y1 = this.beginDragCoords[1];
-      const x2 = x;
-      const y2 = y;
-      const xMin = Math.min(x1, x2);
-      const xMax = Math.max(x1, x2);
-      const yMin = Math.min(y1, y2);
-      const yMax = Math.max(y1, y2);
-      for(let i = xMin; i <= xMax; i++)
+    //check if tile is in any rooms
+    let foundRoom: boolean = false;
+    this.rooms.forEach((room: GridRoom) => {
+      if(room.tiles.some((tile: GridTile) => {return tile.x === x && tile.y === y;}))
       {
-        for(let j = yMin; j <= yMax; j++)
-        {
-          const tile: SvgTile = {
-            name: this.selectedTile,
-            url: this.getIndividualTile(this.selectedTile),
-            x: i,
-            y: j
-          };
-          this.dragTiles.push(tile);
-        }
-      }
-    }
+        foundRoom = true;
+        console.log(`found room ${room.name}`);
 
-    this.tileGhosts = [];
-    const tile: SvgTile = {
-      name: this.selectedTile,
-      url: this.getIndividualTile(this.selectedTile),
-      x: x,
-      y: y
-    };
-    this.tileGhosts.push(tile);
+        //hide all tiles not in room.interiorTiles
+        this.tiles.forEach((tile: SvgTile) => {
+          if(!room.placedInteriorTiles.some((placedTile: SvgTile) => {return placedTile.x === tile.x && placedTile.y === tile.y;}))
+          {
+            tile.hidden = true;
+          }
+        });
+      }
+    });
+
+    if(!foundRoom)
+    {
+      this.tiles.forEach((tile: SvgTile) => {
+        tile.hidden = false;
+      });
+    }
   }
 
   beginDrag($event: MouseEvent, x: number, y: number)
@@ -73,9 +104,8 @@ export class ViewportComponent implements OnInit{
     {
       return;
     }
-    console.log("drag");
-    this.beginDragCoords = [x, y];
-    this.isDragging = true;
+
+    this.selectedTool.beginDrag(x, y);
   }
 
   endDrag($event: MouseEvent, x: number, y: number)
@@ -85,34 +115,37 @@ export class ViewportComponent implements OnInit{
       return;
     }
 
-    //Place every tile between beginDrag and endDrag in the dragTiles array
-    this.isDragging = false;
-    this.dragTiles = [];
-    const x1 = this.beginDragCoords[0];
-    const y1 = this.beginDragCoords[1];
-    const x2 = x;
-    const y2 = y;
-    const xMin = Math.min(x1, x2);
-    const xMax = Math.max(x1, x2);
-    const yMin = Math.min(y1, y2);
-    const yMax = Math.max(y1, y2);
-    for(let i = xMin; i <= xMax; i++)
-    {
-      for(let j = yMin; j <= yMax; j++)
-      {
-        /*const tile: SvgTile = {
-          name: this.selectedTile,
-            url: this.getIndividualTile(this.selectedTile),
-          x: i,
-          y: j
-        };
-        this.tiles.push(tile);*/
-        this.placeTile(i, j);
-      }
-    }
+    this.selectedTool.endDrag(x, y);
   }
 
-  placeTile(x: number, y: number) {
+  @HostListener('document:keydown', ['$event'])
+  handleKeyDown(event: KeyboardEvent) { 
+    this.key = event.key;
+    this.selectedTool.key = event.key;
+  }
+
+  @HostListener('document:keyup', ['$event'])
+  handleKeyUp(event: KeyboardEvent) { 
+    this.key = '';
+    this.selectedTool.key = '';
+  }
+
+  clickTile($event: MouseEvent, x: number, y: number) {
+      
+      if($event.button != 0)
+      {
+        return;
+      }
+  
+      this.selectedTool.clickTile(x, y);
+  }
+
+  placeTile(x: number, y: number, name: string = '', layer: string = 'Walls') {
+
+    if(name === '')
+    {
+      name = this.selectedTile;
+    }
 
     if(this.tileExists(x, y))
     {
@@ -120,19 +153,26 @@ export class ViewportComponent implements OnInit{
       const tile = this.getTileAt(x, y);
       if(tile)
       {
-        tile.name = this.selectedTile;
-        tile.url = this.getIndividualTile(this.selectedTile);
+        tile.name = name;
+        tile.url = this.getIndividualTile(name);
         return;
       }
     }
     const tile: SvgTile = {
-      name: this.selectedTile,
-            url: this.getIndividualTile(this.selectedTile),
+      name: name,
+            url: this.getIndividualTile(name),
       x: x,
-      y: y
+      y: y,
+      layer: layer,
     };
     this.tiles.push(tile);
-    this.tileGhosts = [];
+    //this.tileGhosts = [];
+  }
+
+  removeTile(x: number, y: number) {
+    this.tiles = this.tiles.filter((tile: SvgTile) => {
+      return tile.x !== x || tile.y !== y;
+    });
   }
 
   getTileAt(x: number, y: number): SvgTile | undefined {
@@ -147,31 +187,38 @@ export class ViewportComponent implements OnInit{
     });
   }
 
+  tileHidden(x: number, y: number): boolean {
+    const tile = this.getTileAt(x, y);
+    if(tile)
+    {
+      return tile.hidden!;
+    }
+    return false;
+  }
+
   getTileFill(x: number, y: number): string {
 
-    if(this.dragTiles.some((tile: SvgTile) => {return tile.x === x && tile.y === y;}))
-    {
-      return '#272767';
-    }
-
-    if(this.tileGhosts.some((tile: SvgTile) => {return tile.x === x && tile.y === y;}))
-    {
-      return '#27455d';
-    }
-    
-    return '#34343400'
+    const fill = this.selectedTool.getTileFill(x, y);
+    return fill;
   }
 
   ghostTileExists(x: number, y: number): boolean {
-    return this.tileGhosts.some((tile: SvgTile) => {
-      return tile.x === x && tile.y === y;
-    });
+    if(this.selectedTool instanceof ToolTile)
+    {
+      return this.selectedTool.tileGhosts.some((tile: SvgTile) => {
+        return tile.x === x && tile.y === y;
+      });
+    }
+
+    return false;
   }
 
   // coordToPos(x: number, y: number): string {
   //   console.log(`${x * 100}px ${y * 50}px`);
   //   return `${x * 100}px ${y * 50}px`;
   // }
+
+  //Tilesheet functions
 
   fetchTilesheet() {
     const tilesheetUrl = 'assets/tilesheets/walls_exterior_house_01.png';
