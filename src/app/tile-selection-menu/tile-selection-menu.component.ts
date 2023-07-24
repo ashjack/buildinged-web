@@ -23,7 +23,8 @@ export class TileSelectionMenuComponent {
           name: tileName,
           url: sanitizedTile,
           x: 0,
-          y: 0
+          y: 0,
+          layer: 'Walls',
         });
       }
     }
