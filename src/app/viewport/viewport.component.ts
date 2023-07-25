@@ -33,6 +33,7 @@ export class ViewportComponent implements OnInit{
   //isDragging: boolean = false;
 
   selectedTile: string = 'tile_0.png';
+  selectedLayer: string = 'Walls';
 
   //selectedTool: ToolDraw = new ToolTile(this);
   selectedTool: ToolDraw = new ToolDrawRoom(this);
@@ -82,6 +83,7 @@ export class ViewportComponent implements OnInit{
 
   hoverTile(x: number, y: number) {
     this.selectedTile = localStorage.getItem('selectedTile')!;
+    this.selectedLayer = localStorage.getItem('selectedLayer')!;
     this.selectedTool.hoverTile(x, y);
     this.currentCoords = `${x},${y}`;
 
@@ -176,9 +178,9 @@ export class ViewportComponent implements OnInit{
       else
       {
         //check if userTiles contains tile
-        if(this.userTiles.some((userTile: SvgTile) => {return userTile.x === tile.x && userTile.y === tile.y;}))
+        if(this.userTiles.some((userTile: SvgTile) => {return userTile.x === tile.x && userTile.y === tile.y && userTile.layer == tile.layer;}))
         {
-          const userTile = this.userTiles.find((userTile: SvgTile) => {return userTile.x === tile.x && userTile.y === tile.y;});
+          const userTile = this.userTiles.find((userTile: SvgTile) => {return userTile.x === tile.x && userTile.y === tile.y && userTile.layer === tile.layer;});
           if(userTile)
           {
             userTile.name = tile.name;
@@ -197,15 +199,17 @@ export class ViewportComponent implements OnInit{
 
   placeTile_old(x: number, y: number, name: string = '', layer: string = 'Walls') {
 
+    console.log(this.tiles);
+
     if(name === '')
     {
       name = this.selectedTile;
     }
 
-    if(this.tileExists(x, y))
+    if(this.tileExists(x, y, layer))
     {
       //edit tile name and url
-      const tile = this.getTileAt(x, y);
+      const tile = this.getTileAt(x, y, layer);
       if(tile)
       {
         tile.name = name;
@@ -224,26 +228,27 @@ export class ViewportComponent implements OnInit{
     //this.tileGhosts = [];
   }
 
-  removeTile(x: number, y: number) {
+  removeTile(x: number, y: number, layer: string) {
     this.tiles = this.tiles.filter((tile: SvgTile) => {
-      return tile.x !== x || tile.y !== y;
+      return tile.x !== x || tile.y !== y && tile.layer !== layer;
     });
   }
 
-  getTileAt(x: number, y: number): SvgTile | undefined {
+  getTileAt(x: number, y: number, layer: string): SvgTile | undefined {
     return this.tiles.find((tile: SvgTile) => {
-      return tile.x === x && tile.y === y;
+      return tile.x === x && tile.y === y && tile.layer === layer;
     });
   }
 
-  tileExists(x: number, y: number): boolean {
+  tileExists(x: number, y: number, layer: string): boolean {
+    //console.log(this.tiles)
     return this.tiles.some((tile: SvgTile) => {
       return tile.x === x && tile.y === y;
     });
   }
 
-  tileHidden(x: number, y: number): boolean {
-    const tile = this.getTileAt(x, y);
+  tileHidden(x: number, y: number, layer: string): boolean {
+    const tile = this.getTileAt(x, y, layer);
     if(tile)
     {
       return tile.hidden!;
@@ -257,11 +262,11 @@ export class ViewportComponent implements OnInit{
     return fill;
   }
 
-  ghostTileExists(x: number, y: number): boolean {
+  ghostTileExists(x: number, y: number, layer: string): boolean {
     if(this.selectedTool instanceof ToolTile)
     {
       return this.selectedTool.tileGhosts.some((tile: SvgTile) => {
-        return tile.x === x && tile.y === y;
+        return tile.x === x && tile.y === y && tile.layer === layer;
       });
     }
 

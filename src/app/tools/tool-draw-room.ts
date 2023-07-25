@@ -240,6 +240,8 @@ export default class ToolDrawRoom extends ToolDraw {
         });
 
         console.log(topTiles);
+
+        this.grid.redrawTiles();
     }
 
     override hoverTile(x: number, y: number): void {

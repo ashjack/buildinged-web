@@ -9,31 +9,21 @@
         <rect x="0" y="0" width="64" height="128" fill="white"/>
       </mask>
     </defs> 
-    
-
-    
 
     <!--Placed Tiles-->
     <ng-container *ngFor="let grid of rowArray; index as j">
       <g class="grid-{{ j }}">
         <ng-container *ngFor="let _ of colArray; index as i">
-          <image *ngIf="tileExists(i,j) && !ghostTileExists(i,j) && !tileHidden(i,j)" [attr.xlink:href]="getIndividualTile(getTileAt(i,j)!.name!)" width="200" 
+          <image *ngIf="(tileExists(i,j, 'Floor') && !ghostTileExists(i,j, 'Floor') && !tileHidden(i,j, 'Floor')) || ghostTileExists(i,j, 'Floor')" 
+          [attr.xlink:href]="!ghostTileExists(i,j,'Floor') ? getIndividualTile(getTileAt(i,j, 'Floor')?.name!) : getIndividualTile(selectedTile)" width="200" 
           [attr.x]="i*100 + 100" [attr.y]="i*50 - 300" image-rendering="pixelated" style="pointer-events: none;"/>
-          <image *ngIf="ghostTileExists(i,j)" [attr.xlink:href]="getIndividualTile(selectedTile)" width="200" 
+
+          <image *ngIf="(tileExists(i,j, 'Walls') && !ghostTileExists(i,j, 'Walls') && !tileHidden(i,j, 'Walls')) || ghostTileExists(i,j, 'Walls')" 
+          [attr.xlink:href]="!ghostTileExists(i,j,'Walls') ? getIndividualTile(getTileAt(i,j, 'Walls')?.name!) : getIndividualTile(selectedTile)" width="200" 
           [attr.x]="i*100 + 100" [attr.y]="i*50 - 300" image-rendering="pixelated" style="pointer-events: none;"/>
         </ng-container>
       </g>
     </ng-container>
-
-    <!--Ghost Tile-->
-    <!-- <ng-container *ngFor="let grid of rowArray; index as j">
-      <g class="grid-{{ j }}">
-        <ng-container *ngFor="let _ of colArray; index as i">
-          <image *ngIf="ghostTileExists(i,j)" [attr.xlink:href]="getIndividualTile(selectedTile)" width="200" 
-          [attr.x]="i*100 + 100" [attr.y]="i*50 - 300" image-rendering="pixelated" style="pointer-events: none;"/>
-        </ng-container>
-      </g>
-    </ng-container> -->
 
     <!-- Grid -->
     <ng-container *ngFor="let grid of rowArray; index as j">
@@ -44,25 +34,5 @@
         </ng-container>
       </g>
     </ng-container>
-
-     <!-- <g class="grid-1">
-      <use href="#tile" fill="pink" stroke="#000000" />
-      <use href="#tile" fill="blue" stroke="#000000"/>
-      <use href="#tile" fill="green" stroke="#000000"/>
-    </g>
-    <g class="grid-2">
-      <use href="#tile" fill="pink" stroke="#000000"/>
-      <use href="#tile" fill="blue" stroke="#000000"/>
-      <use href="#tile" fill="green" stroke="#000000"/>
-    </g>
-    <g class="grid-3">
-      <use href="#tile" fill="pink" stroke="#000000"/>
-      <use href="#tile" fill="blue" stroke="#000000"/>
-      <use href="#tile" fill="green" stroke="#000000"/>
-    </g> -->
-
-    <!-- <g class="grid-1">
-      <image [attr.xlink:href]="getIndividualTile('tile_4.png')" width="200" x="0" y="-150" image-rendering="pixelated"/>
-    </g> -->
 </svg>
 </div>

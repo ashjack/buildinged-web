@@ -40,4 +40,13 @@ export class TileSelectionMenuComponent {
   getSelectedTile(): string {
     return localStorage.getItem('selectedTile') || 'tile_0.png';
   }
+
+  setSelectedLayer(layer: string) {
+    console.log(layer);
+    localStorage.setItem('selectedLayer', layer);
+  }
+
+  getSelectedLayer(): string {
+    return localStorage.getItem('selectedLayer') || 'Walls';
+  }
 }

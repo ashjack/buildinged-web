@@ -7,6 +7,7 @@ export default class ToolTile extends ToolDraw {
     tileGhosts: SvgTile[] = [];
 
     selectedTile: string = 'tile_0.png';
+    selectedLayer: string = 'Walls';
 
     constructor(grid: ViewportComponent) {
         super(grid);
@@ -15,6 +16,7 @@ export default class ToolTile extends ToolDraw {
     override hoverTile(x: number, y: number) {
 
         this.selectedTile = localStorage.getItem('selectedTile')!;
+        this.selectedLayer = localStorage.getItem('selectedLayer')!;
     
         if(this.isDragging)
         {
@@ -37,7 +39,7 @@ export default class ToolTile extends ToolDraw {
                 url: this.grid.getIndividualTile(this.selectedTile),
                 x: i,
                 y: j,
-                layer: 'Walls'
+                layer: this.selectedLayer
               };
               this.dragTiles.push(tile);
               this.tileGhosts.push(tile);
@@ -53,7 +55,7 @@ export default class ToolTile extends ToolDraw {
           url: this.grid.getIndividualTile(this.selectedTile),
           x: x,
           y: y, 
-          layer: 'Walls'
+          layer: this.selectedLayer
         };
         this.tileGhosts.push(tile);
     }
@@ -83,7 +85,7 @@ export default class ToolTile extends ToolDraw {
                     url: this.selectedTile,
                     x: i,
                     y: j,
-                    layer: 'Walls'
+                    layer: this.selectedLayer
                 };
                 this.grid.placeTile2(tile, false);
             }
@@ -111,7 +113,7 @@ export default class ToolTile extends ToolDraw {
             url: this.selectedTile,
             x: x,
             y: y,
-            layer: 'Walls'
+            layer: this.selectedLayer
         };
         this.grid.placeTile2(tile, false);
     }
