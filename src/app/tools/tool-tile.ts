@@ -78,7 +78,14 @@ export default class ToolTile extends ToolDraw {
         {
             for(let j = yMin; j <= yMax; j++)
             {
-                this.grid.placeTile(i, j);
+                const tile: SvgTile = {
+                    name: this.selectedTile,
+                    url: this.selectedTile,
+                    x: i,
+                    y: j,
+                    layer: 'Walls'
+                };
+                this.grid.placeTile2(tile, false);
             }
         }
     }
@@ -99,6 +106,13 @@ export default class ToolTile extends ToolDraw {
       }
 
     override clickTile(x: number, y: number): void {
-        this.grid.placeTile(x, y);
+        const tile: SvgTile = {
+            name: this.selectedTile,
+            url: this.selectedTile,
+            x: x,
+            y: y,
+            layer: 'Walls'
+        };
+        this.grid.placeTile2(tile, false);
     }
 }

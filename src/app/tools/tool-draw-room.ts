@@ -68,9 +68,12 @@ export default class ToolDrawRoom extends ToolDraw {
     drawRoom(room: GridRoom): void
     {
         //Clear room tiles
-        room.placedTiles.forEach((tile: SvgTile) => {
-            this.grid.removeTile(tile.x, tile.y);
-        });
+        this.grid.roomTiles = [];
+        room.placedInteriorTiles = [];
+        room.placedTiles = [];
+       // room.placedTiles.forEach((tile: SvgTile) => {
+       //     this.grid.removeTile(tile.x, tile.y);
+      //  });
 
         //Draw room
         const topTiles: GridTile[] = [];
@@ -81,7 +84,14 @@ export default class ToolDrawRoom extends ToolDraw {
         const smallCornerTiles: GridTile[] = [];
 
         const placeTile = (x: number, y: number, url: string, interior: boolean = false) => {
-            this.grid.placeTile(x, y, url);
+            const tile: SvgTile = {
+                name: url,
+                url: url,
+                x: x,
+                y: y,
+                layer: 'Walls'
+            };
+            this.grid.placeTile2(tile, true);
             room.placedTiles.push({name: url, url: '', x: x, y: y, layer: 'Walls'});
             if(interior)
             {

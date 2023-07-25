@@ -22,6 +22,8 @@ export class ViewportComponent implements OnInit{
   colArray = Array(10).fill(0).map((x,i)=>i);
 
   tiles: SvgTile[] = [];
+  roomTiles: SvgTile[] = [];
+  userTiles: SvgTile[] = [];
   rooms: GridRoom[] = [];
   key: string = '';
   currentCoords: string = '0,0';
@@ -67,6 +69,17 @@ export class ViewportComponent implements OnInit{
     });
   }
 
+  redrawTiles() {
+    this.tiles = [];
+    this.roomTiles.forEach((tile: SvgTile) => {
+      this.placeTile_old(tile.x, tile.y, tile.name, tile.layer);
+    });
+
+    this.userTiles.forEach((tile: SvgTile) => {
+      this.placeTile_old(tile.x, tile.y, tile.name, tile.layer);
+    });
+  }
+
   hoverTile(x: number, y: number) {
     this.selectedTile = localStorage.getItem('selectedTile')!;
     this.selectedTool.hoverTile(x, y);
@@ -78,7 +91,6 @@ export class ViewportComponent implements OnInit{
       if(room.tiles.some((tile: GridTile) => {return tile.x === x && tile.y === y;}))
       {
         foundRoom = true;
-        console.log(`found room ${room.name}`);
 
         //hide all tiles not in room.interiorTiles
         this.tiles.forEach((tile: SvgTile) => {
@@ -140,7 +152,50 @@ export class ViewportComponent implements OnInit{
       this.selectedTool.clickTile(x, y);
   }
 
-  placeTile(x: number, y: number, name: string = '', layer: string = 'Walls') {
+  placeTile2(tile: SvgTile, isRoom: boolean)
+  {
+      console.log(`placeTile2(${tile.x}, ${tile.y}, ${tile.name}, ${tile.layer})`);
+
+      if(isRoom)
+      {
+        //check if roomTiles contains tile
+        if(this.roomTiles.some((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y;}))
+        {
+          const roomTile = this.roomTiles.find((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y;});
+          if(roomTile)
+          {
+            roomTile.name = tile.name;
+            roomTile.url = this.getIndividualTile(tile.name!);
+          }
+        }
+        else
+        {
+          this.roomTiles.push(tile);
+        }
+      }
+      else
+      {
+        //check if userTiles contains tile
+        if(this.userTiles.some((userTile: SvgTile) => {return userTile.x === tile.x && userTile.y === tile.y;}))
+        {
+          const userTile = this.userTiles.find((userTile: SvgTile) => {return userTile.x === tile.x && userTile.y === tile.y;});
+          if(userTile)
+          {
+            userTile.name = tile.name;
+            userTile.url = this.getIndividualTile(tile.name!);
+          }
+        }
+        else
+        {
+          this.userTiles.push(tile);
+        }
+      }
+
+
+      this.redrawTiles();
+  }
+
+  placeTile_old(x: number, y: number, name: string = '', layer: string = 'Walls') {
 
     if(name === '')
     {
