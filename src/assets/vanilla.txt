@@ -1,0 +1,2 @@
+https://storage.googleapis.com/buildinged-online.appspot.com/vanilla/walls_exterior_house_01.png
+https://storage.googleapis.com/buildinged-online.appspot.com/vanilla/floors_interior_tilesandwood_01.png

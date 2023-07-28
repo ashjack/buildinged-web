@@ -6,15 +6,17 @@ export default class ToolDrawRoom extends ToolDraw {
 
     selectedRoom: string = 'livingroom';
     wallTiles: string[] = [
-        'tile_0.png', //left facing
-        'tile_1.png', //right facing
-        'tile_2.png', //joint corner
-        'tile_3.png', //edge corner (small)
-        'tile_4.png',
-        'tile_5.png',
-        'tile_6.png',
-        'tile_7.png',
+        'walls_exterior_house_01_000.png', //left facing
+        'walls_exterior_house_01_001.png', //right facing
+        'walls_exterior_house_01_002.png', //joint corner
+        'walls_exterior_house_01_003.png', //edge corner (small)
+        'walls_exterior_house_01_004.png',
+        'walls_exterior_house_01_005.png',
+        'walls_exterior_house_01_006.png',
+        'walls_exterior_house_01_007.png',
     ]
+
+    floorTile = 'floors_interior_tilesandwood_01_019.png';
     
     constructor(grid: ViewportComponent) {
         super(grid);
@@ -99,6 +101,19 @@ export default class ToolDrawRoom extends ToolDraw {
             }
         }
 
+        const placeFloorTile = (x: number, y: number, url: string) => {
+            const tile: SvgTile = {
+                name: url,
+                url: url,
+                x: x,
+                y: y,
+                layer: 'Floor'
+            };
+            this.grid.placeTile2(tile, true);
+            room.placedTiles.push({name: url, url: '', x: x, y: y, layer: 'Floor'});
+            room.placedInteriorTiles.push({name: url, url: '', x: x, y: y, layer: 'Floor'});
+        }
+
         const getInRoom = (x: number, y: number): boolean => {
             return room.tiles.some((tile: GridTile) => {return tile.x === x && tile.y === y;});
         }
@@ -112,7 +127,10 @@ export default class ToolDrawRoom extends ToolDraw {
             const leftTile: GridTile = {x: tile.x - 1, y: tile.y};
             const rightTile: GridTile = {x: tile.x + 1, y: tile.y};
 
-            //Place Tiles
+            //Place Floor Tiles
+            placeFloorTile(tile.x, tile.y, this.floorTile);
+
+            //Place Wall Tiles
             //Top
             if(!getInRoom(aboveTile.x, aboveTile.y))
             {

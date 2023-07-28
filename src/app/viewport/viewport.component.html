@@ -15,11 +15,11 @@
       <g class="grid-{{ j }}">
         <ng-container *ngFor="let _ of colArray; index as i">
           <image *ngIf="(tileExists(i,j, 'Floor') && !ghostTileExists(i,j, 'Floor') && !tileHidden(i,j, 'Floor')) || ghostTileExists(i,j, 'Floor')" 
-          [attr.xlink:href]="!ghostTileExists(i,j,'Floor') ? getIndividualTile(getTileAt(i,j, 'Floor')?.name!) : getIndividualTile(selectedTile)" width="200" 
+          [attr.xlink:href]="!ghostTileExists(i,j,'Floor') ? getIndividualTile(getTileAt(i,j, 'Floor')?.name!, 'floorLayerHTML') : getIndividualTile(selectedTile)" width="200" 
           [attr.x]="i*100 + 100" [attr.y]="i*50 - 300" image-rendering="pixelated" style="pointer-events: none;"/>
 
           <image *ngIf="(tileExists(i,j, 'Walls') && !ghostTileExists(i,j, 'Walls') && !tileHidden(i,j, 'Walls')) || ghostTileExists(i,j, 'Walls')" 
-          [attr.xlink:href]="!ghostTileExists(i,j,'Walls') ? getIndividualTile(getTileAt(i,j, 'Walls')?.name!) : getIndividualTile(selectedTile)" width="200" 
+          [attr.xlink:href]="!ghostTileExists(i,j,'Walls') ? getIndividualTile(getTileAt(i,j, 'Walls')?.name!, 'wallLayerHTML') : getIndividualTile(selectedTile)" width="200" 
           [attr.x]="i*100 + 100" [attr.y]="i*50 - 300" image-rendering="pixelated" style="pointer-events: none;"/>
         </ng-container>
       </g>

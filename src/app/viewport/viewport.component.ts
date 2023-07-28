@@ -9,6 +9,8 @@ import ToolDrawRoom from '../tools/tool-draw-room';
 import { Observable, Subject, takeUntil } from 'rxjs';
 import * as fromRoot from '../app.reducers';
 import { Store } from '@ngrx/store';
+import { DbService, PngTile } from '../services/db.service';
+import { TileService } from '../services/tile.service';
 
 @Component({
   selector: 'app-viewport',
@@ -16,7 +18,7 @@ import { Store } from '@ngrx/store';
   styleUrls: ['./viewport.component.scss']
 })
 export class ViewportComponent implements OnInit{
-
+  
 
   rowArray = Array(10).fill(0).map((x,i)=>i);
   colArray = Array(10).fill(0).map((x,i)=>i);
@@ -32,7 +34,10 @@ export class ViewportComponent implements OnInit{
   //beginDragCoords: number[] = [];
   //isDragging: boolean = false;
 
-  selectedTile: string = 'tile_0.png';
+
+  fetchedTiles: PngTile[] = [];
+  fetchingTiles: string[] = [];
+  selectedTile: string = 'walls_interior_house_01_0.png';
   selectedLayer: string = 'Walls';
 
   //selectedTool: ToolDraw = new ToolTile(this);
@@ -40,14 +45,52 @@ export class ViewportComponent implements OnInit{
   selectedTool$: Observable<string>;
   private unsubscribe: Subject<void> = new Subject();
 
-  constructor(private http: HttpClient, private sanitizer: DomSanitizer, private store: Store<fromRoot.State>) { 
+  constructor(
+    private http: HttpClient, 
+    private sanitizer: DomSanitizer, 
+    private store: Store<fromRoot.State>,
+    private db: DbService,
+    private tileService: TileService) 
+  { 
     this.selectedTool$ = store.select(fromRoot.getCurrentTool);
     console.log(this.selectedTool$)
   }
 
 
   ngOnInit() {
-    this.saveTilesToCache();
+    //Get tilesheets
+
+    const tilepacks: string[] = [];
+    this.http.get('assets/tilepacks.json').subscribe((data: any) => {
+      for(let i = 0; i < data.length; i++)
+      {
+        const tilepack = data[i].Url;
+        tilepacks.push(tilepack);
+      }
+
+      tilepacks.forEach((tilepack: string) => {
+        this.http.get(tilepack).subscribe((data2: any) => {
+
+          for(let i = 0; i < data2.length; i++)
+          {
+            const tilesheet = data2[i].url;
+            const tilesheetName = data2[i].name;
+            //this.db.addTileset(tilesheetName, tilesheet);
+            //this.saveTilesToCache(tilesheetName, tilesheet);
+          }
+        });
+      });
+    });
+
+    
+
+
+
+    //this.saveTilesToCache('walls_exterior_house_01', 'assets/tilesheets/walls_exterior_house_01.png');
+    //this.saveTilesToCache('floors_interior_tilesandwood_01', 'assets/tilesheets/floors_interior_tilesandwood_01.png');
+    this.tileService.saveTilesToCache('walls_exterior_house_01', 'assets/tilesheets/walls_exterior_house_01.png');
+    this.tileService.saveTilesToCache('floors_interior_tilesandwood_01', 'assets/tilesheets/floors_interior_tilesandwood_01.png');
+
     this.selectedTool$.pipe(
       takeUntil(this.unsubscribe)
     ).subscribe((x) => {
@@ -71,6 +114,7 @@ export class ViewportComponent implements OnInit{
   }
 
   redrawTiles() {
+    console.log('redrawTiles()');
     this.tiles = [];
     this.roomTiles.forEach((tile: SvgTile) => {
       this.placeTile_old(tile.x, tile.y, tile.name, tile.layer);
@@ -152,18 +196,19 @@ export class ViewportComponent implements OnInit{
       }
   
       this.selectedTool.clickTile(x, y);
+      this.db.getTileset('walls_exterior_house_01').then((tilesheet: any) => {
+        console.log(tilesheet);
+      });
   }
 
   placeTile2(tile: SvgTile, isRoom: boolean)
   {
-      console.log(`placeTile2(${tile.x}, ${tile.y}, ${tile.name}, ${tile.layer})`);
-
       if(isRoom)
       {
         //check if roomTiles contains tile
-        if(this.roomTiles.some((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y;}))
+        if(this.roomTiles.some((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y && roomTile.layer === tile.layer;}))
         {
-          const roomTile = this.roomTiles.find((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y;});
+          const roomTile = this.roomTiles.find((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y && roomTile.layer === tile.layer;});
           if(roomTile)
           {
             roomTile.name = tile.name;
@@ -177,6 +222,8 @@ export class ViewportComponent implements OnInit{
       }
       else
       {
+        console.log('placeTile2', tile);
+
         //check if userTiles contains tile
         if(this.userTiles.some((userTile: SvgTile) => {return userTile.x === tile.x && userTile.y === tile.y && userTile.layer == tile.layer;}))
         {
@@ -198,8 +245,6 @@ export class ViewportComponent implements OnInit{
   }
 
   placeTile_old(x: number, y: number, name: string = '', layer: string = 'Walls') {
-
-    console.log(this.tiles);
 
     if(name === '')
     {
@@ -280,13 +325,14 @@ export class ViewportComponent implements OnInit{
 
   //Tilesheet functions
 
-  fetchTilesheet() {
-    const tilesheetUrl = 'assets/tilesheets/walls_exterior_house_01.png';
+  fetchTilesheet(url: string) {
+    const tilesheetUrl = url;//'assets/tilesheets/walls_exterior_house_01.png';
     return this.http.get(tilesheetUrl, { responseType: 'blob' });
   }
 
-  async splitTilesheet() {
-    const tilesheetBlob: Blob | undefined = await this.fetchTilesheet().toPromise();
+  async splitTilesheet(url: string) {
+    try{
+    const tilesheetBlob: Blob | undefined = await this.fetchTilesheet(url).toPromise();
     const tilesheetUrl: string = URL.createObjectURL(tilesheetBlob!);
   
     const canvas = document.createElement('canvas');
@@ -328,11 +374,19 @@ export class ViewportComponent implements OnInit{
   
     return individualTiles;
   }
+  catch(e)
+  {
+    console.log(url, e);
+    return [];
+  }
+}
 
-  saveTilesToCache() {
-    this.splitTilesheet().then((tiles: string[]) => {
+  async saveTilesToCache(sheetName: string, sheetPath: string) {
+    //const sheetName = 'walls_exterior_house_01';
+    //const sheetPath = 'assets/tilesheets/walls_exterior_house_01.png';
+    await this.splitTilesheet(sheetPath).then((tiles: string[]) => {
       tiles.forEach((tile: string, index: number) => {
-        const tileName = `tile_${index}.png`;
+        const tileName = `${sheetName}_${index}.png`
   
         // Save the tile URL as a string to the browser cache (local storage)
         localStorage.setItem(tileName, tile);
@@ -340,13 +394,65 @@ export class ViewportComponent implements OnInit{
     });
   }
 
-  getIndividualTile(name: string): SafeResourceUrl {
+  getIndividualTile(name: string, origin = 'undefined'): SafeResourceUrl {
   
-      const tileName = name;
-      const tileUrl = localStorage.getItem(tileName);
-      return tileUrl!;
-      
-  }
+     // const tileName = name;
+     // const tileUrl = localStorage.getItem(tileName);
+     // return tileUrl!;
+
+    if(!name)
+    {
+      return '';
+    }
+    
+     const existingTile = this.fetchedTiles.find((tile: PngTile) => {return tile.name === name;});
+      if(existingTile)
+      {
+        this.fetchingTiles = this.fetchingTiles.filter((tile: string) => {return tile !== name;});
+        return existingTile.url!;
+      }
+
+      if(this.fetchingTiles.includes(name))
+    {
+      return '';
+    }
+     
+    this.fetchingTiles.push(name);
+
+      this.db.getTile(name).then((tile: PngTile | null) => {
+        if(tile)
+        {
+          if(!this.fetchedTiles.find((tile: PngTile) => {return tile.name === name;}))
+          {
+
+            this.fetchedTiles.push(tile);
+            return tile.url!;
+          }
+        }
+
+        return '';
+      });
+
+      return '';
+
+     /*this.db.getTile(name).then((tile: SvgTile) => {
+      if(tile)
+      {
+        this.userTiles.push({
+          name: tile.name,
+          url: tile.url,
+          x: 0,
+          y: 0,
+          layer: this.selectedLayer,
+        });
+        return tile.url!;
+      }
+    });
+      else
+      {
+        return '';
+      }      */
+    }
 
 }
 
