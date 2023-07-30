@@ -73,6 +73,12 @@ export class TileService {
         //const sheetName = 'walls_exterior_house_01';
         //const sheetPath = 'assets/tilesheets/walls_exterior_house_01.png';
 
+        const hasTileset = await this.db.hasTileset(sheetName);
+        if (hasTileset) {
+          console.log(`Tileset ${sheetName} already exists in cache`);
+          return;
+        }
+
         await this.db.addTileset(sheetName, sheetPath);
 
         await this.splitTilesheet(sheetPath).then((tiles: string[]) => {

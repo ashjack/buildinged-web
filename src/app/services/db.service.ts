@@ -59,6 +59,15 @@ export class DbService extends Dexie {
     return await this.tilesets.toArray();
   }
 
+  async hasTileset(name: string) {
+    const tileset = await this.tilesets.where({
+      name: name
+    })
+    .toArray();
+
+    return tileset.length > 0;
+  }
+
   //Tiles
   async addTile(name: string, url: string, tileset: string) {
 

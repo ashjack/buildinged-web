@@ -77,6 +77,7 @@ export class ViewportComponent implements OnInit{
             const tilesheetName = data2[i].name;
             //this.db.addTileset(tilesheetName, tilesheet);
             //this.saveTilesToCache(tilesheetName, tilesheet);
+            this.tileService.saveTilesToCache(tilesheetName, tilesheet);
           }
         });
       });
@@ -88,8 +89,8 @@ export class ViewportComponent implements OnInit{
 
     //this.saveTilesToCache('walls_exterior_house_01', 'assets/tilesheets/walls_exterior_house_01.png');
     //this.saveTilesToCache('floors_interior_tilesandwood_01', 'assets/tilesheets/floors_interior_tilesandwood_01.png');
-    this.tileService.saveTilesToCache('walls_exterior_house_01', 'assets/tilesheets/walls_exterior_house_01.png');
-    this.tileService.saveTilesToCache('floors_interior_tilesandwood_01', 'assets/tilesheets/floors_interior_tilesandwood_01.png');
+    //this.tileService.saveTilesToCache('walls_exterior_house_01', 'assets/tilesheets/walls_exterior_house_01.png');
+    //this.tileService.saveTilesToCache('floors_interior_tilesandwood_01', 'assets/tilesheets/floors_interior_tilesandwood_01.png');
 
     this.selectedTool$.pipe(
       takeUntil(this.unsubscribe)
