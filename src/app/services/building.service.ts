@@ -4,6 +4,8 @@ import { DbService } from "./db.service";
 import { TileService } from "./tile.service";
 import { FurnitureService } from "./furniture.service";
 import { GridService } from "./grid.service";
+import ToolDrawRoom from "../tools/tool-draw-room";
+import { RoomService } from "./room.service";
 
 @Injectable({
     providedIn: 'root',
@@ -14,7 +16,8 @@ export class BuildingService {
         private db: DbService, 
         private tileService: TileService, 
         private furnitureService: FurnitureService, 
-        private gridService: GridService) { }
+        private gridService: GridService,
+        private roomService: RoomService) { }
 
     getBuilding(): Building {
         return this.building;
@@ -222,10 +225,14 @@ export class BuildingService {
 
         console.log(this.building);
         await this.drawBuilding();
+        this.roomService.drawRoom(this.roomService.rooms[this.roomService.rooms.length - 1]);
+        this.gridService.redrawTiles();
     }
 
     async drawBuilding()
     {
+        const drawRoomTool = new ToolDrawRoom(this.roomService, this.gridService);
+
         this.building.floors.forEach(floor => {
             console.log(floor.rooms)
             console.log(floor.rooms.split(/\r?\n/))
@@ -242,7 +249,8 @@ export class BuildingService {
                         if(tileNum > 0)
                         {
                             const roomToDraw = this.building.rooms[tileNum - 1];
-                            this.gridService.addToRoom(roomToDraw.Name, x, y);
+                            //this.gridService.addToRoom(roomToDraw.Name, x, y);
+                            drawRoomTool.setRoom(x, y, false);
                         }
                         y++;
                     });

@@ -1,4 +1,5 @@
 import { SvgTile } from "../models/app.models";
+import { GridService } from "../services/grid.service";
 import { ViewportComponent } from "../viewport/viewport.component";
 import ToolDraw from "./tool-draw";
 
@@ -9,8 +10,8 @@ export default class ToolTile extends ToolDraw {
     selectedTile: string = 'tile_0.png';
     selectedLayer: string = 'Walls';
 
-    constructor(grid: ViewportComponent) {
-        super(grid);
+    constructor(private gridService: GridService) {
+        super();
     }
 
     override hoverTile(x: number, y: number) {
@@ -36,7 +37,7 @@ export default class ToolTile extends ToolDraw {
             {
               const tile: SvgTile = {
                 name: this.selectedTile,
-                url: this.grid.getIndividualTile(this.selectedTile),
+                url: this.gridService.getIndividualTile(this.selectedTile),
                 x: i,
                 y: j,
                 layer: this.selectedLayer
@@ -52,7 +53,7 @@ export default class ToolTile extends ToolDraw {
         this.tileGhosts = [];
         const tile: SvgTile = {
           name: this.selectedTile,
-          url: this.grid.getIndividualTile(this.selectedTile),
+          url: this.gridService.getIndividualTile(this.selectedTile),
           x: x,
           y: y, 
           layer: this.selectedLayer
@@ -87,7 +88,7 @@ export default class ToolTile extends ToolDraw {
                     y: j,
                     layer: this.selectedLayer
                 };
-                this.grid.placeTile2(tile, false);
+                this.gridService.placeTile2(tile, false);
             }
         }
     }
@@ -115,6 +116,6 @@ export default class ToolTile extends ToolDraw {
             y: y,
             layer: this.selectedLayer
         };
-        this.grid.placeTile2(tile, false);
+        this.gridService.placeTile2(tile, false);
     }
 }

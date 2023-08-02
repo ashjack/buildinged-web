@@ -8,8 +8,8 @@ export default abstract class ToolDraw extends Tool {
     beginDragCoords: number[] = [];
     isDragging: boolean = false;
 
-    constructor(grid: ViewportComponent) {
-        super(grid);
+    constructor() {
+        super();
     }
 
     abstract hoverTile(x: number, y: number): void;

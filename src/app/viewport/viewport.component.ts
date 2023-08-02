@@ -26,9 +26,9 @@ export class ViewportComponent implements OnInit{
   rowArray = Array(10).fill(0).map((x,i)=>i);
   colArray = Array(10).fill(0).map((x,i)=>i);
 
-  tiles: SvgTile[] = [];
+  //tiles: SvgTile[] = [];
   //roomTiles: SvgTile[] = [];
-  userTiles: SvgTile[] = [];
+  //userTiles: SvgTile[] = [];
   //rooms: GridRoom[] = [];
   key: string = '';
   currentCoords: string = '0,0';
@@ -44,7 +44,7 @@ export class ViewportComponent implements OnInit{
   selectedLayer: string = 'Walls';
 
   //selectedTool: ToolDraw = new ToolTile(this);
-  selectedTool: ToolDraw = new ToolDrawRoom(this, this.roomService, this.gridService);
+  selectedTool: ToolDraw = new ToolDrawRoom(this.roomService, this.gridService);
   selectedTool$: Observable<string>;
   private unsubscribe: Subject<void> = new Subject();
 
@@ -143,30 +143,18 @@ export class ViewportComponent implements OnInit{
       switch(x)
       {
         case 'tool-tile':
-          this.selectedTool = new ToolTile(this);
+          this.selectedTool = new ToolTile(this.gridService);
           console.log('tool-tile');
           break;
         case 'tool-draw-room':
-          this.selectedTool = new ToolDrawRoom(this, this.roomService, this.gridService);
+          this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService);
           console.log('tool-draw-room');
           break;
         default:
-          this.selectedTool = new ToolDrawRoom(this, this.roomService, this.gridService);
+          this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService);
           console.log('tool-draw-room - default');
           break;
       }
-    });
-  }
-
-  redrawTiles() {
-    console.log('redrawTiles()');
-    this.tiles = [];
-    this.gridService.roomTiles.forEach((tile: SvgTile) => {
-      this.placeTile_old(tile.x, tile.y, tile.name, tile.layer);
-    });
-
-    this.userTiles.forEach((tile: SvgTile) => {
-      this.placeTile_old(tile.x, tile.y, tile.name, tile.layer);
     });
   }
 
@@ -184,7 +172,7 @@ export class ViewportComponent implements OnInit{
         foundRoom = true;
 
         //hide all tiles not in room.interiorTiles
-        this.tiles.forEach((tile: SvgTile) => {
+        this.gridService.tiles.forEach((tile: SvgTile) => {
           if(!room.placedInteriorTiles.some((placedTile: SvgTile) => {return placedTile.x === tile.x && placedTile.y === tile.y;}))
           {
             tile.hidden = true;
@@ -195,7 +183,7 @@ export class ViewportComponent implements OnInit{
 
     if(!foundRoom)
     {
-      this.tiles.forEach((tile: SvgTile) => {
+      this.gridService.tiles.forEach((tile: SvgTile) => {
         tile.hidden = false;
       });
     }
@@ -246,93 +234,21 @@ export class ViewportComponent implements OnInit{
       });
   }
 
-  placeTile2(tile: SvgTile, isRoom: boolean)
-  {
-      if(isRoom)
-      {
-        //check if roomTiles contains tile
-        if(this.gridService.roomTiles.some((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y && roomTile.layer === tile.layer;}))
-        {
-          const roomTile = this.gridService.roomTiles.find((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y && roomTile.layer === tile.layer;});
-          if(roomTile)
-          {
-            roomTile.name = tile.name;
-            roomTile.url = this.getIndividualTile(tile.name!);
-          }
-        }
-        else
-        {
-          this.gridService.roomTiles.push(tile);
-        }
-      }
-      else
-      {
-        console.log('placeTile2', tile);
-
-        //check if userTiles contains tile
-        if(this.userTiles.some((userTile: SvgTile) => {return userTile.x === tile.x && userTile.y === tile.y && userTile.layer == tile.layer;}))
-        {
-          const userTile = this.userTiles.find((userTile: SvgTile) => {return userTile.x === tile.x && userTile.y === tile.y && userTile.layer === tile.layer;});
-          if(userTile)
-          {
-            userTile.name = tile.name;
-            userTile.url = this.getIndividualTile(tile.name!);
-          }
-        }
-        else
-        {
-          this.userTiles.push(tile);
-        }
-      }
-
-
-      this.redrawTiles();
-  }
-
-  placeTile_old(x: number, y: number, name: string = '', layer: string = 'Walls') {
-
-    if(name === '')
-    {
-      name = this.selectedTile;
-    }
-
-    if(this.tileExists(x, y, layer))
-    {
-      //edit tile name and url
-      const tile = this.getTileAt(x, y, layer);
-      if(tile)
-      {
-        tile.name = name;
-        tile.url = this.getIndividualTile(name);
-        return;
-      }
-    }
-    const tile: SvgTile = {
-      name: name,
-            url: this.getIndividualTile(name),
-      x: x,
-      y: y,
-      layer: layer,
-    };
-    this.tiles.push(tile);
-    //this.tileGhosts = [];
-  }
-
   removeTile(x: number, y: number, layer: string) {
-    this.tiles = this.tiles.filter((tile: SvgTile) => {
+    this.gridService.tiles = this.gridService.tiles.filter((tile: SvgTile) => {
       return tile.x !== x || tile.y !== y && tile.layer !== layer;
     });
   }
 
   getTileAt(x: number, y: number, layer: string): SvgTile | undefined {
-    return this.tiles.find((tile: SvgTile) => {
+    return this.gridService.tiles.find((tile: SvgTile) => {
       return tile.x === x && tile.y === y && tile.layer === layer;
     });
   }
 
   tileExists(x: number, y: number, layer: string): boolean {
     //console.log(this.tiles)
-    return this.tiles.some((tile: SvgTile) => {
+    return this.gridService.tiles.some((tile: SvgTile) => {
       return tile.x === x && tile.y === y;
     });
   }
@@ -388,11 +304,13 @@ export class ViewportComponent implements OnInit{
 
   getIndividualTile(name: string, origin = 'undefined'): SafeResourceUrl {
   
+
+    return this.gridService.getIndividualTile(name, origin);
      // const tileName = name;
      // const tileUrl = localStorage.getItem(tileName);
      // return tileUrl!;
 
-    if(!name)
+    /*if(!name)
     {
       return '';
     }
@@ -425,25 +343,7 @@ export class ViewportComponent implements OnInit{
         return '';
       });
 
-      return '';
-
-     /*this.db.getTile(name).then((tile: SvgTile) => {
-      if(tile)
-      {
-        this.userTiles.push({
-          name: tile.name,
-          url: tile.url,
-          x: 0,
-          y: 0,
-          layer: this.selectedLayer,
-        });
-        return tile.url!;
-      }
-    });
-      else
-      {
-        return '';
-      }      */
+      return '';*/
     }
 
 }

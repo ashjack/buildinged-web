@@ -20,8 +20,8 @@ export default class ToolDrawRoom extends ToolDraw {
 
     floorTile = 'floors_interior_tilesandwood_01_019.png';
     
-    constructor(grid: ViewportComponent, private roomService: RoomService, private gridService: GridService) {
-        super(grid);
+    constructor(private roomService: RoomService, private gridService: GridService) {
+        super();
     }
 
     setRoom(i: number, j: number, remove: boolean): void
@@ -95,7 +95,7 @@ export default class ToolDrawRoom extends ToolDraw {
                 y: y,
                 layer: 'Walls'
             };
-            this.grid.placeTile2(tile, true);
+            this.gridService.placeTile2(tile, true);
             room.placedTiles.push({name: url, url: '', x: x, y: y, layer: 'Walls'});
             if(interior)
             {
@@ -111,7 +111,7 @@ export default class ToolDrawRoom extends ToolDraw {
                 y: y,
                 layer: 'Floor'
             };
-            this.grid.placeTile2(tile, true);
+            this.gridService.placeTile2(tile, true);
             room.placedTiles.push({name: url, url: '', x: x, y: y, layer: 'Floor'});
             room.placedInteriorTiles.push({name: url, url: '', x: x, y: y, layer: 'Floor'});
         }
@@ -261,7 +261,7 @@ export default class ToolDrawRoom extends ToolDraw {
 
         console.log(topTiles);
 
-        this.grid.redrawTiles();
+        this.gridService.redrawTiles();
     }
 
     override hoverTile(x: number, y: number): void {

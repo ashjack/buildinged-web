@@ -5,10 +5,8 @@ export default abstract class Tool{
     dragColor: string = 'blue';
     key: string = '';
 
-    grid: ViewportComponent;
 
-    constructor(grid: ViewportComponent) {
-        this.grid = grid;
+    constructor() {
     }
 
 
