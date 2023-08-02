@@ -1,12 +1,15 @@
-import { GridRoom, GridTile, SvgTile } from "../models/app.models";
-import { GridService } from "../services/grid.service";
-import { RoomService } from "../services/room.service";
-import { ViewportComponent } from "../viewport/viewport.component";
-import ToolDraw from "./tool-draw";
+import { Injectable } from "@angular/core";
+import { GridRoom, GridTile, Room, SvgTile } from "../models/app.models";
+import { GridService } from "./grid.service";
 
-export default class ToolDrawRoom extends ToolDraw {
+@Injectable({
+    providedIn: 'root',
+  })
+export class RoomService {
+    rooms: GridRoom[] = [];
 
-    selectedRoom: string = 'livingroom';
+    constructor(private gridService: GridService) { }
+
     wallTiles: string[] = [
         'walls_exterior_house_01_000.png', //left facing
         'walls_exterior_house_01_001.png', //right facing
@@ -19,18 +22,14 @@ export default class ToolDrawRoom extends ToolDraw {
     ]
 
     floorTile = 'floors_interior_tilesandwood_01_019.png';
-    
-    constructor(grid: ViewportComponent, private roomService: RoomService, private gridService: GridService) {
-        super(grid);
-    }
 
-    setRoom(i: number, j: number, remove: boolean): void
+    setRoom(selectedRoom: Room, i: number, j: number, remove: boolean): void
     {
         //Set room
         if(remove)
         {
-            this.roomService.rooms.forEach((room: GridRoom) => {
-                if(room.name === this.selectedRoom)
+            this.rooms.forEach((room: GridRoom) => {
+                if(room.name === selectedRoom.Name)
                 {
                     room.tiles.forEach((tile: GridTile, index: number) => {
                         if(tile.x === i && tile.y === j)
@@ -43,10 +42,10 @@ export default class ToolDrawRoom extends ToolDraw {
 
             return;
         }
-        if(this.roomService.rooms.some((room: GridRoom) => {return room.name === this.selectedRoom;}))
+        if(this.rooms.some((room: GridRoom) => {return room.name === selectedRoom.Name;}))
         {
-            this.roomService.rooms.forEach((room: GridRoom) => {
-                if(room.name === this.selectedRoom)
+            this.rooms.forEach((room: GridRoom) => {
+                if(room.name === selectedRoom.Name)
                 {
                     if(!room.tiles.some((tile: GridTile) => {return tile.x === i && tile.y === j;}))
                     {
@@ -58,15 +57,15 @@ export default class ToolDrawRoom extends ToolDraw {
         }
         else
         {
-            this.roomService.rooms.push({
-                name: this.selectedRoom,
+            this.rooms.push({
+                name: selectedRoom.Name,
                 tiles: [{x: i, y: j}],
                 placedTiles: [],
                 placedInteriorTiles: []
             });
         }
 
-        console.log(this.roomService.rooms);
+        console.log(this.rooms);
     }
 
     drawRoom(room: GridRoom): void
@@ -95,7 +94,7 @@ export default class ToolDrawRoom extends ToolDraw {
                 y: y,
                 layer: 'Walls'
             };
-            this.grid.placeTile2(tile, true);
+            this.gridService.placeTile2(tile, true);
             room.placedTiles.push({name: url, url: '', x: x, y: y, layer: 'Walls'});
             if(interior)
             {
@@ -111,7 +110,7 @@ export default class ToolDrawRoom extends ToolDraw {
                 y: y,
                 layer: 'Floor'
             };
-            this.grid.placeTile2(tile, true);
+            this.gridService.placeTile2(tile, true);
             room.placedTiles.push({name: url, url: '', x: x, y: y, layer: 'Floor'});
             room.placedInteriorTiles.push({name: url, url: '', x: x, y: y, layer: 'Floor'});
         }
@@ -261,87 +260,6 @@ export default class ToolDrawRoom extends ToolDraw {
 
         console.log(topTiles);
 
-        this.grid.redrawTiles();
+        this.gridService.redrawTiles();
     }
-
-    override hoverTile(x: number, y: number): void {
-
-        if(this.isDragging)
-        {
-          this.dragTiles = [];
-          const x1 = this.beginDragCoords[0];
-          const y1 = this.beginDragCoords[1];
-          const x2 = x;
-          const y2 = y;
-          const xMin = Math.min(x1, x2);
-          const xMax = Math.max(x1, x2);
-          const yMin = Math.min(y1, y2);
-          const yMax = Math.max(y1, y2);
-          for(let i = xMin; i <= xMax; i++)
-          {
-            for(let j = yMin; j <= yMax; j++)
-            {
-              const tile: SvgTile = {
-                name: '',
-                url: '',
-                x: i,
-                y: j, 
-                layer: 'Walls'
-              };
-              this.dragTiles.push(tile);
-            }
-          }
-        }
-        else
-        {
-            this.dragTiles = [];
-            this.dragTiles.push({name: '', url: '', x: x, y: y, layer: 'Walls'});
-        }
-    }
-
-    override beginDrag(x: number, y: number): void {
-        this.beginDragCoords = [x, y];
-        this.isDragging = true;
-    }
-
-    override endDrag(x: number, y: number): void {
-        this.isDragging = false;
-        this.dragTiles = [];
-        const x1 = this.beginDragCoords[0];
-        const y1 = this.beginDragCoords[1];
-        const x2 = x;
-        const y2 = y;
-        const xMin = Math.min(x1, x2);
-        const xMax = Math.max(x1, x2);
-        const yMin = Math.min(y1, y2);
-        const yMax = Math.max(y1, y2);
-        for(let i = xMin; i <= xMax; i++)
-        {
-            for(let j = yMin; j <= yMax; j++)
-            {
-                //Set room
-                this.setRoom(i,j, this.key === 'Control');
-            }
-        }
-
-        //Draw room
-        this.drawRoom(this.roomService.rooms[this.roomService.rooms.length - 1]);
-    }
-
-    override clickTile(x: number, y: number): void {
-        
-    }
-    override getTileFill(x: number, y: number): string {
-        if(this.dragTiles.some((tile: SvgTile) => {return tile.x === x && tile.y === y;}))
-        {
-            if(this.key === 'Control')
-            {
-                return '#00000070';
-            }
-          return 'red';
-        }
-        
-        return '#34343400'
-    }
-
 }

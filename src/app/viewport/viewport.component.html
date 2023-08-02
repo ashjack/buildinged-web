@@ -12,22 +12,39 @@
 
     <!--Placed Tiles-->
     <ng-container *ngFor="let grid of rowArray; index as j">
-      <g class="grid-{{ j }}">
+      <g class="grid-{{ j }}" id="tile-container">
         <ng-container *ngFor="let _ of colArray; index as i">
-          <image *ngIf="(tileExists(i,j, 'Floor') && !ghostTileExists(i,j, 'Floor') && !tileHidden(i,j, 'Floor')) || ghostTileExists(i,j, 'Floor')" 
+          <!-- <image *ngIf="(tileExists(i,j, 'Floor') && !ghostTileExists(i,j, 'Floor') && !tileHidden(i,j, 'Floor')) || ghostTileExists(i,j, 'Floor')" 
           [attr.xlink:href]="!ghostTileExists(i,j,'Floor') ? getIndividualTile(getTileAt(i,j, 'Floor')?.name!, 'floorLayerHTML') : getIndividualTile(selectedTile)" width="200" 
           [attr.x]="i*100 + 100" [attr.y]="i*50 - 300" image-rendering="pixelated" style="pointer-events: none;"/>
 
           <image *ngIf="(tileExists(i,j, 'Walls') && !ghostTileExists(i,j, 'Walls') && !tileHidden(i,j, 'Walls')) || ghostTileExists(i,j, 'Walls')" 
           [attr.xlink:href]="!ghostTileExists(i,j,'Walls') ? getIndividualTile(getTileAt(i,j, 'Walls')?.name!, 'wallLayerHTML') : getIndividualTile(selectedTile)" width="200" 
-          [attr.x]="i*100 + 100" [attr.y]="i*50 - 300" image-rendering="pixelated" style="pointer-events: none;"/>
+          [attr.x]="i*100 + 100" [attr.y]="i*50 - 300" image-rendering="pixelated" style="pointer-events: none;"/> -->
+          <ng-container *ngFor="let layer of layers">
+            <image *ngIf="(tileExists(i,j, layer) && !ghostTileExists(i,j, layer) && !tileHidden(i,j, layer)) || ghostTileExists(i,j, layer)" 
+            [attr.xlink:href]="!ghostTileExists(i,j,layer) ? getIndividualTile(getTileAt(i,j, layer)?.name!) : getIndividualTile(selectedTile)" width="200" 
+            [attr.x]="i*100 + 100" [attr.y]="i*50 - 300" image-rendering="pixelated" style="pointer-events: none;"/>
+        </ng-container>
+        </ng-container>
+      </g>
+    </ng-container>
+
+    <!--Overlay-->
+    <ng-container *ngFor="let grid of rowArray; index as j">
+      <g class="grid-{{ j }}" id="overlay-container">
+        <ng-container *ngFor="let _ of colArray; index as i">
+          <g>
+            <!-- <path id="tile" d="M 300 150 L 400 100 L 200 0 L 100 50 Z" *ngIf="i === 0 && j === 0" fill="#ffffff50"/> -->
+            <use href="#tile" *ngIf="displayOverlay(i,j)" fill="#ffffff50"/>
+          </g>
         </ng-container>
       </g>
     </ng-container>
 
     <!-- Grid -->
     <ng-container *ngFor="let grid of rowArray; index as j">
-      <g class="grid-{{ j }}">
+      <g class="grid-{{ j }}" id="grid-container">
         <ng-container *ngFor="let _ of colArray; index as i">
           <use href="#tile" [attr.fill]="getTileFill(i,j)" (click)="clickTile($event, i,j)" (mouseenter)="hoverTile(i,j)" 
           (mousedown)="beginDrag($event, i, j)" (mouseup)="endDrag($event, i,j)"/>

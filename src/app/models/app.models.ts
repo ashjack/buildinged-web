@@ -40,9 +40,12 @@ export interface Building {
     RoofTop: number;
     GrimeWall: number;
     entries: TileEntry[];
+    furniture: Furniture[];
+    user_tiles: Tile[];
     used_tiles: string;
     used_furniture: string;
-
+    rooms: Room[];
+    floors: Floor[];
 }
 
 export interface TileEntry {
@@ -51,12 +54,13 @@ export interface TileEntry {
 }
 
 export interface Tile {
-    enum: string;
+    enum?: string;
     tile: string;
+    offset?: string;
 }
 
 export interface Furniture {
-    layer: string;
+    layer?: string;
     entries: FurnitureTileEntry[];
 }
 
@@ -84,4 +88,11 @@ export interface Room {
 
 export interface Floor {
     objects: any[];
+    rooms: string;
+    tiles?: FloorTiles;
+}
+
+export interface FloorTiles {
+    layer: string;
+    tiles: string;
 }

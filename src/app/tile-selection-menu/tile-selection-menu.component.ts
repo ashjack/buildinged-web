@@ -17,6 +17,43 @@ export class TileSelectionMenuComponent implements OnInit{
   tilesets: string[] = [];
   tiles: SvgTile[] = [];
 
+  layers: string[] = [
+    'RoofTop',
+    'Roof2',
+    'Roof',
+    'WallOverlay4',
+    'WallOverlay3',
+    'WallFurniture4',
+    'WallFurniture3',
+    'Curtains2',
+    'Furniture4',
+    'Furniture3',
+    'Furniture2',
+    'Furniture',
+    'Curtains',
+    'Windows',
+    'Doors',
+    'Frames',
+    'WallFurniture2',
+    'WallFurniture',
+    'WallGrime2',
+    'WallGrime',
+    'WallOverlay2',
+    'WallOverlay',
+    'RoofCap2',
+    'RoofCap',
+    'WallTrim2',
+    'Walls2',
+    'WallTrim',
+    'Walls',
+    'Vegetation',
+    'FloorFurniture',
+    'FloorGrime2',
+    'FloorGrime',
+    'FloorOverlay', 
+    'Floor', 
+  ];
+
   ngOnInit(): void {
     this.getTilesets();
   }
@@ -26,8 +63,6 @@ export class TileSelectionMenuComponent implements OnInit{
     ret.forEach((tileset) => {
       this.tilesets.push(tileset.name);
     });
-    console.log('AAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
-    console.log(this.tilesets);
     return ret;
   }
 
@@ -44,46 +79,6 @@ export class TileSelectionMenuComponent implements OnInit{
       });
     });
   }
-
-
-
-  // getTilesets(): string[] {
-  //   const tilesets: string[] = [];
-  //   for (let i = 0; i < localStorage.length; i++) {
-  //     const key = localStorage.key(i);
-  //     if (key?.includes('png')) {
-  //       const tileset = key.split('_');
-  //       tileset.pop();
-  //       const tilesetString = tileset.join('_');
-  //       if (!tilesets.includes(tilesetString)) {
-  //         tilesets.push(tilesetString);
-  //       }
-  //     }
-  //   }
-  //   return tilesets;
-  // }
-
-
-  // getIndividualTiles(sheetName: string): SvgTile[] {
-  //   const individualTiles: SvgTile[] = [];
-  
-  //   for (let i = 0; i < 64; i++) { // Replace `numTiles` with the number of tiles you have
-  //     const tileName = `${sheetName}_${i}.png`;
-  //     const tileUrl = localStorage.getItem(tileName);
-  //     if (tileUrl) {
-  //       const sanitizedTile = this.sanitizer.bypassSecurityTrustResourceUrl(tileUrl);
-  //       individualTiles.push({
-  //         name: tileName,
-  //         url: sanitizedTile,
-  //         x: 0,
-  //         y: 0,
-  //         layer: 'Walls',
-  //       });
-  //     }
-  //   }
-  
-  //   return individualTiles;
-  // }
 
   setSelectedTile(tileName: string) {
     console.log(tileName);

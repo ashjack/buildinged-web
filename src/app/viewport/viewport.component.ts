@@ -1,7 +1,7 @@
 import { Component, AfterViewInit, ViewChild, ElementRef, OnInit, HostListener } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
-import { GridRoom, GridTile, SvgTile } from '../models/app.models';
+import { Furniture, FurnitureTile, FurnitureTileEntry, GridRoom, GridTile, SvgTile } from '../models/app.models';
 import Tool from '../tools/tool';
 import ToolTile from '../tools/tool-tile';
 import ToolDraw from '../tools/tool-draw';
@@ -11,6 +11,9 @@ import * as fromRoot from '../app.reducers';
 import { Store } from '@ngrx/store';
 import { DbService, PngTile } from '../services/db.service';
 import { TileService } from '../services/tile.service';
+import { FurnitureService } from '../services/furniture.service';
+import { GridService } from '../services/grid.service';
+import { RoomService } from '../services/room.service';
 
 @Component({
   selector: 'app-viewport',
@@ -24,9 +27,9 @@ export class ViewportComponent implements OnInit{
   colArray = Array(10).fill(0).map((x,i)=>i);
 
   tiles: SvgTile[] = [];
-  roomTiles: SvgTile[] = [];
+  //roomTiles: SvgTile[] = [];
   userTiles: SvgTile[] = [];
-  rooms: GridRoom[] = [];
+  //rooms: GridRoom[] = [];
   key: string = '';
   currentCoords: string = '0,0';
   //tileGhosts: SvgTile[] = [];
@@ -41,16 +44,57 @@ export class ViewportComponent implements OnInit{
   selectedLayer: string = 'Walls';
 
   //selectedTool: ToolDraw = new ToolTile(this);
-  selectedTool: ToolDraw = new ToolDrawRoom(this);
+  selectedTool: ToolDraw = new ToolDrawRoom(this, this.roomService, this.gridService);
   selectedTool$: Observable<string>;
   private unsubscribe: Subject<void> = new Subject();
+
+  //constants
+  layers: string[] = [
+    'Floor', 
+    'FloorOverlay', 
+    'FloorGrime',
+    'FloorGrime2',
+    'FloorFurniture',
+    'Vegetation',
+    'Walls',
+    'WallTrim',
+    'Walls2',
+    'WallTrim2',
+    'RoofCap',
+    'RoofCap2',
+    'WallOverlay',
+    'WallOverlay2',
+    'WallGrime',
+    'WallGrime2',
+    'WallFurniture',
+    'WallFurniture2',
+    'Frames',
+    'Doors',
+    'Windows',
+    'Curtains',
+    'Furniture',
+    'Furniture2',
+    'Furniture3',
+    'Furniture4',
+    'Curtains2',
+    'WallFurniture3',
+    'WallFurniture4',
+    'WallOverlay3',
+    'WallOverlay4',
+    'Roof',
+    'Roof2',
+    'RoofTop',
+  ];
 
   constructor(
     private http: HttpClient, 
     private sanitizer: DomSanitizer, 
     private store: Store<fromRoot.State>,
     private db: DbService,
-    private tileService: TileService) 
+    private tileService: TileService,
+    private furnitureService: FurnitureService,
+    private gridService: GridService,
+    private roomService: RoomService) 
   { 
     this.selectedTool$ = store.select(fromRoot.getCurrentTool);
     console.log(this.selectedTool$)
@@ -103,11 +147,11 @@ export class ViewportComponent implements OnInit{
           console.log('tool-tile');
           break;
         case 'tool-draw-room':
-          this.selectedTool = new ToolDrawRoom(this);
+          this.selectedTool = new ToolDrawRoom(this, this.roomService, this.gridService);
           console.log('tool-draw-room');
           break;
         default:
-          this.selectedTool = new ToolDrawRoom(this);
+          this.selectedTool = new ToolDrawRoom(this, this.roomService, this.gridService);
           console.log('tool-draw-room - default');
           break;
       }
@@ -117,7 +161,7 @@ export class ViewportComponent implements OnInit{
   redrawTiles() {
     console.log('redrawTiles()');
     this.tiles = [];
-    this.roomTiles.forEach((tile: SvgTile) => {
+    this.gridService.roomTiles.forEach((tile: SvgTile) => {
       this.placeTile_old(tile.x, tile.y, tile.name, tile.layer);
     });
 
@@ -134,7 +178,7 @@ export class ViewportComponent implements OnInit{
 
     //check if tile is in any rooms
     let foundRoom: boolean = false;
-    this.rooms.forEach((room: GridRoom) => {
+    this.roomService.rooms.forEach((room: GridRoom) => {
       if(room.tiles.some((tile: GridTile) => {return tile.x === x && tile.y === y;}))
       {
         foundRoom = true;
@@ -207,9 +251,9 @@ export class ViewportComponent implements OnInit{
       if(isRoom)
       {
         //check if roomTiles contains tile
-        if(this.roomTiles.some((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y && roomTile.layer === tile.layer;}))
+        if(this.gridService.roomTiles.some((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y && roomTile.layer === tile.layer;}))
         {
-          const roomTile = this.roomTiles.find((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y && roomTile.layer === tile.layer;});
+          const roomTile = this.gridService.roomTiles.find((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y && roomTile.layer === tile.layer;});
           if(roomTile)
           {
             roomTile.name = tile.name;
@@ -218,7 +262,7 @@ export class ViewportComponent implements OnInit{
         }
         else
         {
-          this.roomTiles.push(tile);
+          this.gridService.roomTiles.push(tile);
         }
       }
       else
@@ -319,81 +363,28 @@ export class ViewportComponent implements OnInit{
     return false;
   }
 
+  displayOverlay(x: number, y: number): boolean {
+    let foundMatch = false;
+  
+    this.furnitureService.furniture.forEach((furniture: Furniture) => {
+      furniture.entries.forEach((entry: FurnitureTileEntry) => {
+        entry.tiles.forEach((tile: FurnitureTile) => {
+          if (tile.x === x && tile.y === y) {
+            foundMatch = true;
+          }
+        });
+      });
+    });
+  
+    return foundMatch;
+  }
+
   // coordToPos(x: number, y: number): string {
   //   console.log(`${x * 100}px ${y * 50}px`);
   //   return `${x * 100}px ${y * 50}px`;
   // }
 
   //Tilesheet functions
-
-  fetchTilesheet(url: string) {
-    const tilesheetUrl = url;//'assets/tilesheets/walls_exterior_house_01.png';
-    return this.http.get(tilesheetUrl, { responseType: 'blob' });
-  }
-
-  async splitTilesheet(url: string) {
-    try{
-    const tilesheetBlob: Blob | undefined = await this.fetchTilesheet(url).toPromise();
-    const tilesheetUrl: string = URL.createObjectURL(tilesheetBlob!);
-  
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-  
-    const image = new Image();
-    image.src = tilesheetUrl;
-    await image.decode();
-  
-    const tileWidth = 128;  // Adjust this based on the actual tile width in pixels
-    const tileHeight = 256; // Adjust this based on the actual tile height in pixels
-  
-    const numTilesX = Math.floor(image.width / tileWidth);
-    const numTilesY = Math.floor(image.height / tileHeight);
-  
-    const individualTiles = [];
-  
-    for (let y = 0; y < numTilesY; y++) {
-      for (let x = 0; x < numTilesX; x++) {
-        canvas.width = tileWidth;
-        canvas.height = tileHeight;
-  
-        context?.drawImage(
-          image,
-          x * tileWidth,
-          y * tileHeight,
-          tileWidth,
-          tileHeight,
-          0,
-          0,
-          tileWidth,
-          tileHeight
-        );
-  
-        const dataUrl = canvas.toDataURL('image/png');
-        individualTiles.push(dataUrl);
-      }
-    }
-  
-    return individualTiles;
-  }
-  catch(e)
-  {
-    console.log(url, e);
-    return [];
-  }
-}
-
-  async saveTilesToCache(sheetName: string, sheetPath: string) {
-    //const sheetName = 'walls_exterior_house_01';
-    //const sheetPath = 'assets/tilesheets/walls_exterior_house_01.png';
-    await this.splitTilesheet(sheetPath).then((tiles: string[]) => {
-      tiles.forEach((tile: string, index: number) => {
-        const tileName = `${sheetName}_${index}.png`
-  
-        // Save the tile URL as a string to the browser cache (local storage)
-        localStorage.setItem(tileName, tile);
-      });
-    });
-  }
 
   getIndividualTile(name: string, origin = 'undefined'): SafeResourceUrl {
   
