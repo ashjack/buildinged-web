@@ -66,7 +66,6 @@ export default class ToolDrawRoom extends ToolDraw {
             });
         }
 
-        console.log(this.roomService.rooms);
     }
 
     drawRoom(room: GridRoom): void

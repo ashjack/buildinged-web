@@ -234,17 +234,13 @@ export class BuildingService {
         const drawRoomTool = new ToolDrawRoom(this.roomService, this.gridService);
 
         this.building.floors.forEach(floor => {
-            console.log(floor.rooms)
-            console.log(floor.rooms.split(/\r?\n/))
             let x = 0;
             floor.rooms.split(/\r?\n/).forEach(room => {
-                console.log(room)
                 if(room != '')
                 {
                     let y = 0;
                     const roomTiles = room.split(',');
                     roomTiles.forEach(tile => {
-                        console.log(tile)
                         const tileNum: number = Number.parseInt(tile);
                         if(tileNum > 0)
                         {

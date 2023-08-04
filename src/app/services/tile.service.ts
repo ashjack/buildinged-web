@@ -75,7 +75,7 @@ export class TileService {
 
         const hasTileset = await this.db.hasTileset(sheetName);
         if (hasTileset) {
-          console.log(`Tileset ${sheetName} already exists in cache`);
+          //console.log(`Tileset ${sheetName} already exists in cache`);
           return;
         }
 
@@ -89,7 +89,7 @@ export class TileService {
             // Save the tile URL as a string to the browser cache (local storage)
             //localStorage.setItem(tileName, tile);
             this.db.addTile(tileName, tile, sheetName);
-            console.log(`Saved ${tileName} to cache`);
+            //console.log(`Saved ${tileName} to cache`);
           });
         });
       }
