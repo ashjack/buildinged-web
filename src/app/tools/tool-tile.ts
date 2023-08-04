@@ -91,6 +91,8 @@ export default class ToolTile extends ToolDraw {
                 this.gridService.placeTile2(tile, false);
             }
         }
+
+        this.gridService.redrawTiles();
     }
 
     override getTileFill(x: number, y: number): string {

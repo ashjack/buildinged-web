@@ -9,6 +9,10 @@ import { SafeResourceUrl } from "@angular/platform-browser";
   })
 export class GridService {
     //rooms: GridRoom[] = [];
+
+    rowArray = Array(20).fill(0).map((x,i)=>i);
+    colArray = Array(20).fill(0).map((x,i)=>i);
+
     roomTiles: SvgTile[] = [];
     userTiles: SvgTile[] = [];
     tiles: SvgTile[] = [];
@@ -86,7 +90,7 @@ export class GridService {
       }
 
 
-      this.redrawTiles();
+      //this.redrawTiles();
   }
 
   placeTile_old(x: number, y: number, name: string = '', layer: string = 'Walls') {

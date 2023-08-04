@@ -23,8 +23,11 @@ import { RoomService } from '../services/room.service';
 export class ViewportComponent implements OnInit{
   
 
-  rowArray = Array(10).fill(0).map((x,i)=>i);
-  colArray = Array(10).fill(0).map((x,i)=>i);
+  rowArray = Array(20).fill(0).map((x,i)=>i);
+  colArray = Array(20).fill(0).map((x,i)=>i);
+
+  //rowArray = this.gridService.rowArray;
+  //colArray = this.gridService.colArray;
 
   //tiles: SvgTile[] = [];
   //roomTiles: SvgTile[] = [];
@@ -119,22 +122,11 @@ export class ViewportComponent implements OnInit{
           {
             const tilesheet = data2[i].url;
             const tilesheetName = data2[i].name;
-            //this.db.addTileset(tilesheetName, tilesheet);
-            //this.saveTilesToCache(tilesheetName, tilesheet);
             this.tileService.saveTilesToCache(tilesheetName, tilesheet);
           }
         });
       });
     });
-
-    
-
-
-
-    //this.saveTilesToCache('walls_exterior_house_01', 'assets/tilesheets/walls_exterior_house_01.png');
-    //this.saveTilesToCache('floors_interior_tilesandwood_01', 'assets/tilesheets/floors_interior_tilesandwood_01.png');
-    //this.tileService.saveTilesToCache('walls_exterior_house_01', 'assets/tilesheets/walls_exterior_house_01.png');
-    //this.tileService.saveTilesToCache('floors_interior_tilesandwood_01', 'assets/tilesheets/floors_interior_tilesandwood_01.png');
 
     this.selectedTool$.pipe(
       takeUntil(this.unsubscribe)
@@ -229,9 +221,6 @@ export class ViewportComponent implements OnInit{
       }
   
       this.selectedTool.clickTile(x, y);
-      this.db.getTileset('walls_exterior_house_01').then((tilesheet: any) => {
-        console.log(tilesheet);
-      });
   }
 
   removeTile(x: number, y: number, layer: string) {

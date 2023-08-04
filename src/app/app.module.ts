@@ -11,12 +11,14 @@ import { TileSelectionMenuComponent } from './tile-selection-menu/tile-selection
 import { Store, StoreModule } from '@ngrx/store';
 import { EffectsModule } from '@ngrx/effects';
 import { reducer } from './app.reducers';
+import { ViewportCanvasComponent } from './viewport-canvas/viewport-canvas.component';
 
 @NgModule({
   declarations: [
     AppComponent,
     MenuComponent,
     ViewportComponent,
+    ViewportCanvasComponent,
     TileSelectionMenuComponent,
   ],
   imports: [
