@@ -258,8 +258,6 @@ export default class ToolDrawRoom extends ToolDraw {
             }
         });
 
-        console.log(topTiles);
-
         this.gridService.redrawTiles();
     }
 

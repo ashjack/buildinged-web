@@ -7,7 +7,7 @@ export default class ToolTile extends ToolDraw {
     
     tileGhosts: SvgTile[] = [];
 
-    selectedTile: string = 'tile_0.png';
+    selectedTile: string = 'walls_exterior_house_01_004.png';
     selectedLayer: string = 'Walls';
 
     constructor(private gridService: GridService) {
@@ -43,7 +43,10 @@ export default class ToolTile extends ToolDraw {
                 layer: this.selectedLayer
               };
               this.dragTiles.push(tile);
-              this.tileGhosts.push(tile);
+              if(this.key !== 'Control')
+              {
+                this.tileGhosts.push(tile);
+              }
             }
           }
         }
@@ -58,7 +61,12 @@ export default class ToolTile extends ToolDraw {
           y: y, 
           layer: this.selectedLayer
         };
-        this.tileGhosts.push(tile);
+        this.dragTiles = [];
+        this.dragTiles.push({name: '', url: '', x: x, y: y, layer: 'Walls'});
+        if(this.key !== 'Control')
+        {
+          this.tileGhosts.push(tile);
+        }
     }
       }
 
@@ -81,6 +89,12 @@ export default class ToolTile extends ToolDraw {
         {
             for(let j = yMin; j <= yMax; j++)
             {
+              if(this.key === 'Control')
+              {
+                this.gridService.userTiles = this.gridService.userTiles.filter((tile: SvgTile) => {return tile.x !== i || tile.y !== j || tile.layer !== this.selectedLayer;});
+              }
+              else
+              {
                 const tile: SvgTile = {
                     name: this.selectedTile,
                     url: this.selectedTile,
@@ -89,6 +103,7 @@ export default class ToolTile extends ToolDraw {
                     layer: this.selectedLayer
                 };
                 this.gridService.placeTile2(tile, false);
+              }
             }
         }
 
@@ -97,6 +112,10 @@ export default class ToolTile extends ToolDraw {
 
     override getTileFill(x: number, y: number): string {
     
+        if(this.key === 'Control')
+        {
+          return '#00000070';
+        }
         if(this.dragTiles.some((tile: SvgTile) => {return tile.x === x && tile.y === y;}))
         {
           return '#27276750';
@@ -107,7 +126,7 @@ export default class ToolTile extends ToolDraw {
           return '#27455d50';
         }
         
-        return '#34343400'
+        return '#19a0e350'
       }
 
     override clickTile(x: number, y: number): void {

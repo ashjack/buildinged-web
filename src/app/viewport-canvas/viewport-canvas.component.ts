@@ -1,6 +1,6 @@
 import { HttpClient } from "@angular/common/http";
 import { AfterViewInit, Component, ElementRef, HostListener, OnInit, ViewChild } from "@angular/core";
-import { DomSanitizer } from "@angular/platform-browser";
+import { DomSanitizer, SafeResourceUrl } from "@angular/platform-browser";
 import { Store } from "@ngrx/store";
 import { Observable, Subject, takeUntil } from "rxjs";
 import { PngTile, DbService } from "../services/db.service";
@@ -12,6 +12,8 @@ import * as fromRoot from '../app.reducers';
 import ToolDraw from "../tools/tool-draw";
 import ToolDrawRoom from "../tools/tool-draw-room";
 import ToolTile from "../tools/tool-tile";
+import { SvgTile } from "../models/app.models";
+import { CacheService } from "../services/cache.service";
 
 @Component({
     selector: 'app-viewport-canvas',
@@ -26,6 +28,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   fetchingTiles: string[] = [];
   selectedTile: string = 'walls_interior_house_01_0.png';
   selectedLayer: string = 'Walls';
+  key: string = '';
 
   @ViewChild('canvasElement') canvasElement: ElementRef;
   private ctx: CanvasRenderingContext2D | null;
@@ -34,6 +37,8 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   selectedTool: ToolDraw = new ToolDrawRoom(this.roomService, this.gridService);
   selectedTool$: Observable<string>;
   private unsubscribe: Subject<void> = new Subject();
+
+  currentHoverCoords: Point = {x: 0, y: 0};
 
   //constants
   layers: string[] = [
@@ -90,7 +95,8 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     private tileService: TileService,
     private furnitureService: FurnitureService,
     private gridService: GridService,
-    private roomService: RoomService) 
+    private roomService: RoomService,
+    private cacheService: CacheService) 
   { 
     this.selectedTool$ = store.select(fromRoot.getCurrentTool);
     console.log(this.selectedTool$)
@@ -155,12 +161,80 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     this.ctx = canvas.getContext('2d');
     canvas.addEventListener("mousemove", (event) => this.getMousePos(event));
 
+    if(this.ctx)
+    {
+      this.ctx.imageSmoothingEnabled = false;
+    }
+
     this.drawCanvas();
   }
 
   hoverTile(x: number, y: number) {
+    if(this.currentHoverCoords.x == x && this.currentHoverCoords.y == y)
+    {
+      return;
+    }
+
+    const hoverRoom = this.roomService.getRoomFromTile(x, y);
+    if(hoverRoom)
+    {
+      this.gridService.roomTiles.forEach((tile: SvgTile) => {
+        if(!hoverRoom.placedInteriorTiles.some((t: SvgTile) => t.x == tile.x && t.y == tile.y && t.name == tile.name))
+        {
+          console.log(`tile is in placedInteriorTiles: ${tile.name}`);
+          this.gridService.hideTile(tile.x, tile.y, tile.layer);
+        }
+        else
+        {
+          this.gridService.showTile(tile.x, tile.y, tile.layer);
+        }
+      });
+
+      this.gridService.redrawTiles();
+
+    }
+    else
+    {
+      this.gridService.roomTiles.forEach((tile: SvgTile) => {
+        this.gridService.showTile(tile.x, tile.y, tile.layer);
+      });
+      this.gridService.redrawTiles();
+
+    }
+
+    this.selectedTool.hoverTile(x, y);
+
     this.drawCanvas();
-    this.drawOverlaySquare(x, y, 'black', 'red');
+    //this.drawOverlaySquare(x, y, 'black', 'red');
+    this.currentHoverCoords = {x: x, y: y};
+
+
+    
+    
+  }
+
+  beginDrag($event: MouseEvent, x: number, y: number)
+  {
+    if($event.button != 0)
+    {
+      return;
+    }
+    console.log(`beginDrag: ${x}, ${y}`);
+
+    this.selectedTool.beginDrag(x, y);
+  }
+
+  endDrag($event: MouseEvent, x: number, y: number)
+  {
+    if($event.button != 0)
+    {
+      return;
+    }
+
+    console.log(`endDrag: ${x}, ${y}`);
+    this.selectedTool.endDrag(x, y);
+    this.gridService.redrawTiles();
+    
   }
 
   //Drawing functions
@@ -176,20 +250,82 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     this.ctx.clearRect(0, 0, 5000, 5000);
     this.newPositions = [];
 
+    //Tiles
+    this.drawTiles();
+
     //Tool Overlay
     this.drawOverlay();
 
     //Grid
     this.drawIsometricGrid(20, 20);
+
+    //const tile = this.getIndividualTile('walls_exterior_house_01_004.png') as string;
+    //this.drawTile(6, 10, tile);
+    //this.drawTile(6, 11, tile);
+
   }
 
-  drawTile(x: number, y: number, tile: PngTile) {
+  drawTiles() {
 
+    if(this.selectedTool instanceof ToolTile)
+    {
+      this.selectedTool.tileGhosts.forEach((tile: SvgTile) => {
+        this.gridService.tiles = this.gridService.tiles.filter((t: SvgTile) => t.x != tile.x || t.y != tile.y || t.layer != tile.layer);
+        this.gridService.tiles.push(tile);
+      });
+    }
+
+    this.gridService.sortTiles();
+
+    this.gridService.tiles.forEach((tile: SvgTile) => {
+      if(!tile.hidden)
+      {
+        const tileImage = this.getIndividualTile(tile.name!);
+        this.drawTile(tile.x, tile.y, tile.name!, tileImage as string);
+      }
+    });
+
+    
+  }
+
+  drawTile(x: number, y: number, tileName: string, tile: string) {
+    if(!this.ctx) {
+      throw new Error('Canvas context is not defined')
+    };
+
+    const ctx = this.ctx;
+    const canvasX = 2500 + x * 100 - y * 100;
+    const canvasY = 100 + x * 50 + y * 50;
+
+    const size = 204;
+
+
+    x = (canvasX - this.xOffset - size / 2) * this.zoom;
+    y = (canvasY - this.yOffset - size * 2) * this.zoom;
+
+    const tileImage = this.cacheService.get(tileName);
+    if(!tileImage || tileImage == null || tileImage == undefined)
+    {
+      const newTileImage = new Image();
+      newTileImage.src = tile;
+      newTileImage.onload = () => {
+        this.cacheService.set(tileName, newTileImage);
+        ctx.drawImage(newTileImage,x, y, size * this.zoom, size * 2 * this.zoom);
+      }
+    }
+    else
+    {
+      this.ctx.drawImage(tileImage,x, y, size * this.zoom, size * 2 * this.zoom);
+    }
   }
 
   drawOverlay() {
-    //this.ctx?.canvas.
-    this.drawOverlaySquare(0, 0, 'black', 'blue');
+    if(this.selectedTool instanceof ToolDraw)
+    {
+      this.selectedTool.dragTiles.forEach((tile: SvgTile) => {
+        this.drawOverlaySquare(tile.x, tile.y, 'black', this.selectedTool.getTileFill(tile.x, tile.y));
+      });
+    }
   }
 
   drawIsometricGrid(length: number, width: number) {
@@ -221,13 +357,14 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     const size = 100 * this.zoom;
 
     this.ctx.beginPath();
+    this.ctx.setLineDash([]);
     this.ctx.moveTo(x, y);
     this.ctx.lineTo(x + size, y - size / 2);
     this.ctx.lineTo(x, y - size);
     this.ctx.lineTo(x - size, y - size / 2);
     this.ctx.closePath();
     this.ctx.strokeStyle = lineColor; // Set the stroke color
-    this.ctx.lineWidth = 2; // Set the line width
+    this.ctx.lineWidth = 4; // Set the line width
     this.ctx.stroke();
 
     this.ctx.fillStyle = fillColor; // Set the fill color
@@ -266,7 +403,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     this.ctx.lineTo(x - size, y - size / 2);
     this.ctx.closePath();
     this.ctx.strokeStyle = '#000000'; // Set the stroke color
-    this.ctx.lineWidth = 2; // Set the line width
+    this.ctx.lineWidth = 1; // Set the line width
     this.ctx.stroke();
 
     const polygon: Point[] = [
@@ -279,6 +416,12 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     return polygon;
   }
 
+  //Image functions
+  getIndividualTile(name: string, origin = 'undefined'): SafeResourceUrl {
+    return this.gridService.getIndividualTile(name, origin);
+  }
+
+
   //Mouse functions
 
   dragStartPos: Point = {x: 0, y: 0};
@@ -289,6 +432,11 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
       event.preventDefault();
       this.dragStartPos = {x: event.clientX, y: event.clientY};
     }
+    else if(event.button === 0)
+    {
+      event.preventDefault();
+      this.beginDrag(event, this.currentHoverCoords.x, this.currentHoverCoords.y);
+    }
   }
 
   @HostListener('mouseup', ['$event']) onMouseUp(event: MouseEvent){
@@ -296,16 +444,21 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     {
       event.preventDefault();
     }
+    else if(event.button === 0)
+    {
+      event.preventDefault();
+      this.endDrag(event, this.currentHoverCoords.x, this.currentHoverCoords.y);
+    }
   }
 
   @HostListener('wheel', ['$event']) onMouseWheel(event: WheelEvent){
     event.preventDefault();
     if(event.ctrlKey) {
       if(event.deltaY > 0) {
-        this.zoom = this.zoom - 0.1;
+        this.zoom = this.zoom - 0.2;
         this.drawCanvas();
       } else {
-        this.zoom = this.zoom + 0.1;
+        this.zoom = this.zoom + 0.2;
         this.drawCanvas();
       }
     }
@@ -381,6 +534,21 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     }
   
     return oddNodes;
+  }
+
+  //Keyboard functions
+  @HostListener('document:keydown', ['$event'])
+  handleKeyDown(event: KeyboardEvent) { 
+    this.key = event.key;
+    this.selectedTool.key = event.key;
+    this.drawCanvas();
+  }
+
+  @HostListener('document:keyup', ['$event'])
+  handleKeyUp(event: KeyboardEvent) { 
+    this.key = '';
+    this.selectedTool.key = '';
+    this.drawCanvas();
   }
 
   

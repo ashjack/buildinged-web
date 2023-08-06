@@ -3,6 +3,7 @@ import { GridRoom, SvgTile } from "../models/app.models";
 import ToolDrawRoom from "../tools/tool-draw-room";
 import { DbService, PngTile } from "./db.service";
 import { SafeResourceUrl } from "@angular/platform-browser";
+import { CacheService } from "./cache.service";
 
 @Injectable({
     providedIn: 'root',
@@ -16,42 +17,63 @@ export class GridService {
     roomTiles: SvgTile[] = [];
     userTiles: SvgTile[] = [];
     tiles: SvgTile[] = [];
+    hiddenTiles: SvgTile[] = [];
 
     fetchedTiles: PngTile[] = [];
     fetchingTiles: string[] = [];
 
-    constructor(private db: DbService) { }
+    constructor(private db: DbService, private cacheService: CacheService) { }
 
 
-    addToRoom(roomName: string, x: number, y: number): void {
-      //  const room = this.rooms.find(r => r.name === roomName);
-      //  if (room) {
-            //room.tiles.push({x, y});
+    hideTile(x: number, y: number, layer: string)
+    {
+        const tile = this.roomTiles.find((tile: SvgTile) => {return tile.x === x && tile.y === y && tile.layer === layer;});
+        if(tile)
+        {
+            tile.hidden = true;
+            //this.hiddenTiles.push(tile);
+        }
+    }
 
-      //  } else {
-            /*this.rooms.push({
-                name: roomName, 
-                tiles: [{x, y}],
-                placedTiles: [],
-                placedInteriorTiles: [],
-            });*/
-       // }
+    showTile(x: number, y: number, layer: string)
+    {
+        const tile = this.roomTiles.find((tile: SvgTile) => {return tile.x === x && tile.y === y && tile.layer === layer;});
+        if(tile)
+        {
+            tile.hidden = false;
+            //this.hiddenTiles = this.hiddenTiles.filter((tile: SvgTile) => {return tile.x !== x || tile.y !== y || tile.layer !== layer;});
+        }
     }
 
     redrawTiles() {
-        console.log('redrawTiles()');
         this.tiles = [];
+
         this.roomTiles.forEach((tile: SvgTile) => {
-          this.placeTile_old(tile.x, tile.y, tile.name, tile.layer);
+          if(!tile.hidden)
+          {
+            this.placeTile_old(tile.x, tile.y, tile.name, tile.layer);
+          }
         });
     
         this.userTiles.forEach((tile: SvgTile) => {
           this.placeTile_old(tile.x, tile.y, tile.name, tile.layer);
         });
+
+        //Sort roomTiles by x and then y
+        this.tiles.sort((a: SvgTile, b: SvgTile) => {
+          if(a.x === b.x)
+          {
+              return a.y - b.y;
+          }
+          else
+          {
+              return a.x - b.x;
+          }
+      });
     }
 
     placeTile2(tile: SvgTile, isRoom: boolean)
-  {
+    {
       if(isRoom)
       {
         //check if roomTiles contains tile
@@ -118,8 +140,22 @@ export class GridService {
       y: y,
       layer: layer,
     };
+
     this.tiles.push(tile);
     //this.tileGhosts = [];
+  }
+
+  sortTiles() {
+    this.tiles.sort((a: SvgTile, b: SvgTile) => {
+      if(a.x === b.x)
+      {
+          return a.y - b.y;
+      }
+      else
+      {
+          return a.x - b.x;
+      }
+    });
   }
 
   removeTile(x: number, y: number, layer: string) {
