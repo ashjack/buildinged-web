@@ -99,7 +99,6 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     private cacheService: CacheService) 
   { 
     this.selectedTool$ = store.select(fromRoot.getCurrentTool);
-    console.log(this.selectedTool$)
 
     this.screenWidth = window.innerWidth;
     this.screenHeight = window.innerHeight;
@@ -136,20 +135,16 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     this.selectedTool$.pipe(
       takeUntil(this.unsubscribe)
     ).subscribe((x) => {
-      console.log(`selectedTool$ = ${x}`);
       switch(x)
       {
         case 'tool-tile':
           this.selectedTool = new ToolTile(this.gridService);
-          console.log('tool-tile');
           break;
         case 'tool-draw-room':
           this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService);
-          console.log('tool-draw-room');
           break;
         default:
           this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService);
-          console.log('tool-draw-room - default');
           break;
       }
     });
@@ -181,7 +176,6 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
       this.gridService.roomTiles.forEach((tile: SvgTile) => {
         if(!hoverRoom.placedInteriorTiles.some((t: SvgTile) => t.x == tile.x && t.y == tile.y && t.name == tile.name))
         {
-          console.log(`tile is in placedInteriorTiles: ${tile.name}`);
           this.gridService.hideTile(tile.x, tile.y, tile.layer);
         }
         else
@@ -219,7 +213,6 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     {
       return;
     }
-    console.log(`beginDrag: ${x}, ${y}`);
 
     this.selectedTool.beginDrag(x, y);
   }
@@ -231,7 +224,6 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
       return;
     }
 
-    console.log(`endDrag: ${x}, ${y}`);
     this.selectedTool.endDrag(x, y);
     this.gridService.redrawTiles();
     
@@ -477,7 +469,6 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
       if(found) {
         const localX = pos.localPoint.x
         const localY = pos.localPoint.y
-        //console.log(`localX = ${localX}, localY = ${localY}`);
         this.hoverTile(localX, localY);
       }
     });
