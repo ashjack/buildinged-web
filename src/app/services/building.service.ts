@@ -181,8 +181,8 @@ export class BuildingService {
 
         }
 
-        this.roomService.selectedRoom = this.building.rooms[1];
-        console.log(this.roomService.selectedRoom)
+        this.roomService.selectedRoom = this.building.rooms[0];
+        //console.log(this.roomService.selectedRoom)
 
         // floors
         for(let i = 0; i < floors.length; i++)
@@ -236,18 +236,25 @@ export class BuildingService {
 
         console.log(this.building);
         await this.drawBuilding();
-        this.roomService.drawRoom(this.roomService.rooms[this.roomService.rooms.length - 1]);
+        // this.roomService.rooms.forEach(room => {
+        //     this.roomService.drawRoom(room);
+        // });
+        //this.roomService.drawRoom(this.roomService.rooms[this.roomService.rooms.length - 1]);
         this.gridService.redrawTiles();
     }
 
     async drawBuilding()
     {
-        const drawRoomTool = new ToolDrawRoom(this.roomService, this.gridService);
+        const drawRoomTool = new ToolDrawRoom(this.roomService, this.gridService, this);
+
+        //TODO REMOVE FLOOR COUNT
+        let floorCount = -1;
 
         this.building.floors.forEach(floor => {
+            floorCount++;
             let x = 0;
             floor.rooms.split(/\r?\n/).forEach(room => {
-                if(room != '')
+                if(room != '' && floorCount == 0)
                 {
                     let y = 0;
                     const roomTiles = room.split(',');
@@ -256,8 +263,11 @@ export class BuildingService {
                         if(tileNum > 0)
                         {
                             const roomToDraw = this.building.rooms[tileNum - 1];
+                            drawRoomTool.selectedRoomObject = roomToDraw;
+                            drawRoomTool.selectedRoom = roomToDraw.Name;
                             //this.gridService.addToRoom(roomToDraw.Name, x, y);
                             drawRoomTool.setRoom(y, x, false);
+                            drawRoomTool.drawRooms();
                         }
                         y++;
                     });
