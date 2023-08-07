@@ -7,6 +7,7 @@ import { GridService } from "./grid.service";
   })
 export class RoomService {
     rooms: GridRoom[] = [];
+    selectedRoom: Room | null = null;
 
     constructor(private gridService: GridService) { }
 
@@ -258,8 +259,6 @@ export class RoomService {
             }
         });
 
-        console.log(topTiles);
-
         this.gridService.redrawTiles();
     }
 
@@ -269,6 +268,20 @@ export class RoomService {
 
         this.rooms.forEach((r: GridRoom) => {
             if(r.tiles.some((tile: GridTile) => {return tile.x === x && tile.y === y;}))
+            {
+                room = r;
+            }
+        });
+
+        return room;
+    }
+
+    getRoomFromName(name: string): GridRoom | null
+    {
+        let room: GridRoom | null = null;
+
+        this.rooms.forEach((r: GridRoom) => {
+            if(r.name === name)
             {
                 room = r;
             }

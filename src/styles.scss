@@ -1,7 +1,13 @@
 html, body { height: 100%; }
 body { margin: 0; 
-    background: #343434;
+    background: #343434 !important;
     overflow-y: hidden;
 }
 /* Importing Bootstrap SCSS file. */
 //@import 'bootstrap/scss/bootstrap';
+
+/* Importing Bootstrap SCSS file. */
+@import "./node_modules/bootstrap/scss/bootstrap";
+
+/* Importing Datepicker SCSS file. */
+@import "node_modules/ngx-bootstrap/datepicker/bs-datepicker";

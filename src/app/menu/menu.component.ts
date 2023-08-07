@@ -3,6 +3,8 @@ import * as fromRoot from '../app.reducers';
 import { Store } from '@ngrx/store';
 import { SetCurrentTool } from '../app.actions';
 import { BuildingService } from '../services/building.service';
+import { Room } from '../models/app.models';
+import { RoomService } from '../services/room.service';
 
 @Component({
   selector: 'app-menu',
@@ -13,6 +15,7 @@ export class MenuComponent {
   constructor(
     private store: Store<fromRoot.State>,
     private buildingService: BuildingService,
+    private roomService: RoomService
   ) { }
 
   setTool(tool: string)
@@ -52,5 +55,13 @@ export class MenuComponent {
 
     
 
+  }
+
+  getRooms(): Room[] {
+    return this.buildingService.getBuilding().rooms.map(r => r);
+  }
+
+  setRoom(room: Room): void {
+    this.roomService.selectedRoom = room;
   }
 }

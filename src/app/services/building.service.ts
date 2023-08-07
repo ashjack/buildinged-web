@@ -171,7 +171,18 @@ export class BuildingService {
                 GrimeFloor: Number.parseInt(grimeFloor!),
                 GrimeWall: Number.parseInt(grimeWall!),
             });
+
+            this.roomService.rooms.push({
+                name: name!,
+                tiles: [],
+                placedTiles: [],
+                placedInteriorTiles: []
+            });
+
         }
+
+        this.roomService.selectedRoom = this.building.rooms[1];
+        console.log(this.roomService.selectedRoom)
 
         // floors
         for(let i = 0; i < floors.length; i++)
@@ -246,7 +257,7 @@ export class BuildingService {
                         {
                             const roomToDraw = this.building.rooms[tileNum - 1];
                             //this.gridService.addToRoom(roomToDraw.Name, x, y);
-                            drawRoomTool.setRoom(x, y, false);
+                            drawRoomTool.setRoom(y, x, false);
                         }
                         y++;
                     });

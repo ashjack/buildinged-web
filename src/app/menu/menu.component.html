@@ -2,4 +2,15 @@
     <button class="toolbar-button" (click)="setTool('tool-tile')"></button>
     <button class="toolbar-button" (click)="setTool('tool-draw-room')"><img src="assets/icons/icon_pencil.png"></button>
     <button class="toolbar-button" (click)="openFileUpload()"><img src="assets/icons/icon_pencil.png"></button>
+    <div class="btn-group" dropdown>
+        <button id="button-custom-html" dropdownToggle type="button" class="btn btn-primary dropdown-toggle"
+                aria-controls="dropdown-custom-html">
+          Button dropdown <span class="caret"></span>
+        </button>
+        <ul id="dropdown-custom-html" *dropdownMenu class="dropdown-menu"
+            role="menu" aria-labelledby="button-custom-html">
+          <li role="menuitem" *ngFor="let room of getRooms()"><a (click)="setRoom(room)" class="dropdown-item" [routerLink]=""><span>
+            <div style="width: 16px; height: 16px;display: inline-flex; margin-right: 5px;" [ngStyle]="{'background':'rgb(' + room.Color + ')'}"></div>{{room.Name}}</span></a></li>
+        </ul>
+      </div>
 </div>
