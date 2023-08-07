@@ -14,6 +14,7 @@ import { TileService } from '../services/tile.service';
 import { FurnitureService } from '../services/furniture.service';
 import { GridService } from '../services/grid.service';
 import { RoomService } from '../services/room.service';
+import { BuildingService } from '../services/building.service';
 
 @Component({
   selector: 'app-viewport',
@@ -47,7 +48,7 @@ export class ViewportComponent implements OnInit{
   selectedLayer: string = 'Walls';
 
   //selectedTool: ToolDraw = new ToolTile(this);
-  selectedTool: ToolDraw = new ToolDrawRoom(this.roomService, this.gridService);
+  selectedTool: ToolDraw = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService);
   selectedTool$: Observable<string>;
   private unsubscribe: Subject<void> = new Subject();
 
@@ -95,6 +96,7 @@ export class ViewportComponent implements OnInit{
     private store: Store<fromRoot.State>,
     private db: DbService,
     private tileService: TileService,
+    private buildingService: BuildingService,
     private furnitureService: FurnitureService,
     private gridService: GridService,
     private roomService: RoomService) 
@@ -139,11 +141,11 @@ export class ViewportComponent implements OnInit{
           console.log('tool-tile');
           break;
         case 'tool-draw-room':
-          this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService);
+          this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService);
           console.log('tool-draw-room');
           break;
         default:
-          this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService);
+          this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService);
           console.log('tool-draw-room - default');
           break;
       }

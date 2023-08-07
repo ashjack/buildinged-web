@@ -24,7 +24,7 @@ export class RoomService {
 
     floorTile = 'floors_interior_tilesandwood_01_019.png';
 
-    setRoom(selectedRoom: Room, i: number, j: number, remove: boolean): void
+    /*setRoom(selectedRoom: Room, i: number, j: number, remove: boolean): void
     {
         //Set room
         if(remove)
@@ -67,12 +67,12 @@ export class RoomService {
         }
 
         console.log(this.rooms);
-    }
+    }*/
 
-    drawRoom(room: GridRoom): void
+    /*drawRoom(room: GridRoom): void
     {
         //Clear room tiles
-        this.gridService.roomTiles = [];
+        //this.gridService.roomTiles = [];
         room.placedInteriorTiles = [];
         room.placedTiles = [];
        // room.placedTiles.forEach((tile: SvgTile) => {
@@ -260,7 +260,7 @@ export class RoomService {
         });
 
         this.gridService.redrawTiles();
-    }
+    }*/
 
     getRoomFromTile(x: number, y: number): GridRoom | null
     {

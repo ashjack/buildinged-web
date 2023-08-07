@@ -14,6 +14,7 @@ import ToolDrawRoom from "../tools/tool-draw-room";
 import ToolTile from "../tools/tool-tile";
 import { SvgTile } from "../models/app.models";
 import { CacheService } from "../services/cache.service";
+import { BuildingService } from "../services/building.service";
 
 @Component({
     selector: 'app-viewport-canvas',
@@ -34,7 +35,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   private ctx: CanvasRenderingContext2D | null;
 
   //selectedTool: ToolDraw = new ToolTile(this);
-  selectedTool: ToolDraw = new ToolDrawRoom(this.roomService, this.gridService);
+  selectedTool: ToolDraw = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService);
   selectedTool$: Observable<string>;
   private unsubscribe: Subject<void> = new Subject();
 
@@ -94,6 +95,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     private db: DbService,
     private tileService: TileService,
     private furnitureService: FurnitureService,
+    private buildingService: BuildingService,
     private gridService: GridService,
     private roomService: RoomService,
     private cacheService: CacheService) 
@@ -141,10 +143,10 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
           this.selectedTool = new ToolTile(this.gridService);
           break;
         case 'tool-draw-room':
-          this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService);
+          this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService);
           break;
         default:
-          this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService);
+          this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService);
           break;
       }
     });
