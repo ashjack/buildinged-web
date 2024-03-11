@@ -27,36 +27,61 @@ export class GridService {
 
     hideTile(x: number, y: number, layer: string)
     {
-        const tile = this.roomTiles.find((tile: SvgTile) => {return tile.x === x && tile.y === y && tile.layer === layer;});
+        const roomTile = this.roomTiles.find((tile: SvgTile) => {return tile.x === x && tile.y === y && tile.layer === layer;});
+        if(roomTile)
+        {
+          roomTile.hidden = true;
+        }
+
+        const tile = this.userTiles.find((tile: SvgTile) => {return tile.x === x && tile.y === y && tile.layer === layer;});
         if(tile)
         {
-            tile.hidden = true;
-            //this.hiddenTiles.push(tile);
+          tile.hidden = true;
         }
     }
 
     showTile(x: number, y: number, layer: string)
     {
-        const tile = this.roomTiles.find((tile: SvgTile) => {return tile.x === x && tile.y === y && tile.layer === layer;});
+        const roomTile = this.roomTiles.find((tile: SvgTile) => {return tile.x === x && tile.y === y && tile.layer === layer;});
+        if(roomTile)
+        {
+          roomTile.hidden = false;
+        }
+
+        const tile = this.userTiles.find((tile: SvgTile) => {return tile.x === x && tile.y === y && tile.layer === layer;});
         if(tile)
         {
-            tile.hidden = false;
-            //this.hiddenTiles = this.hiddenTiles.filter((tile: SvgTile) => {return tile.x !== x || tile.y !== y || tile.layer !== layer;});
+          tile.hidden = false;
         }
+    }
+
+    showAllTiles()
+    {
+      this.roomTiles.forEach((tile: SvgTile) => {
+        tile.hidden = false;
+      });
+
+      this.userTiles.forEach((tile: SvgTile) => {
+        tile.hidden = false;
+      });
     }
 
     redrawTiles() {
         this.tiles = [];
+        const level = this.getSelectedLevel();
 
         this.roomTiles.forEach((tile: SvgTile) => {
-          if(!tile.hidden)
+          if(!tile.hidden && tile.level === level)
           {
-            this.placeTile_old(tile.x, tile.y, tile.name, tile.layer);
+            this.placeTile_old(tile.x, tile.y, tile.offsetX ? tile.offsetX : 0, tile.offsetY ? tile.offsetY : 0, tile.name, tile.layer);
           }
         });
     
         this.userTiles.forEach((tile: SvgTile) => {
-          this.placeTile_old(tile.x, tile.y, tile.name, tile.layer);
+          if(!tile.hidden && tile.level === level)
+          {
+            this.placeTile_old(tile.x, tile.y, tile.offsetX ? tile.offsetX : 0, tile.offsetY ? tile.offsetY : 0, tile.name, tile.layer);
+          }
         });
 
         //Sort roomTiles by x and then y
@@ -77,9 +102,9 @@ export class GridService {
       if(isRoom)
       {
         //check if roomTiles contains tile
-        if(this.roomTiles.some((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y && roomTile.layer === tile.layer;}))
+        if(this.roomTiles.some((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y && roomTile.layer === tile.layer && roomTile.level == tile.level;}))
         {
-          const roomTile = this.roomTiles.find((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y && roomTile.layer === tile.layer;});
+          const roomTile = this.roomTiles.find((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y && roomTile.layer === tile.layer && roomTile.level == tile.level;});
           if(roomTile)
           {
             roomTile.name = tile.name;
@@ -93,12 +118,10 @@ export class GridService {
       }
       else
       {
-        console.log('placeTile2', tile);
-
         //check if userTiles contains tile
-        if(this.userTiles.some((userTile: SvgTile) => {return userTile.x === tile.x && userTile.y === tile.y && userTile.layer == tile.layer;}))
+        if(this.userTiles.some((userTile: SvgTile) => {return userTile.x === tile.x && userTile.y === tile.y && userTile.layer == tile.layer && userTile.level == tile.level;}))
         {
-          const userTile = this.userTiles.find((userTile: SvgTile) => {return userTile.x === tile.x && userTile.y === tile.y && userTile.layer === tile.layer;});
+          const userTile = this.userTiles.find((userTile: SvgTile) => {return userTile.x === tile.x && userTile.y === tile.y && userTile.layer === tile.layer && userTile.level == tile.level;});
           if(userTile)
           {
             userTile.name = tile.name;
@@ -115,7 +138,7 @@ export class GridService {
       //this.redrawTiles();
   }
 
-  placeTile_old(x: number, y: number, name: string = '', layer: string = 'Walls') {
+  placeTile_old(x: number, y: number, xOffset: number, yOffset: number, name: string = '', layer: string = 'Walls', level: number = 0) {
 
     if(name === '')
     {
@@ -138,6 +161,9 @@ export class GridService {
             url: this.getIndividualTile(name),
       x: x,
       y: y,
+      level: level,
+      offsetX: xOffset,
+      offsetY: yOffset,
       layer: layer,
     };
 
@@ -194,7 +220,7 @@ export class GridService {
 
    if(!name)
    {
-     return '';
+     return 'NULL';
    }
    
     const existingTile = this.fetchedTiles.find((tile: PngTile) => {return tile.name === name;});
@@ -206,7 +232,7 @@ export class GridService {
 
      if(this.fetchingTiles.includes(name))
    {
-     return '';
+     return 'AWAITING';
    }
     
    this.fetchingTiles.push(name);
@@ -222,9 +248,19 @@ export class GridService {
          }
        }
 
-       return '';
+       return 'NULL 2';
      });
 
      return '';
    }
+
+    getSelectedLevel(): number {
+      return parseInt(localStorage.getItem('selectedLevel') || '0');
+    }
+
+    setSelectedLevel(level: number) {
+      console.log(level);
+      localStorage.setItem('selectedLevel', level.toString());
+    }
+
 }

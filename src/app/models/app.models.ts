@@ -7,12 +7,16 @@ export interface SvgTile {
     x: number;
     y: number;
     layer: string;
+    level: number;
+    offsetX?: number;
+    offsetY?: number;
     hidden?: boolean;
 }
 
 export interface GridTile {
     x: number;
     y: number;
+    level: number;
 }
 
 export interface GridRoom {
@@ -89,7 +93,7 @@ export interface Room {
 export interface Floor {
     objects: any[];
     rooms: string;
-    tiles?: FloorTiles;
+    tileLayers?: FloorTiles[];
 }
 
 export interface FloorTiles {

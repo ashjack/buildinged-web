@@ -262,12 +262,12 @@ export class RoomService {
         this.gridService.redrawTiles();
     }*/
 
-    getRoomFromTile(x: number, y: number): GridRoom | null
+    getRoomFromTile(x: number, y: number, level: number): GridRoom | null
     {
         let room: GridRoom | null = null;
 
         this.rooms.forEach((r: GridRoom) => {
-            if(r.tiles.some((tile: GridTile) => {return tile.x === x && tile.y === y;}))
+            if(r.tiles.some((tile: GridTile) => {return tile.x === x && tile.y === y && tile.level === level;}))
             {
                 room = r;
             }

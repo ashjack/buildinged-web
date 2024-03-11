@@ -76,6 +76,7 @@ export class TileSelectionMenuComponent implements OnInit{
         x: 0,
         y: 0,
         layer: this.getSelectedLayer(),
+        level: this.getSelectedLevel(),
       });
     });
   }
@@ -96,6 +97,15 @@ export class TileSelectionMenuComponent implements OnInit{
 
   getSelectedLayer(): string {
     return localStorage.getItem('selectedLayer') || 'Walls';
+  }
+
+  setSelectedLevel(level: string) {
+    console.log(level);
+    localStorage.setItem('selectedLevel', level);
+  }
+
+  getSelectedLevel(): number {
+    return parseInt(localStorage.getItem('selectedLevel') || '0');
   }
 
   setSelectedTileset(tileset: string) {

@@ -12,7 +12,7 @@ import * as fromRoot from '../app.reducers';
 import ToolDraw from "../tools/tool-draw";
 import ToolDrawRoom from "../tools/tool-draw-room";
 import ToolTile from "../tools/tool-tile";
-import { SvgTile } from "../models/app.models";
+import { GridTile, SvgTile } from "../models/app.models";
 import { CacheService } from "../services/cache.service";
 import { BuildingService } from "../services/building.service";
 
@@ -167,31 +167,56 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   }
 
   hoverTile(x: number, y: number) {
+    this.gridService.showAllTiles();
+    this.gridService.redrawTiles();
     if(this.currentHoverCoords.x == x && this.currentHoverCoords.y == y)
     {
       return;
     }
 
-    const hoverRoom = this.roomService.getRoomFromTile(x, y);
+    const hoverRoom = this.roomService.getRoomFromTile(x, y, this.gridService.getSelectedLevel());
     if(hoverRoom)
     {
-      this.gridService.roomTiles.forEach((tile: SvgTile) => {
-        if(!hoverRoom.placedInteriorTiles.some((t: SvgTile) => t.x == tile.x && t.y == tile.y && t.name == tile.name))
+      
+      this.gridService.tiles.forEach((tile: SvgTile) => {
+        if(!hoverRoom.tiles.some((t: GridTile) => t.x == tile.x && t.y == tile.y) && tile.layer !== 'Floor')
         {
           this.gridService.hideTile(tile.x, tile.y, tile.layer);
         }
         else
         {
-          this.gridService.showTile(tile.x, tile.y, tile.layer);
+          if(this.gridService.tileHidden(tile.x, tile.y, tile.layer))
+          {
+            this.gridService.showTile(tile.x, tile.y, tile.layer);
+          }
         }
       });
+
+      // this.gridService.roomTiles.forEach((tile: SvgTile) => {
+      //   if(!hoverRoom.placedInteriorTiles.some((t: SvgTile) => t.x == tile.x && t.y == tile.y && t.name == tile.name))
+      //   {
+      //     if(tile.layer !== 'Floor')
+      //     {
+      //       this.gridService.hideTile(tile.x, tile.y, tile.layer);
+      //     }
+      //   }
+      //   else
+      //   {
+      //     this.gridService.showTile(tile.x, tile.y, tile.layer);
+      //   }
+      // });
 
       this.gridService.redrawTiles();
 
     }
     else
     {
+      console.log('no room');
       this.gridService.roomTiles.forEach((tile: SvgTile) => {
+        this.gridService.showTile(tile.x, tile.y, tile.layer);
+      });
+
+      this.gridService.userTiles.forEach((tile: SvgTile) => {
         this.gridService.showTile(tile.x, tile.y, tile.layer);
       });
       this.gridService.redrawTiles();
@@ -200,7 +225,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
 
     this.selectedTool.hoverTile(x, y);
 
-    this.drawCanvas();
+    this.drawCanvas(); //TODO call this from any redraw functions in the services...somehow
     //this.drawOverlaySquare(x, y, 'black', 'red');
     this.currentHoverCoords = {x: x, y: y};
 
@@ -228,7 +253,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
 
     this.selectedTool.endDrag(x, y);
     this.gridService.redrawTiles();
-    
+    this.drawCanvas();
   }
 
   //Drawing functions
@@ -275,7 +300,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
       if(!tile.hidden)
       {
         const tileImage = this.getIndividualTile(tile.name!);
-        this.drawTile(tile.x, tile.y, tile.name!, tileImage as string);
+        this.drawTile(tile.x + (tile.offsetX ?? 0), tile.y + (tile.offsetY ?? 0), tile.name!, tileImage as string);
       }
     });
 
@@ -286,6 +311,11 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     if(!this.ctx) {
       throw new Error('Canvas context is not defined')
     };
+
+    if(!tile || tile == null || tile == undefined || tile == 'AWAITING')
+    {
+      return;
+    }
 
     const ctx = this.ctx;
     const canvasX = 2500 + x * 100 - y * 100;

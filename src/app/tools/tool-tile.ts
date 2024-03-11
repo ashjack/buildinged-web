@@ -9,6 +9,7 @@ export default class ToolTile extends ToolDraw {
 
     selectedTile: string = 'walls_exterior_house_01_004.png';
     selectedLayer: string = 'Walls';
+    selectedLevel: number = 0;
 
     constructor(private gridService: GridService) {
         super();
@@ -18,6 +19,7 @@ export default class ToolTile extends ToolDraw {
 
         this.selectedTile = localStorage.getItem('selectedTile')!;
         this.selectedLayer = localStorage.getItem('selectedLayer')!;
+        this.selectedLevel = this.gridService.getSelectedLevel();
     
         if(this.isDragging)
         {
@@ -40,7 +42,8 @@ export default class ToolTile extends ToolDraw {
                 url: this.gridService.getIndividualTile(this.selectedTile),
                 x: i,
                 y: j,
-                layer: this.selectedLayer
+                layer: this.selectedLayer,
+                level: this.selectedLevel
               };
               this.dragTiles.push(tile);
               if(this.key !== 'Control')
@@ -59,10 +62,11 @@ export default class ToolTile extends ToolDraw {
           url: this.gridService.getIndividualTile(this.selectedTile),
           x: x,
           y: y, 
-          layer: this.selectedLayer
+          layer: this.selectedLayer,
+          level: this.selectedLevel
         };
         this.dragTiles = [];
-        this.dragTiles.push({name: '', url: '', x: x, y: y, layer: 'Walls'});
+        this.dragTiles.push({name: '', url: '', x: x, y: y, level: this.selectedLevel, layer: 'Walls'});
         if(this.key !== 'Control')
         {
           this.tileGhosts.push(tile);
@@ -100,7 +104,8 @@ export default class ToolTile extends ToolDraw {
                     url: this.selectedTile,
                     x: i,
                     y: j,
-                    layer: this.selectedLayer
+                    layer: this.selectedLayer,
+                    level: this.selectedLevel
                 };
                 this.gridService.placeTile2(tile, false);
               }
@@ -135,7 +140,8 @@ export default class ToolTile extends ToolDraw {
             url: this.selectedTile,
             x: x,
             y: y,
-            layer: this.selectedLayer
+            layer: this.selectedLayer,
+            level: this.selectedLevel
         };
         this.gridService.placeTile2(tile, false);
     }
