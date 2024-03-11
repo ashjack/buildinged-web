@@ -5,6 +5,7 @@ import { SetCurrentTool } from '../app.actions';
 import { BuildingService } from '../services/building.service';
 import { Room } from '../models/app.models';
 import { RoomService } from '../services/room.service';
+import { GridService } from '../services/grid.service';
 
 @Component({
   selector: 'app-menu',
@@ -15,7 +16,8 @@ export class MenuComponent {
   constructor(
     private store: Store<fromRoot.State>,
     private buildingService: BuildingService,
-    private roomService: RoomService
+    private roomService: RoomService,
+    private gridService: GridService
   ) { }
 
   setTool(tool: string)
@@ -57,6 +59,10 @@ export class MenuComponent {
 
   }
 
+  getSelectedRoom(): Room | null {
+    return this.roomService.selectedRoom;
+  }
+
   getRooms(): Room[] {
     return this.buildingService.getBuilding().rooms.map(r => r);
   }
@@ -64,4 +70,23 @@ export class MenuComponent {
   setRoom(room: Room): void {
     this.roomService.selectedRoom = room;
   }
+
+  upFloor(): void {
+    this.gridService.setSelectedLevel(this.gridService.getSelectedLevel() + 1);
+    console.log("set level to " + this.gridService.getSelectedLevel())
+    this.buildingService.drawBuilding();
+    this.gridService.showAllTiles();
+    this.gridService.redrawTiles();
+  }
+
+  downFloor(): void {
+    if(this.gridService.getSelectedLevel() > 0)
+      this.gridService.setSelectedLevel(this.gridService.getSelectedLevel() - 1);
+    console.log("set level to " + this.gridService.getSelectedLevel())
+    this.buildingService.drawBuilding();
+    this.gridService.showAllTiles();
+    this.gridService.redrawTiles();
+  }
+
+
 }
