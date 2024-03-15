@@ -104,7 +104,7 @@ export default class ToolDrawRoom extends ToolDraw {
 
     drawRooms(): void
     {
-        this.gridService.roomTiles = [];
+        this.gridService.roomTiles = this.gridService.roomTiles.filter(tile => !tile.auto)
         console.log(this.roomService.rooms)
         this.roomService.rooms.forEach((room: GridRoom) => {
             this.drawRoom(room);
@@ -149,7 +149,8 @@ export default class ToolDrawRoom extends ToolDraw {
                 x: x,
                 y: y,
                 layer: 'Walls',
-                level: level
+                level: level,
+                auto: true
             };
             this.gridService.placeTile2(tile, true);
             room.placedTiles.push({name: url, url: '', x: x, y: y, level: level, layer: 'Walls'});
@@ -167,6 +168,7 @@ export default class ToolDrawRoom extends ToolDraw {
                 y: y,
                 layer: 'Floor',
                 level: level,
+                auto: true
             };
 
             //console.log("Placing floor tile " + url + " at " + x + "," + y + "," + level)

@@ -338,7 +338,12 @@ export class BuildingService {
         });
 
         //Objects
-        floorCount = -1
+        this.placeTiles();
+    }
+
+    placeTiles()
+    {
+        let floorCount = -1
         this.building.floors.forEach(floor => {
             floorCount++;
             console.log("FLOOR OBJECTS GOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
@@ -388,7 +393,7 @@ export class BuildingService {
                                         offsetX: slopeTile.offset ? Number.parseInt(slopeTile.offset) : 0,
                                         offsetY: slopeTile.offset ? Number.parseInt(slopeTile.offset) : 0,
                                         layer: roofTileExists && !manualRoofTile ? 'Roof2' : "Roof",
-                                        level: floorCount
+                                        level: floorCount,
                                     }, true);
                                 }
                                 else

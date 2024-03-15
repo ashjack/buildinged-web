@@ -13,6 +13,7 @@ export interface SvgTile {
     hidden?: boolean;
     excluded?: boolean;
     orient?: boolean;
+    auto?: boolean;
 }
 
 export interface GridTile {
