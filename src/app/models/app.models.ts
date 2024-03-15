@@ -11,6 +11,8 @@ export interface SvgTile {
     offsetX?: number;
     offsetY?: number;
     hidden?: boolean;
+    excluded?: boolean;
+    orient?: boolean;
 }
 
 export interface GridTile {

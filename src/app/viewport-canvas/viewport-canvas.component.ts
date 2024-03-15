@@ -2,7 +2,7 @@ import { HttpClient } from "@angular/common/http";
 import { AfterViewInit, Component, ElementRef, HostListener, OnInit, ViewChild } from "@angular/core";
 import { DomSanitizer, SafeResourceUrl } from "@angular/platform-browser";
 import { Store } from "@ngrx/store";
-import { Observable, Subject, takeUntil } from "rxjs";
+import { Observable, Subject, from, take, takeUntil } from "rxjs";
 import { PngTile, DbService } from "../services/db.service";
 import { FurnitureService } from "../services/furniture.service";
 import { GridService } from "../services/grid.service";
@@ -15,6 +15,7 @@ import ToolTile from "../tools/tool-tile";
 import { GridTile, SvgTile } from "../models/app.models";
 import { CacheService } from "../services/cache.service";
 import { BuildingService } from "../services/building.service";
+import { ScheduleRedraw } from "../app.actions";
 
 @Component({
     selector: 'app-viewport-canvas',
@@ -37,47 +38,12 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   //selectedTool: ToolDraw = new ToolTile(this);
   selectedTool: ToolDraw = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService);
   selectedTool$: Observable<string>;
+  scheduleRedraw: boolean;
+  scheduleRedraw$: Observable<boolean>;
+
   private unsubscribe: Subject<void> = new Subject();
 
   currentHoverCoords: Point = {x: 0, y: 0};
-
-  //constants
-  layers: string[] = [
-    'Floor', 
-    'FloorOverlay', 
-    'FloorGrime',
-    'FloorGrime2',
-    'FloorFurniture',
-    'Vegetation',
-    'Walls',
-    'WallTrim',
-    'Walls2',
-    'WallTrim2',
-    'RoofCap',
-    'RoofCap2',
-    'WallOverlay',
-    'WallOverlay2',
-    'WallGrime',
-    'WallGrime2',
-    'WallFurniture',
-    'WallFurniture2',
-    'Frames',
-    'Doors',
-    'Windows',
-    'Curtains',
-    'Furniture',
-    'Furniture2',
-    'Furniture3',
-    'Furniture4',
-    'Curtains2',
-    'WallFurniture3',
-    'WallFurniture4',
-    'WallOverlay3',
-    'WallOverlay4',
-    'Roof',
-    'Roof2',
-    'RoofTop',
-  ];
 
   newPositions: Position[] = [];
 
@@ -101,6 +67,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     private cacheService: CacheService) 
   { 
     this.selectedTool$ = store.select(fromRoot.getCurrentTool);
+    this.scheduleRedraw$ = store.select(fromRoot.getRedrawSchedule);
 
     this.screenWidth = window.innerWidth;
     this.screenHeight = window.innerHeight;
@@ -151,6 +118,15 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
       }
     });
 
+    this.scheduleRedraw$.pipe(
+      takeUntil(this.unsubscribe)
+    ).subscribe((x) => {
+      if(x)
+      {
+        this.drawCanvas();
+        this.store.dispatch(new ScheduleRedraw(false));
+      }
+    })
   }
 
   ngAfterViewInit() {
@@ -174,20 +150,65 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
       return;
     }
 
+    //Gets room within specific walls being hovered over
+  //   const hoverRoomNew = this.roomService.getRoomFromTile(x, y, this.gridService.getSelectedLevel());
+  //   if (hoverRoomNew) {
+  //     const visitedTiles = new Set(); // Set to store visited tiles
+  //     const wallTiles = new Set(); // Set to store wall tiles
+  //     const enclosedTiles = new Set(); // Set to store enclosed tiles
+  //     const gs = this.gridService;
+  
+  //     // Function to perform flood fill from a starting tile
+  //     function floodFill(x: number, y: number) {
+  //         if (visitedTiles.has(`${x},${y}`) || (!gs.tileExists(x, y, gs.getSelectedLevel(), 'Walls') && !gs.tileExists(x, y, gs.getSelectedLevel(), 'Walls2'))) {
+  //             return;
+  //         }
+  
+  //         visitedTiles.add(`${x},${y}`);
+  //         enclosedTiles.add(`${x},${y}`);
+  
+  //         // Recursively visit neighboring tiles
+  //         floodFill(x - 1, y);
+  //         floodFill(x + 1, y);
+  //         floodFill(x, y - 1);
+  //         floodFill(x, y + 1);
+  //     }
+  
+  //     // Start flood fill from any tile within the room
+  //     hoverRoomNew.tiles.forEach((tile: GridTile) => {
+  //         const { x, y } = tile;
+  //         wallTiles.add(`${x},${y}`); // Add wall tiles to the set
+  //     });
+  
+  //     // Choose any tile within the room as a starting point for flood fill
+  //     const startTile = hoverRoomNew.tiles[0];
+  //     floodFill(startTile.x, startTile.y);
+  
+  //     // Highlight enclosed tiles
+  //     this.gridService.tiles.forEach((tile: SvgTile) => {
+  //         if (enclosedTiles.has(`${tile.x},${tile.y}`)) {
+  //             this.gridService.showTile(tile.x, tile.y, tile.layer);
+  //         } else {
+  //             this.gridService.hideTile(tile.x, tile.y, tile.layer);
+  //         }
+  //     });
+  // }
+  
+
+    //Gets room currently being hovered over - TODO disable this
     const hoverRoom = this.roomService.getRoomFromTile(x, y, this.gridService.getSelectedLevel());
     if(hoverRoom)
     {
-      
       this.gridService.tiles.forEach((tile: SvgTile) => {
-        if(!hoverRoom.tiles.some((t: GridTile) => t.x == tile.x && t.y == tile.y) && tile.layer !== 'Floor')
+        if(!hoverRoom.tiles.some((t: GridTile) => t.x == tile.x && t.y == tile.y && t.level == tile.level) && tile.layer !== 'Floor' && tile.level == this.gridService.getSelectedLevel())
         {
-          this.gridService.hideTile(tile.x, tile.y, tile.layer);
+          this.gridService.hideTile(tile.x, tile.y, tile.level, tile.layer);
         }
         else
         {
-          if(this.gridService.tileHidden(tile.x, tile.y, tile.layer))
+          if(this.gridService.tileHidden(tile.x, tile.y, tile.level, tile.layer))
           {
-            this.gridService.showTile(tile.x, tile.y, tile.layer);
+            this.gridService.showTile(tile.x, tile.y, tile.level, tile.layer);
           }
         }
       });
@@ -211,13 +232,12 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     }
     else
     {
-      console.log('no room');
       this.gridService.roomTiles.forEach((tile: SvgTile) => {
-        this.gridService.showTile(tile.x, tile.y, tile.layer);
+        this.gridService.showTile(tile.x, tile.y, tile.level, tile.layer);
       });
 
       this.gridService.userTiles.forEach((tile: SvgTile) => {
-        this.gridService.showTile(tile.x, tile.y, tile.layer);
+        this.gridService.showTile(tile.x, tile.y, tile.level, tile.layer);
       });
       this.gridService.redrawTiles();
 
@@ -276,7 +296,14 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     this.drawOverlay();
 
     //Grid
-    this.drawIsometricGrid(20, 20);
+    if(this.buildingService.building)
+    {
+      this.drawIsometricGrid(this.buildingService.building.height, this.buildingService.building.width);
+    }
+    else
+    {
+      this.drawIsometricGrid(20, 20);
+    }
 
     //const tile = this.getIndividualTile('walls_exterior_house_01_004.png') as string;
     //this.drawTile(6, 10, tile);
@@ -286,21 +313,41 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
 
   drawTiles() {
 
-    if(this.selectedTool instanceof ToolTile)
-    {
+    if (this.selectedTool instanceof ToolTile) {
       this.selectedTool.tileGhosts.forEach((tile: SvgTile) => {
-        this.gridService.tiles = this.gridService.tiles.filter((t: SvgTile) => t.x != tile.x || t.y != tile.y || t.layer != tile.layer);
-        this.gridService.tiles.push(tile);
+          // Filter out tiles with the same position and layer on the same level as the hovering tile
+          this.gridService.tiles = this.gridService.tiles.filter((t: SvgTile) => {
+              return !(t.x === tile.x && t.y === tile.y && t.layer === tile.layer && t.level === tile.level);
+          });
+          // Add the hovering tile to the tiles array
+          this.gridService.tiles.push(tile);
       });
-    }
+  }
 
     this.gridService.sortTiles();
 
+    //console.log(this.gridService.tiles)
+
+    let drawnDarkOverlay = false;
+
     this.gridService.tiles.forEach((tile: SvgTile) => {
-      if(!tile.hidden)
+      if(!tile.hidden && !tile.excluded)
       {
+        if(!drawnDarkOverlay && this.gridService.getSelectedLevel() == tile.level && this.ctx)
+        {
+          const canvas: HTMLCanvasElement = this.canvasElement.nativeElement
+          drawnDarkOverlay = true;
+          this.ctx.fillStyle = 'rgba(52, 52, 52, 0.5)';
+          this.ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
         const tileImage = this.getIndividualTile(tile.name!);
         this.drawTile(tile.x + (tile.offsetX ?? 0), tile.y + (tile.offsetY ?? 0), tile.name!, tileImage as string);
+      }
+      else
+      {
+        console.log(tile)
+        alert(tile.name)
       }
     });
 

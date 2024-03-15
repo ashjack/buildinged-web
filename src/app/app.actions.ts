@@ -1,7 +1,8 @@
 import { Action } from "@ngrx/store";
 
 export enum ActionTypes {
-    SetCurrentTool = '[Grid] Set Current Tool'
+    SetCurrentTool = '[Grid] Set Current Tool',
+    ScheduleRedraw = '[Grid] Schedule Redraw'
 }
 
 export class SetCurrentTool implements Action {
@@ -10,4 +11,11 @@ export class SetCurrentTool implements Action {
     constructor(public tool: string) { }
 }
 
-export type ActionsUnion = SetCurrentTool;
+export class ScheduleRedraw implements Action {
+    readonly type = ActionTypes.ScheduleRedraw;
+
+    constructor(public schedule: boolean) {}
+}
+
+export type ActionsUnion = SetCurrentTool |
+                            ScheduleRedraw;

@@ -4,11 +4,12 @@ import * as Actions from './app.actions';
 export interface State
 {
     currentTool: string;
-
+    redraw: boolean;
 }
 
 export const initialState: State = {
-    currentTool: 'tool-draw-room'
+    currentTool: 'tool-draw-room',
+    redraw: false
 }
 
 export function reducer(state = initialState, action: Actions.ActionsUnion): State {
@@ -21,6 +22,12 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
             currentTool: action.tool
         };
       }
+      case Actions.ActionTypes.ScheduleRedraw: {
+        return {
+          ...state,
+          redraw: action.schedule
+        }
+      }
 
       default: {
         return state;
@@ -30,3 +37,4 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
 
 export const getRootState = createFeatureSelector<State>('root');
 export const getCurrentTool = createSelector(getRootState, (state: State) => state.currentTool);
+export const getRedrawSchedule = createSelector(getRootState, (state: State) => state.redraw);

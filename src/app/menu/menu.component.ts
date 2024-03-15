@@ -1,7 +1,7 @@
 import { Component } from '@angular/core';
 import * as fromRoot from '../app.reducers';
 import { Store } from '@ngrx/store';
-import { SetCurrentTool } from '../app.actions';
+import { ScheduleRedraw, SetCurrentTool } from '../app.actions';
 import { BuildingService } from '../services/building.service';
 import { Room } from '../models/app.models';
 import { RoomService } from '../services/room.service';
@@ -28,6 +28,7 @@ export class MenuComponent {
   openFileUpload(): void {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
+    fileInput.accept = '.tbx';
     fileInput.addEventListener('change', this.handleFileSelect.bind(this));
     fileInput.click();
   }
@@ -72,20 +73,26 @@ export class MenuComponent {
   }
 
   upFloor(): void {
+    if(this.gridService.getSelectedLevel() >= this.buildingService.building.floors.length - 1)
+    {
+      return;
+    }
     this.gridService.setSelectedLevel(this.gridService.getSelectedLevel() + 1);
     console.log("set level to " + this.gridService.getSelectedLevel())
-    this.buildingService.drawBuilding();
     this.gridService.showAllTiles();
     this.gridService.redrawTiles();
+    this.store.dispatch(new ScheduleRedraw(true));
   }
 
   downFloor(): void {
     if(this.gridService.getSelectedLevel() > 0)
+    {
       this.gridService.setSelectedLevel(this.gridService.getSelectedLevel() - 1);
-    console.log("set level to " + this.gridService.getSelectedLevel())
-    this.buildingService.drawBuilding();
-    this.gridService.showAllTiles();
-    this.gridService.redrawTiles();
+      console.log("set level to " + this.gridService.getSelectedLevel())
+      this.gridService.showAllTiles();
+      this.gridService.redrawTiles();
+      this.store.dispatch(new ScheduleRedraw(true));
+    }
   }
 
 
