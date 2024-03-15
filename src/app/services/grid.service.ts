@@ -18,6 +18,7 @@ export class GridService {
     userTiles: SvgTile[] = [];
     tiles: SvgTile[] = [];
     hiddenTiles: SvgTile[] = [];
+    excludedTiles: SvgTile[] = []; //Tiles that are permenantly hidden but still technically part of the building e.g. hidden walls
 
     fetchedTiles: PngTile[] = [];
     fetchingTiles: string[] = [];
@@ -25,30 +26,30 @@ export class GridService {
     constructor(private db: DbService, private cacheService: CacheService) { }
 
 
-    hideTile(x: number, y: number, layer: string)
+    hideTile(x: number, y: number, level: number, layer: string)
     {
-        const roomTile = this.roomTiles.find((tile: SvgTile) => {return tile.x === x && tile.y === y && tile.layer === layer;});
+        const roomTile = this.roomTiles.find((tile: SvgTile) => {return tile.x === x && tile.y === y && tile.level == level && tile.layer === layer;});
         if(roomTile)
         {
           roomTile.hidden = true;
         }
 
-        const tile = this.userTiles.find((tile: SvgTile) => {return tile.x === x && tile.y === y && tile.layer === layer;});
+        const tile = this.userTiles.find((tile: SvgTile) => {return tile.x === x && tile.y === y && tile.level == level && tile.layer === layer;});
         if(tile)
         {
           tile.hidden = true;
         }
     }
 
-    showTile(x: number, y: number, layer: string)
+    showTile(x: number, y: number, level: number, layer: string)
     {
-        const roomTile = this.roomTiles.find((tile: SvgTile) => {return tile.x === x && tile.y === y && tile.layer === layer;});
+        const roomTile = this.roomTiles.find((tile: SvgTile) => {return tile.x === x && tile.y === y && tile.level == level && tile.layer === layer;});
         if(roomTile)
         {
           roomTile.hidden = false;
         }
 
-        const tile = this.userTiles.find((tile: SvgTile) => {return tile.x === x && tile.y === y && tile.layer === layer;});
+        const tile = this.userTiles.find((tile: SvgTile) => {return tile.x === x && tile.y === y && tile.level == level && tile.layer === layer;});
         if(tile)
         {
           tile.hidden = false;
@@ -66,36 +67,47 @@ export class GridService {
       });
     }
 
+    excludeTile(x: number, y: number, level: number, layer: string)
+    {
+        const roomTile = this.roomTiles.find((tile: SvgTile) => {return tile.x === x && tile.y === y && tile.level == level && tile.layer === layer;});
+        if(roomTile)
+        {
+          roomTile.excluded = true;
+        }
+
+        const tile = this.userTiles.find((tile: SvgTile) => {return tile.x === x && tile.y === y && tile.level == level && tile.layer === layer;});
+        if(tile)
+        {
+          tile.excluded = true;
+        }
+    }
+
     redrawTiles() {
-        this.tiles = [];
-        const level = this.getSelectedLevel();
-
-        this.roomTiles.forEach((tile: SvgTile) => {
-          if(!tile.hidden && tile.level === level)
-          {
-            this.placeTile_old(tile.x, tile.y, tile.offsetX ? tile.offsetX : 0, tile.offsetY ? tile.offsetY : 0, tile.name, tile.layer);
-          }
-        });
-    
-        this.userTiles.forEach((tile: SvgTile) => {
-          if(!tile.hidden && tile.level === level)
-          {
-            this.placeTile_old(tile.x, tile.y, tile.offsetX ? tile.offsetX : 0, tile.offsetY ? tile.offsetY : 0, tile.name, tile.layer);
-          }
-        });
-
-        //Sort roomTiles by x and then y
-        this.tiles.sort((a: SvgTile, b: SvgTile) => {
-          if(a.x === b.x)
-          {
-              return a.y - b.y;
-          }
-          else
-          {
-              return a.x - b.x;
+      this.tiles = [];
+      const level = this.getSelectedLevel();
+  
+      // Draw lower layers offset & greyed out
+      this.roomTiles.forEach((tile: SvgTile) => {
+          if (!tile.hidden && !tile.excluded && tile.level <= level) {
+              const offsetX = 3 * (level - tile.level);
+              const offsetY = 3 * (level - tile.level);
+              this.placeTile_old(tile.x + offsetX, tile.y + offsetY, tile.level, tile.offsetX ? tile.offsetX : 0, tile.offsetY ? tile.offsetY : 0, tile.name, tile.layer);
           }
       });
-    }
+  
+      this.userTiles.forEach((tile: SvgTile) => {
+          if (!tile.hidden && !tile.excluded && tile.level <= level) {
+              const offsetX = 3 * (level - tile.level);
+              const offsetY = 3 * (level - tile.level);
+              this.placeTile_old(tile.x + offsetX, tile.y + offsetY, tile.level, tile.offsetX ? tile.offsetX : 0, tile.offsetY ? tile.offsetY : 0, tile.name, tile.layer);
+          }
+      });
+  
+      // Sort tiles by level first (lower levels first), then by x and then y
+      this.sortTiles();
+  }
+  
+  
 
     placeTile2(tile: SvgTile, isRoom: boolean)
     {
@@ -135,20 +147,20 @@ export class GridService {
       }
 
 
-      //this.redrawTiles();
+      this.redrawTiles();
   }
 
-  placeTile_old(x: number, y: number, xOffset: number, yOffset: number, name: string = '', layer: string = 'Walls', level: number = 0) {
+  placeTile_old(x: number, y: number, level: number, xOffset: number, yOffset: number, name: string = '', layer: string = 'Walls') {
 
     if(name === '')
     {
       name = localStorage.getItem('selectedTile')!;
     }
 
-    if(this.tileExists(x, y, layer))
+    if(this.tileExists(x, y, level, layer))
     {
       //edit tile name and url
-      const tile = this.getTileAt(x, y, layer);
+      const tile = this.getTileAt(x, y, level, layer);
       if(tile)
       {
         tile.name = name;
@@ -171,45 +183,116 @@ export class GridService {
     //this.tileGhosts = [];
   }
 
-  sortTiles() {
-    this.tiles.sort((a: SvgTile, b: SvgTile) => {
-      if(a.x === b.x)
-      {
-          return a.y - b.y;
-      }
-      else
-      {
-          return a.x - b.x;
-      }
-    });
-  }
+  layers: string[] = [
+    'Floor', 
+    'FloorOverlay', 
+    'FloorGrime',
+    'FloorGrime2',
+    'FloorFurniture',
+    'Vegetation',
+    'Walls',
+    'WallTrim',
+    'Walls2',
+    'WallTrim2',
+    'RoofCap',
+    'RoofCap2',
+    'WallOverlay',
+    'WallOverlay2',
+    'WallGrime',
+    'WallGrime2',
+    'WallFurniture',
+    'WallFurniture2',
+    'Frames',
+    'Doors',
+    'Windows',
+    'Curtains',
+    'Furniture',
+    'Furniture2',
+    'Furniture3',
+    'Furniture4',
+    'Curtains2',
+    'WallFurniture3',
+    'WallFurniture4',
+    'WallOverlay3',
+    'WallOverlay4',
+    'Roof',
+    'Roof2',
+    'RoofTop',
+  ];
 
-  removeTile(x: number, y: number, layer: string) {
+  sortTiles() {
+    this.tiles = this.tiles.sort((a: SvgTile, b: SvgTile) => {
+        // First, compare levels
+        if (a.level !== b.level) {
+            return a.level - b.level;
+        }
+
+        // Then, compare x and y coordinates
+        if (a.x === b.x) {
+            if (a.y === b.y) {
+                // If x and y coordinates are the same, compare layers
+                const layerIndexA = this.layers.indexOf(a.layer);
+                const layerIndexB = this.layers.indexOf(b.layer);
+
+                // If both layers are found in the layers array, sort based on their index positions
+                if (layerIndexA !== -1 && layerIndexB !== -1) {
+                    return layerIndexA - layerIndexB;
+                } else if (layerIndexA !== -1) {
+                    // If only layer A is found, it should be drawn before layer B (which is not found)
+                    return -1;
+                } else if (layerIndexB !== -1) {
+                    // If only layer B is found, it should be drawn after layer A (which is not found)
+                    return 1;
+                } else {
+                    // If neither layer is found, maintain the current order
+                    return 0;
+                }
+            } else {
+                return a.y - b.y;
+            }
+        } else {
+            return a.x - b.x;
+        }
+    });
+}
+
+
+  removeTile(x: number, y: number, level: number, layer: string) {
     this.tiles = this.tiles.filter((tile: SvgTile) => {
       return tile.x !== x || tile.y !== y && tile.layer !== layer;
     });
   }
 
-  getTileAt(x: number, y: number, layer: string): SvgTile | undefined {
+  getTileAt(x: number, y: number, level: number, layer: string): SvgTile | undefined {
     return this.tiles.find((tile: SvgTile) => {
-      return tile.x === x && tile.y === y && tile.layer === layer;
+      return tile.x === x && tile.y === y && tile.level === level && tile.layer === layer;
     });
   }
 
-  tileExists(x: number, y: number, layer: string): boolean {
-    //console.log(this.tiles)
+  tileExists(x: number, y: number, level: number, layer: string): boolean {
     return this.tiles.some((tile: SvgTile) => {
-      return tile.x === x && tile.y === y;
+      return tile.x === x && tile.y === y && tile.level === level && tile.layer == layer;
     });
   }
 
-  tileHidden(x: number, y: number, layer: string): boolean {
-    const tile = this.getTileAt(x, y, layer);
+  tileHidden(x: number, y: number, level: number, layer: string): boolean {
+    const tile = this.getTileAt(x, y, level, layer);
     if(tile)
     {
       return tile.hidden!;
     }
     return false;
+  }
+
+  isUserTile(x: number, y: number, level: number, layer: string): boolean {
+    return this.userTiles.some((tile: SvgTile) => {
+      return tile.x === x && tile.y === y && tile.level === level && tile.layer === layer;
+    });
+  }
+
+  //Combination of tileExists and isUserTile
+  canOverrideTile(x: number, y: number, level: number, layer: string): boolean {
+    return this.tileExists(x, y, level, layer) && !this.isUserTile(x, y, level, layer)
   }
 
   getIndividualTile(name: string, origin = 'undefined'): SafeResourceUrl {

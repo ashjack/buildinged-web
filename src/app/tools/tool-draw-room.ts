@@ -54,7 +54,7 @@ export default class ToolDrawRoom extends ToolDraw {
         {
             this.roomService.rooms.forEach((room: GridRoom) => {
                 room.tiles.forEach((tile: GridTile, index: number) => {
-                    if(tile.x === i && tile.y === j)
+                    if(tile.x === i && tile.y === j && tile.level === level)
                     {
                         room.tiles.splice(index, 1);
                     }
@@ -69,7 +69,7 @@ export default class ToolDrawRoom extends ToolDraw {
             if(room.name !== this.roomService.selectedRoom?.Name)
             {
                 room.tiles.forEach((tile: GridTile, index: number) => {
-                    if(tile.x === i && tile.y === j)
+                    if(tile.x === i && tile.y === j && tile.level == level)
                     {
                         room.tiles.splice(index, 1);
                     }
@@ -82,7 +82,7 @@ export default class ToolDrawRoom extends ToolDraw {
             this.roomService.rooms.forEach((room: GridRoom) => {
                 if(room.name === this.roomService.selectedRoom?.Name)
                 {
-                    if(!room.tiles.some((tile: GridTile) => {return tile.x === i && tile.y === j;}))
+                    if(!room.tiles.some((tile: GridTile) => {return tile.x === i && tile.y === j && tile.level === level;}))
                     {
                         room.tiles.push({x: i, y: j, level: level});
                     }
@@ -105,6 +105,7 @@ export default class ToolDrawRoom extends ToolDraw {
     drawRooms(): void
     {
         this.gridService.roomTiles = [];
+        console.log(this.roomService.rooms)
         this.roomService.rooms.forEach((room: GridRoom) => {
             this.drawRoom(room);
         });
@@ -117,7 +118,6 @@ export default class ToolDrawRoom extends ToolDraw {
 
         if(roomObject)
         {
-            //console.log(roomObject);
             //console.log(this.buildingService.building.entries[roomObject.InteriorWall - 1])
             this.interiorWallTiles = this.buildingService.building.entries[roomObject.InteriorWall - 1].tiles.map((tile: Tile) => {return tile.tile + '.png';});
             this.exteriorWallTiles = this.buildingService.building.entries[this.buildingService.building.ExteriorWall - 1].tiles.map((tile: Tile) => {return tile.tile + '.png';});
@@ -168,13 +168,16 @@ export default class ToolDrawRoom extends ToolDraw {
                 layer: 'Floor',
                 level: level,
             };
+
+            //console.log("Placing floor tile " + url + " at " + x + "," + y + "," + level)
+
             this.gridService.placeTile2(tile, true);
             room.placedTiles.push({name: url, url: '', x: x, y: y, level: level, layer: 'Floor'});
             room.placedInteriorTiles.push({name: url, url: '', x: x, y: y, level: level, layer: 'Floor'});
         }
 
-        const getInRoom = (x: number, y: number): boolean => {
-            return room.tiles.some((tile: GridTile) => {return tile.x === x && tile.y === y;});
+        const getInRoom = (x: number, y: number, level: number): boolean => {
+            return room.tiles.some((tile: GridTile) => {return tile.x === x && tile.y === y && tile.level === level;});
             // return this.roomService.rooms.some((room: GridRoom) => {
             //     return room.tiles.some((tile: GridTile) => {
             //         return tile.x === x && tile.y === y;
@@ -182,10 +185,10 @@ export default class ToolDrawRoom extends ToolDraw {
             // });
         }
 
-        const getInAnyRoom = (x: number, y: number): boolean => {
+        const getInAnyRoom = (x: number, y: number, level: number): boolean => {
             return this.roomService.rooms.some((room: GridRoom) => {
                 return room.tiles.some((tile: GridTile) => {
-                    return tile.x === x && tile.y === y;
+                    return tile.x === x && tile.y === y && tile.level === level;
                 });
             });
         }
@@ -204,9 +207,9 @@ export default class ToolDrawRoom extends ToolDraw {
 
             //Place Wall Tiles
             //Top
-            if(!getInRoom(aboveTile.x, aboveTile.y))
+            if(!getInRoom(aboveTile.x, aboveTile.y, aboveTile.level))
             {
-                if(!getInRoom(leftTile.x, leftTile.y))
+                if(!getInRoom(leftTile.x, leftTile.y, leftTile.level))
                 {
                     cornerTiles.push(tile);
                     placeTile(tile.x, tile.y, tile.level, this.interiorWallTiles[2], true);
@@ -218,9 +221,9 @@ export default class ToolDrawRoom extends ToolDraw {
                 }
             }
             //Bottom
-            if(!getInAnyRoom(belowTile.x, belowTile.y))
+            if(!getInAnyRoom(belowTile.x, belowTile.y, belowTile.level))
             {
-                if(getInAnyRoom(leftTile.x, belowTile.y))
+                if(getInAnyRoom(leftTile.x, belowTile.y, belowTile.level))
                 {
                     cornerTiles.push(tile);
                     placeTile(tile.x, tile.y + 1, tile.level, this.exteriorWallTiles[2]);
@@ -233,9 +236,9 @@ export default class ToolDrawRoom extends ToolDraw {
                 }
             }
             //Left
-            if(!getInRoom(leftTile.x, leftTile.y))
+            if(!getInRoom(leftTile.x, leftTile.y, leftTile.level))
             {
-                if(!getInRoom(aboveTile.x, aboveTile.y))
+                if(!getInRoom(aboveTile.x, aboveTile.y, aboveTile.level))
                 {
                     cornerTiles.push(tile);
                     placeTile(tile.x, tile.y, tile.level, this.interiorWallTiles[2], true);
@@ -247,9 +250,9 @@ export default class ToolDrawRoom extends ToolDraw {
                 }
             }
             //Right
-            if(!getInAnyRoom(rightTile.x, rightTile.y))
+            if(!getInAnyRoom(rightTile.x, rightTile.y, rightTile.level))
             {
-                if(!getInAnyRoom(belowTile.x, belowTile.y))
+                if(!getInAnyRoom(belowTile.x, belowTile.y, belowTile.level))
                 {
                     smallCornerTiles.push(tile);
                     placeTile(tile.x + 1, tile.y + 1, tile.level, this.exteriorWallTiles[3]);
@@ -270,37 +273,37 @@ export default class ToolDrawRoom extends ToolDraw {
 
             //Place Corners
             //Top
-            if(!getInRoom(aboveTile.x, aboveTile.y))
+            if(!getInRoom(aboveTile.x, aboveTile.y, aboveTile.level))
             {
-                if(!getInRoom(leftTile.x, leftTile.y))
+                if(!getInRoom(leftTile.x, leftTile.y, leftTile.level))
                 {
                     cornerTiles.push(tile);
                     placeTile(tile.x, tile.y, tile.level, this.interiorWallTiles[2], true);
                 }
             }
             //Bottom
-            if(!getInAnyRoom(belowTile.x, belowTile.y))
+            if(!getInAnyRoom(belowTile.x, belowTile.y, belowTile.level))
             {
-                if(getInAnyRoom(leftTile.x, belowTile.y))
+                if(getInAnyRoom(leftTile.x, belowTile.y, belowTile.level))
                 {
                     cornerTiles.push(tile);
                     placeTile(tile.x , tile.y + 1, tile.level, this.exteriorWallTiles[2]);
                 }
             }
             //Left
-            if(!getInRoom(leftTile.x, leftTile.y))
+            if(!getInRoom(leftTile.x, leftTile.y, leftTile.level))
             {
-                if(!getInRoom(aboveTile.x, aboveTile.y))
+                if(!getInRoom(aboveTile.x, aboveTile.y, aboveTile.level))
                 {
                     cornerTiles.push(tile);
                     placeTile(tile.x, tile.y, tile.level, this.interiorWallTiles[2], true);
                 }
 
-                if(getInRoom(leftTile.x, belowTile.y))
+                if(getInRoom(leftTile.x, belowTile.y, belowTile.level))
                 {
-                    if(!getInRoom(leftTile.x, leftTile.y) && !getInRoom(belowTile.x, belowTile.y))
+                    if(!getInRoom(leftTile.x, leftTile.y, leftTile.level) && !getInRoom(belowTile.x, belowTile.y, belowTile.level))
                     {
-                        if(!getInAnyRoom(leftTile.x, leftTile.y) && !getInAnyRoom(belowTile.x, belowTile.y))
+                        if(!getInAnyRoom(leftTile.x, leftTile.y, leftTile.level) && !getInAnyRoom(belowTile.x, belowTile.y, belowTile.level))
                         {
                             cornerTiles.push(tile);
                             placeTile(tile.x, tile.y + 1, tile.level, this.exteriorWallTiles[2]);
@@ -314,9 +317,9 @@ export default class ToolDrawRoom extends ToolDraw {
                 }
             }
             //Right
-            if(!getInAnyRoom(rightTile.x, rightTile.y))
+            if(!getInAnyRoom(rightTile.x, rightTile.y, rightTile.level))
             {
-                if(!getInAnyRoom(belowTile.x, belowTile.y))
+                if(!getInAnyRoom(belowTile.x, belowTile.y, belowTile.level))
                 {
                     if(cornerTiles.some((cornerTile: GridTile) => {return cornerTile.x === tile.x + 1 && cornerTile.y === tile.y + 1;}))
                     {
@@ -324,12 +327,12 @@ export default class ToolDrawRoom extends ToolDraw {
                     }
                     else
                     {
-                        if(!getInAnyRoom(rightTile.x, rightTile.y) && !getInAnyRoom(rightTile.x, belowTile.y))
+                        if(!getInAnyRoom(rightTile.x, rightTile.y, rightTile.level) && !getInAnyRoom(rightTile.x, belowTile.y, belowTile.level))
                         {
                             smallCornerTiles.push(tile);
                             placeTile(tile.x + 1, tile.y + 1, tile.level, this.exteriorWallTiles[3]);
                         }
-                        else if(getInAnyRoom(leftTile.x, leftTile.y))
+                        else if(getInAnyRoom(leftTile.x, leftTile.y, leftTile.level))
                         {
                             cornerTiles.push(tile);
                             placeTile(tile.x + 1, tile.y, tile.level, this.exteriorWallTiles[2]);
