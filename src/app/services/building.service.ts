@@ -1,5 +1,5 @@
 import { Injectable } from "@angular/core";
-import { Building, FloorTiles, Furniture, FurnitureTileEntry, Tile, TileEntry } from "../models/app.models";
+import { Building, FloorTiles, Furniture, FurnitureTileEntry, SvgObject, SvgTile, Tile, TileEntry } from "../models/app.models";
 import { DbService } from "./db.service";
 import { TileService } from "./tile.service";
 import { FurnitureService } from "./furniture.service";
@@ -33,6 +33,7 @@ export class BuildingService {
         this.gridService.hiddenTiles = [];
         this.gridService.fetchedTiles = [];
         this.gridService.fetchingTiles = [];
+        this.gridService.objects = [];
         this.gridService.setSelectedLevel(0);
 
         const bEl = xmlDoc.getElementsByTagName('building')[0];
@@ -260,6 +261,9 @@ export class BuildingService {
         // });
         //this.roomService.drawRoom(this.roomService.rooms[this.roomService.rooms.length - 1]);
         this.gridService.redrawTiles();
+
+        //Autosave
+        localStorage.setItem('buildingXml', new XMLSerializer().serializeToString(xmlDoc));
     }
 
     async drawBuilding()
@@ -343,6 +347,8 @@ export class BuildingService {
 
     placeTiles()
     {
+        this.gridService.objects = [];
+
         let floorCount = -1
         this.building.floors.forEach(floor => {
             floorCount++;
@@ -704,8 +710,8 @@ export class BuildingService {
                             {
                                 for(let j = 0; j < width; j++)
                                 {
-                                    const roofTileExists = this.gridService.tileExists(x + j, y + i, floorCount, "Roof");
-                                    const manualRoofTile = this.gridService.isUserTile(x + j, y + i, floorCount, "Roof");
+                                    const roofTileExists = this.gridService.tileExists(x + j, y + i, floorCount, "Floor");
+                                    const manualRoofTile = this.gridService.isUserTile(x + j, y + i, floorCount, "Floor");
 
                                     this.gridService.placeTile2({
                                         name: flatRoofTile.tile + '.png',
@@ -714,7 +720,7 @@ export class BuildingService {
                                         y: y + i,
                                         offsetX: flatRoofTile.offset ? Number.parseInt(flatRoofTile.offset) : 0,
                                         offsetY: flatRoofTile.offset ? Number.parseInt(flatRoofTile.offset) : 0,
-                                        layer: roofTileExists && !manualRoofTile ? 'Roof2' : "Roof",
+                                        layer: roofTileExists && !manualRoofTile ? 'FloorOverlay' : "Floor",
                                         level: floorCount
                                     }, true);
                                 }
@@ -732,10 +738,22 @@ export class BuildingService {
                     const x = Number.parseInt(obj.x);
                     const y = Number.parseInt(obj.y);
 
+                    const furnitureObjectTiles: SvgTile[] = [];
+                    const furnitureObject = {
+                        tiles: furnitureObjectTiles,
+                        x: x,
+                        y: y,
+                        level: floorCount,
+                        width: 0,
+                        length: 0,
+                        orient: orient,
+                        type: ''
+                    }
+
                     //const furnitureName = furniture.entries.find(entry => entry.orient === orient)?.tiles[0].name + '.png';
 
-                    const test = this.building.furniture[FurnitureTilesNum].entries.find(entry => entry.orient === orient);
-                    if(!test)
+                    const containsOrient = this.building.furniture[FurnitureTilesNum].entries.find(entry => entry.orient === orient);
+                    if(!containsOrient)
                     {
                         if(orient == 'E')
                         {
@@ -751,6 +769,7 @@ export class BuildingService {
 
                         if(this.building.furniture[FurnitureTilesNum].layer == 'Walls')
                         {
+                            furnitureObject.type = 'Wall';
 
                             const newX = x + tile.x + ((orient == 'S' || orient == 'N') ? 0 : 1);
                             const newY = y + tile.y + ((orient == 'E' || orient == 'W') ? 0 : 1);
@@ -797,9 +816,21 @@ export class BuildingService {
                             console.log(tileToPlace);
 
                             this.gridService.placeTile2(tileToPlace, false);
+
+                            furnitureObject.tiles.push(tileToPlace);
+                            if(tile.x > furnitureObject.length)
+                            {
+                                furnitureObject.length = tile.x;
+                            }
+                            if(tile.y > furnitureObject.width)
+                            {
+                                furnitureObject.width = tile.y;
+                            }
                         }
                         else if(this.building.furniture[FurnitureTilesNum].layer == 'WallFurniture')
                         {
+                            furnitureObject.type = 'WallFurniture';
+
                             const tileToPlace = {
                                 name: tile.name + '.png',
                                 url: tile.name + '.png',
@@ -810,6 +841,16 @@ export class BuildingService {
                             };
 
                             this.gridService.placeTile2(tileToPlace, false);
+
+                            furnitureObject.tiles.push(tileToPlace);
+                            if(tile.x > furnitureObject.length)
+                            {
+                                furnitureObject.length = tile.x;
+                            }
+                            if(tile.y > furnitureObject.width)
+                            {
+                                furnitureObject.width = tile.y;
+                            }
                         }
 
                         else if(this.building.furniture[FurnitureTilesNum].layer == 'Frames')
@@ -856,9 +897,21 @@ export class BuildingService {
                             }
 
                             this.gridService.placeTile2(tileToPlace, false);
-                            console.log(tileToPlace);
+
+                            furnitureObject.tiles.push(tileToPlace);
+                            if(tile.x > furnitureObject.length)
+                            {
+                                furnitureObject.length = tile.x;
+                            }
+                            if(tile.y > furnitureObject.width)
+                            {
+                                furnitureObject.width = tile.y;
+                            }
                         }
                     });
+
+                    console.log(furnitureObject);
+                    this.gridService.addObject(furnitureObject);
                 }
 
                 if(obj.type == 'wall')
@@ -876,6 +929,18 @@ export class BuildingService {
                     
                     const tile = this.building.entries[Tile - 1]?.tiles.find(tile => tile.enum === dirFullName);
                     const intTile = this.building.entries[interiorTile - 1]?.tiles.find(tile => tile.enum === dirFullName);
+
+                    const wallObjectTiles: SvgTile[] = [];
+                    const wallObject = {
+                        tiles: wallObjectTiles,
+                        x: x,
+                        y: y,
+                        level: floorCount,
+                        width: 0,
+                        length: 0,
+                        orient: wallDir,
+                        type: 'Wall'
+                    }
 
                     
                     // Place wall tiles for the entire length
@@ -901,6 +966,9 @@ export class BuildingService {
                                     level: floorCount
                                 };
                                 this.gridService.placeTile2(tileToPlace, true);
+
+                                wallObject.tiles.push(tileToPlace);
+
                                 //this.gridService.roomTiles.push(tileToPlace);
                             }
                             else if(!this.gridService.isUserTile(newX, newY, floorCount, "Walls") && !this.gridService.isUserTile(newX, newY, floorCount, "Walls2"))
@@ -923,6 +991,9 @@ export class BuildingService {
                                     level: floorCount
                                 };
                                 this.gridService.placeTile2(tileToPlace, true);
+
+                                wallObject.tiles.push(tileToPlace);
+
                                 //this.gridService.roomTiles.push(tileToPlace);
                             }
                             else if(!this.gridService.isUserTile(newX, newY, floorCount, "Walls") && !this.gridService.isUserTile(newX, newY, floorCount, "Walls2"))
@@ -935,7 +1006,16 @@ export class BuildingService {
                         
                     }
                     
+                    if(wallDir == 'N')
+                    {
+                        wallObject.length = length - 1;
+                    }
+                    if(wallDir == 'W')
+                    {
+                        wallObject.width = length - 1;
+                    }
 
+                    this.gridService.addObject(wallObject);
                     console.log("PLACING WALL AT " + tile)
                 }
 
@@ -950,6 +1030,20 @@ export class BuildingService {
 
                     const frameTile = this.building.entries[FrameTile - 1]?.tiles.find(tile => tile.enum === dirFullName);
                     const tile = this.building.entries[Tile - 1]?.tiles.find(tile => tile.enum === dirFullName);
+
+                    const doorObjectTiles: SvgTile[] = [];
+                    const doorObject = {
+                        tiles: doorObjectTiles,
+                        x: x,
+                        y: y,
+                        level: floorCount,
+                        width: 0,
+                        length: 0,
+                        orient: dir,
+                        type: 'Door'
+                    }
+
+                    this.gridService.addObject(doorObject);
 
                     const tileToPlace = {
                         name: tile?.tile + '.png',
@@ -1036,6 +1130,20 @@ export class BuildingService {
                     const curtainsTile = this.building.entries[CurtainsTile - 1]?.tiles.find(tile => tile.enum === dirFullName);
                     const shuttersTile = this.building.entries[ShuttersTile - 1]?.tiles.find(tile => tile.enum === dirFullName);
                     const tile = this.building.entries[Tile - 1]?.tiles.find(tile => tile.enum === dirFullName);
+
+                    const windowObjectTiles: SvgTile[] = [];
+                    const windowObject = {
+                        tiles: windowObjectTiles,
+                        x: x,
+                        y: y,
+                        level: floorCount,
+                        width: 0,
+                        length: 0,
+                        orient: dir,
+                        type: 'Door'
+                    }
+
+                    this.gridService.addObject(windowObject);
 
                     const tileToPlace = {
                         name: tile?.tile + '.png',

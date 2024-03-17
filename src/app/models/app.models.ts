@@ -16,6 +16,19 @@ export interface SvgTile {
     auto?: boolean;
 }
 
+export interface SvgObject {
+    tiles: SvgTile[];
+    x: number;
+    y: number;
+    level: number;
+    width?: number;
+    length?: number;
+    gridWidth?: number;  //How wide one grid worth of the white overlay is
+    gridLength?: number; //How long one grid worth of the white overlay is
+    orient?: string;
+    type?: string;
+}
+
 export interface GridTile {
     x: number;
     y: number;

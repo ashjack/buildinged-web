@@ -1,5 +1,5 @@
 import { Injectable } from "@angular/core";
-import { GridRoom, SvgTile } from "../models/app.models";
+import { GridRoom, SvgObject, SvgTile } from "../models/app.models";
 import ToolDrawRoom from "../tools/tool-draw-room";
 import { DbService, PngTile } from "./db.service";
 import { SafeResourceUrl } from "@angular/platform-browser";
@@ -19,6 +19,8 @@ export class GridService {
     tiles: SvgTile[] = [];
     hiddenTiles: SvgTile[] = [];
     excludedTiles: SvgTile[] = []; //Tiles that are permenantly hidden but still technically part of the building e.g. hidden walls
+
+    objects: SvgObject[] = [];
 
     fetchedTiles: PngTile[] = [];
     fetchingTiles: string[] = [];
@@ -181,6 +183,11 @@ export class GridService {
 
     this.tiles.push(tile);
     //this.tileGhosts = [];
+  }
+
+  addObject(obj: SvgObject)
+  {
+    this.objects.push(obj);
   }
 
   layers: string[] = [

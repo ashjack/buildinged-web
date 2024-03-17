@@ -12,7 +12,7 @@ import * as fromRoot from '../app.reducers';
 import ToolDraw from "../tools/tool-draw";
 import ToolDrawRoom from "../tools/tool-draw-room";
 import ToolTile from "../tools/tool-tile";
-import { GridTile, SvgTile } from "../models/app.models";
+import { GridTile, SvgObject, SvgTile } from "../models/app.models";
 import { CacheService } from "../services/cache.service";
 import { BuildingService } from "../services/building.service";
 import { ScheduleRedraw } from "../app.actions";
@@ -140,7 +140,20 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     }
 
     this.drawCanvas();
+    this.loadBuildingXmlFromLocalStorage();
   }
+
+  loadBuildingXmlFromLocalStorage() {
+    const xmlString = localStorage.getItem('buildingXml');
+    if (xmlString) {
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xmlString, 'text/xml');
+        this.buildingService.createBuildingFromXml(xmlDoc);
+        return xmlDoc;
+    } else {
+        return null;
+    }
+}
 
   hoverTile(x: number, y: number) {
     this.gridService.showAllTiles();
@@ -292,6 +305,9 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     //Tiles
     this.drawTiles();
 
+    //Object Overlay
+    this.drawTileOverlays();
+
     //Tool Overlay
     this.drawOverlay();
 
@@ -390,6 +406,15 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     }
   }
 
+  drawTileOverlays() {
+    this.gridService.objects.forEach((obj: SvgObject) => {   
+      if(obj.level === this.gridService.getSelectedLevel())
+      {   
+        this.drawOverlayBlock(obj.x, obj.y, obj.length ?? 0, obj.width ?? 0, '#1d1aeb60', '#ffffff30', obj.orient, obj.type);
+      }
+    });
+  }
+
   drawOverlay() {
     if(this.selectedTool instanceof ToolDraw)
     {
@@ -450,6 +475,227 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     
     return polygon;
   }
+
+  drawOverlayBlock(x: number, y: number, length: number, width: number, lineColor: string, fillColor: string, orient?: string, type?: string) {
+    if(!this.ctx) {
+      throw new Error('Canvas context is not defined')
+    };
+
+    x = x + length;
+    y = y + width;
+
+    if(orient == 'W' && (type == 'Wall' || type == 'Door' || type == 'Window'))
+    {
+      x--;
+    }
+
+    const canvasX = 2500 + x * 100 - y * 100;
+    const canvasY = 100 + x * 50 + y * 50;
+
+    x = (canvasX - this.xOffset) * this.zoom;
+    y = (canvasY - this.yOffset) * this.zoom;
+
+    const size = 100 * this.zoom;
+    const xsize = 100 * this.zoom * width;
+    const ysize = 100 * this.zoom * length;
+    let xpadding = 20 * this.zoom;
+    let ypadding = 10 * this.zoom;
+
+    if(type == 'WallFurniture')
+    {
+      const bottomX = x;
+      const bottomY = y - ypadding;
+      const rightX = x + size + xsize - xpadding;
+      const rightY = y - (xsize / 2) - size / 2;
+      const topX = x - ysize + xsize;
+      const topY = y - (ysize / 2) - (xsize / 2) - size + ypadding;
+      const leftX = x - size - ysize + xpadding;
+      const leftY = y - (ysize / 2) - size / 2;
+
+      if(orient?.includes('N'))
+      {
+        this.ctx.beginPath();
+        this.ctx.setLineDash([]);
+        this.ctx.moveTo(topX, topY);
+        this.ctx.lineTo(rightX, rightY);
+        this.ctx.lineTo(rightX - 20 * this.zoom, rightY + 10 * this.zoom);
+        this.ctx.lineTo(topX - 20 * this.zoom, topY + 10 * this.zoom);
+        this.ctx.closePath();
+        this.ctx.strokeStyle = lineColor;
+        this.ctx.lineWidth = 2 * this.zoom;
+        this.ctx.stroke();
+
+        this.ctx.fillStyle = fillColor;
+        this.ctx.fill();
+      }
+      if(orient?.includes('W'))
+      {
+        this.ctx.beginPath();
+        this.ctx.setLineDash([]);
+        this.ctx.moveTo(topX, topY); //top
+        this.ctx.lineTo(leftX, leftY); //left
+        this.ctx.lineTo(leftX + 20 * this.zoom, leftY + 10 * this.zoom); //bottom
+        this.ctx.lineTo(topX + 20 * this.zoom, topY + 10 * this.zoom); //right
+        this.ctx.closePath();
+        this.ctx.strokeStyle = lineColor;
+        this.ctx.lineWidth = 2 * this.zoom;
+        this.ctx.stroke();
+        
+        this.ctx.fillStyle = fillColor;
+        this.ctx.fill();
+      }
+      if(orient?.includes('S'))
+      {
+        this.ctx.beginPath();
+        this.ctx.setLineDash([]);
+        this.ctx.moveTo(bottomX, bottomY); //bottom corner
+        this.ctx.lineTo(leftX, leftY); //left corner
+        this.ctx.lineTo(leftX + 20 * this.zoom, leftY - 10 * this.zoom); //top corner
+        this.ctx.lineTo(bottomX + 20 * this.zoom, bottomY - 10 * this.zoom); //right corner
+        this.ctx.closePath();
+        this.ctx.strokeStyle = lineColor;
+        this.ctx.lineWidth = 2 * this.zoom;
+        this.ctx.stroke();
+        
+        this.ctx.fillStyle = fillColor;
+        this.ctx.fill();
+      }
+      if(orient?.includes('E'))
+      {
+        this.ctx.beginPath();
+        this.ctx.setLineDash([]);
+        this.ctx.moveTo(bottomX, bottomY);
+        this.ctx.lineTo(rightX, rightY);
+        this.ctx.lineTo(rightX - 20 * this.zoom, rightY - 10 * this.zoom);
+        this.ctx.lineTo(bottomX - 20 * this.zoom, bottomY - 10 * this.zoom);
+        this.ctx.closePath();
+        this.ctx.strokeStyle = lineColor;
+        this.ctx.lineWidth = 2 * this.zoom;
+        this.ctx.stroke();
+        
+        this.ctx.fillStyle = fillColor;
+        this.ctx.fill();
+      }
+    }
+    else if(type == 'Wall' || type == 'Door' || type == 'Window')
+    {
+
+      const bottomX = x;
+      const bottomY = y - ypadding;
+      const rightX = x + size + xsize - xpadding;
+      const rightY = y - (xsize / 2) - size / 2;
+      const topX = x - ysize + xsize;
+      const topY = y - (ysize / 2) - (xsize / 2) - size + ypadding;
+      const leftX = x - size - ysize + xpadding;
+      const leftY = y - (ysize / 2) - size / 2
+
+      if(orient?.includes('N'))
+      {
+        this.ctx.beginPath();
+        this.ctx.setLineDash([]);
+        this.ctx.moveTo(topX, topY);
+        this.ctx.lineTo(rightX, rightY);
+        this.ctx.lineTo(rightX + 20 * this.zoom, rightY - 10 * this.zoom);
+        this.ctx.lineTo(topX + 20 * this.zoom, topY - 10 * this.zoom);
+        this.ctx.closePath();
+        this.ctx.strokeStyle = lineColor;
+        this.ctx.lineWidth = 2 * this.zoom;
+        this.ctx.stroke();
+
+        this.ctx.fillStyle = fillColor;
+        this.ctx.fill();
+      }
+      if(orient?.includes('W'))
+      {
+        this.ctx.beginPath();
+        this.ctx.setLineDash([]);
+        this.ctx.moveTo(bottomX, bottomY);
+        this.ctx.lineTo(rightX, rightY);
+        this.ctx.lineTo(rightX + 20 * this.zoom, rightY + 10 * this.zoom);
+        this.ctx.lineTo(bottomX + 20 * this.zoom, bottomY + 10 * this.zoom);
+        this.ctx.closePath();
+        this.ctx.strokeStyle = lineColor;
+        this.ctx.lineWidth = 2 * this.zoom;
+        this.ctx.stroke();
+        
+        this.ctx.fillStyle = fillColor;
+        this.ctx.fill();
+      }
+
+      return;
+    }
+    else
+    {
+      this.ctx.beginPath();
+      this.ctx.setLineDash([]);
+      this.ctx.moveTo(x, y - ypadding); //Bottom Corner
+      this.ctx.lineTo(x + size + xsize - xpadding, y - (xsize / 2) - size / 2); //Right Corner
+      this.ctx.lineTo(x - ysize + xsize, y - (ysize / 2) - (xsize / 2) - size + ypadding); //Top Corner
+      this.ctx.lineTo(x - size - ysize + xpadding, y - (ysize / 2) - size / 2); //Left Corner
+      this.ctx.closePath();
+      this.ctx.strokeStyle = lineColor; // Set the stroke color
+      this.ctx.lineWidth = 2 * this.zoom;
+      this.ctx.stroke();
+
+      this.ctx.fillStyle = fillColor; // Set the fill color
+      this.ctx.fill(); // Fill the shape with the specified color
+    }
+
+    //Orientation Marker
+    const bottomX = x;
+    const bottomY = y - ypadding - (10 * this.zoom);
+    const rightX = x + size + xsize - xpadding - (20 * this.zoom);
+    const rightY = y - (xsize / 2) - size / 2;
+    const topX = x - ysize + xsize;
+    const topY = y - (ysize / 2) - (xsize / 2) - size + ypadding + (10 * this.zoom);
+    const leftX = x - size - ysize + xpadding + (20 * this.zoom);
+    const leftY = y - (ysize / 2) - size / 2;
+
+    if(orient?.includes('N'))
+    {
+      this.ctx.beginPath();
+      this.ctx.setLineDash([]);
+      this.ctx.moveTo(topX, topY);
+      this.ctx.lineTo(rightX, rightY);
+      this.ctx.closePath();
+      this.ctx.strokeStyle = lineColor;
+      this.ctx.lineWidth = 6 * this.zoom;
+      this.ctx.stroke();
+    }
+    if(orient?.includes('W'))
+    {
+      this.ctx.beginPath();
+      this.ctx.setLineDash([]);
+      this.ctx.moveTo(topX, topY);
+      this.ctx.lineTo(leftX, leftY);
+      this.ctx.closePath();
+      this.ctx.strokeStyle = lineColor;
+      this.ctx.lineWidth = 6 * this.zoom;
+      this.ctx.stroke();
+    }
+    if(orient?.includes('S'))
+    {
+      this.ctx.beginPath();
+      this.ctx.setLineDash([]);
+      this.ctx.moveTo(bottomX, bottomY);
+      this.ctx.lineTo(leftX, leftY);
+      this.ctx.closePath();
+      this.ctx.strokeStyle = lineColor;
+      this.ctx.lineWidth = 6 * this.zoom;
+      this.ctx.stroke();
+    }
+    if(orient?.includes('E'))
+    {
+      this.ctx.beginPath();
+      this.ctx.setLineDash([]);
+      this.ctx.moveTo(bottomX, bottomY);
+      this.ctx.lineTo(rightX, rightY);
+      this.ctx.closePath();
+      this.ctx.strokeStyle = lineColor;
+      this.ctx.lineWidth = 6 * this.zoom;
+      this.ctx.stroke();
+    }
+}
 
   drawIsometricSquare(x: number, y: number): Point[] {
 
