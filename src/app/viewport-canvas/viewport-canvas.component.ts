@@ -16,6 +16,8 @@ import { GridTile, SvgObject, SvgTile } from "../models/app.models";
 import { CacheService } from "../services/cache.service";
 import { BuildingService } from "../services/building.service";
 import { ScheduleRedraw } from "../app.actions";
+import ToolDoor from "../tools/tool-door";
+import { DoorService } from "../services/door.service";
 
 @Component({
     selector: 'app-viewport-canvas',
@@ -36,7 +38,8 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   private ctx: CanvasRenderingContext2D | null;
 
   //selectedTool: ToolDraw = new ToolTile(this);
-  selectedTool: ToolDraw = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService);
+  //selectedTool: ToolDraw = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService);
+  selectedTool: ToolDraw = new ToolDoor(this.doorService, this.gridService)
   selectedTool$: Observable<string>;
   scheduleRedraw: boolean;
   scheduleRedraw$: Observable<boolean>;
@@ -44,6 +47,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   private unsubscribe: Subject<void> = new Subject();
 
   currentHoverCoords: Point = {x: 0, y: 0};
+  currentHoverCoordSegments = {edge: '', corner: ''}
 
   newPositions: Position[] = [];
 
@@ -64,7 +68,8 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     private buildingService: BuildingService,
     private gridService: GridService,
     private roomService: RoomService,
-    private cacheService: CacheService) 
+    private cacheService: CacheService,
+    private doorService: DoorService) 
   { 
     this.selectedTool$ = store.select(fromRoot.getCurrentTool);
     this.scheduleRedraw$ = store.select(fromRoot.getRedrawSchedule);
@@ -112,6 +117,9 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
         case 'tool-draw-room':
           this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService);
           break;
+        case 'tool-door':
+          this.selectedTool = new ToolDoor(this.doorService, this.gridService);
+          break;
         default:
           this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService);
           break;
@@ -155,9 +163,16 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     }
 }
 
-  hoverTile(x: number, y: number) {
-    this.gridService.showAllTiles();
-    this.gridService.redrawTiles();
+  hoverTile(x: number, y: number, closestEdge?: string, closestCorner?: string) {
+    //this.gridService.showAllTiles();
+    //this.gridService.redrawTiles();
+
+    if(closestEdge != this.currentHoverCoordSegments.edge || closestCorner != this.currentHoverCoordSegments.corner)
+    {
+      this.currentHoverCoordSegments = {edge: closestEdge ?? '', corner: closestCorner ?? ''}
+      //if(this.selectedTool)
+    }
+
     if(this.currentHoverCoords.x == x && this.currentHoverCoords.y == y)
     {
       return;
@@ -256,7 +271,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
 
     }
 
-    this.selectedTool.hoverTile(x, y);
+    this.selectedTool.hoverTile(x, y, closestEdge, closestCorner);
 
     this.drawCanvas(); //TODO call this from any redraw functions in the services...somehow
     //this.drawOverlaySquare(x, y, 'black', 'red');
@@ -329,7 +344,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
 
   drawTiles() {
 
-    if (this.selectedTool instanceof ToolTile) {
+    if (this.selectedTool instanceof ToolTile || this.selectedTool instanceof ToolDoor) {
       this.selectedTool.tileGhosts.forEach((tile: SvgTile) => {
           // Filter out tiles with the same position and layer on the same level as the hovering tile
           this.gridService.tiles = this.gridService.tiles.filter((t: SvgTile) => {
@@ -416,7 +431,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   }
 
   drawOverlay() {
-    if(this.selectedTool instanceof ToolDraw)
+    if(this.selectedTool instanceof ToolDraw && !(this.selectedTool instanceof ToolDoor))
     {
       this.selectedTool.dragTiles.forEach((tile: SvgTile) => {
         this.drawOverlaySquare(tile.x, tile.y, 'black', this.selectedTool.getTileFill(tile.x, tile.y));
@@ -811,6 +826,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   getCoordsFromMousePos(x: number, y: number) {
     const i = Math.floor((x - 2500) / 100 + (y - 100) / 50);
     const j = Math.floor((y - 100) / 50 - (x - 2500) / 100);
+    
     return { i, j };
   }
 

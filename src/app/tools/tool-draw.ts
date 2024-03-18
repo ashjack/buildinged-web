@@ -12,7 +12,7 @@ export default abstract class ToolDraw extends Tool {
         super();
     }
 
-    abstract hoverTile(x: number, y: number): void;
+    abstract hoverTile(x: number, y: number, closestEdge?: string, closestCorner?: string): void;
 
     abstract beginDrag(x: number, y: number): void;
 

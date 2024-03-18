@@ -6,18 +6,22 @@ import { FurnitureService } from "./furniture.service";
 import { GridService } from "./grid.service";
 import ToolDrawRoom from "../tools/tool-draw-room";
 import { RoomService } from "./room.service";
+import { Store } from "@ngrx/store";
+import * as fromRoot from '../app.reducers';
+import { SetBuilding } from "../app.actions";
 
 @Injectable({
     providedIn: 'root',
   })
 export class BuildingService {
-    building: Building;
+    public building: Building;
     constructor(
         private db: DbService, 
         private tileService: TileService, 
         private furnitureService: FurnitureService, 
         private gridService: GridService,
-        private roomService: RoomService) { }
+        private roomService: RoomService,
+        private store: Store<fromRoot.State>,) { }
 
     getBuilding(): Building {
         return this.building;
@@ -255,6 +259,9 @@ export class BuildingService {
 
 
         console.log(this.building);
+
+        this.store.dispatch(new SetBuilding(this.building));
+
         await this.drawBuilding();
         // this.roomService.rooms.forEach(room => {
         //     this.roomService.drawRoom(room);
@@ -345,395 +352,404 @@ export class BuildingService {
         this.placeTiles();
     }
 
-    placeTiles()
+    loadObjects()
     {
         this.gridService.objects = [];
 
         let floorCount = -1
         this.building.floors.forEach(floor => {
             floorCount++;
-            console.log("FLOOR OBJECTS GOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
-            console.log(floor.objects)
-            floor.objects.forEach(obj => {
-                if(obj.type == 'roof')
+        });
+    }
+
+    placeTile(obj: any, level: number)
+    {
+        let building = this.building;
+        this.store.select(fromRoot.getBuilding).subscribe(b => {
+            if (b) {
+                building = b;
+            }
+        });
+
+        if(obj.type == 'roof')
+        {
+            const width = Number.parseInt(obj.width);
+            const height = Number.parseInt(obj.height);
+            const x = Number.parseInt(obj.x);
+            const y = Number.parseInt(obj.y);
+            const roofType = obj.RoofType;
+            const depth = obj.Depth;
+            const cappedN = obj.cappedN === 'true';
+            const cappedS = obj.cappedW === 'true';
+            const cappedE = obj.cappedE === 'true';
+            const cappedW = obj.cappedS === 'true';
+            const capTilesIndex = obj.CapTiles;
+            const slopeTilesIndex = obj.SlopeTiles;
+            const topTilesIndex = obj.TopTiles;
+            const capTiles = building.entries[capTilesIndex - 1].tiles;
+            const slopeTiles = building.entries[slopeTilesIndex - 1].tiles;
+            const topTiles = building.entries[topTilesIndex - 1].tiles;
+
+            //Placement functions
+            function placeSlopeTile(gridService: GridService, slopeTile: any, x: number, y: number, height: number, direction: number) {
+                if (slopeTile) {
+                    for (let i = 0; i < height; i++) {
+                        if(direction === 0)
+                        {
+                            const roofTileExists = gridService.tileExists(x, y + i, level, "Roof");
+                            const manualRoofTile = gridService.isUserTile(x, y + i, level, "Roof");
+
+                            console.log("ROOFTILEEXISTS1: " + roofTileExists);
+                            console.log("MANUALROOFTILE1: " + manualRoofTile);
+
+                            if(roofTileExists && !manualRoofTile)
+                            {
+                                // alert("Caught an already existing roof tile")
+                            }
+
+                            gridService.placeTile2({
+                                name: slopeTile.tile + '.png',
+                                url: slopeTile.tile + '.png',
+                                x: x,
+                                y: y + i,
+                                offsetX: slopeTile.offset ? Number.parseInt(slopeTile.offset) : 0,
+                                offsetY: slopeTile.offset ? Number.parseInt(slopeTile.offset) : 0,
+                                layer: roofTileExists && !manualRoofTile ? 'Roof2' : "Roof",
+                                level: level,
+                            }, true);
+                        }
+                        else
+                        {
+                            const roofTileExists = gridService.tileExists(x + i, y, level, "Roof");
+                            const manualRoofTile = gridService.isUserTile(x + i, y, level, "Roof");
+
+                            console.log("ROOFTILEEXISTS2: " + roofTileExists);
+                            console.log("MANUALROOFTILE2: " + manualRoofTile);
+
+                            if(roofTileExists && !manualRoofTile)
+                            {
+                                //alert("Caught an already existing roof tile")
+                            }
+
+                            gridService.placeTile2({
+                                name: slopeTile.tile + '.png',
+                                url: slopeTile.tile + '.png',
+                                x: x + i,
+                                y: y ,
+                                offsetX: slopeTile.offset ? Number.parseInt(slopeTile.offset) : 0,
+                                offsetY: slopeTile.offset ? Number.parseInt(slopeTile.offset) : 0,
+                                layer: roofTileExists && !manualRoofTile ? 'Roof2' : "Roof",
+                                level: level
+                            }, true);
+                        }
+                    }
+                }
+            }
+
+            function placeCapTile(gridService: GridService, capTile: any, x: number, y: number, height: number, direction: number) {
+                if (capTile) {
+                    for (let i = 0; i < height + 1; i++) {
+                        console.log("placing cap at " + x + ", " + y + ", level: " + level)
+                        if(i === 0 || i === height) 
+                        {
+                            if(direction === 0)
+                            {
+                                gridService.placeTile2({
+                                    name: capTile.tile + '.png',
+                                    url: capTile.tile + '.png',
+                                    x: x,
+                                    y: y + i,
+                                    layer: 'RoofCap',
+                                    level: level
+                                }, false);
+                            }
+                            else
+                            {
+                                gridService.placeTile2({
+                                    name: capTile.tile + '.png',
+                                    url: capTile.tile + '.png',
+                                    x: x + i,
+                                    y: y,
+                                    layer: 'RoofCap',
+                                    level: level
+                                }, false);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if(roofType == 'PeakNS')
+            {
+                //Place cap tiles
+                if(cappedN)
                 {
-                    const width = Number.parseInt(obj.width);
-                    const height = Number.parseInt(obj.height);
-                    const x = Number.parseInt(obj.x);
-                    const y = Number.parseInt(obj.y);
-                    const roofType = obj.RoofType;
-                    const depth = obj.Depth;
-                    const cappedN = obj.cappedN === 'true';
-                    const cappedS = obj.cappedW === 'true';
-                    const cappedE = obj.cappedE === 'true';
-                    const cappedW = obj.cappedS === 'true';
-                    const capTilesIndex = obj.CapTiles;
-                    const slopeTilesIndex = obj.SlopeTiles;
-                    const topTilesIndex = obj.TopTiles;
-                    const capTiles = this.building.entries[capTilesIndex - 1].tiles;
-                    const slopeTiles = this.building.entries[slopeTilesIndex - 1].tiles;
-                    const topTiles = this.building.entries[topTilesIndex - 1].tiles;
-
-                    //Placement functions
-                    function placeSlopeTile(gridService: GridService, slopeTile: any, x: number, y: number, height: number, direction: number) {
-                        if (slopeTile) {
-                            for (let i = 0; i < height; i++) {
-                                if(direction === 0)
-                                {
-                                    const roofTileExists = gridService.tileExists(x, y + i, floorCount, "Roof");
-                                    const manualRoofTile = gridService.isUserTile(x, y + i, floorCount, "Roof");
-
-                                    console.log("ROOFTILEEXISTS1: " + roofTileExists);
-                                    console.log("MANUALROOFTILE1: " + manualRoofTile);
-
-                                    if(roofTileExists && !manualRoofTile)
-                                    {
-                                       // alert("Caught an already existing roof tile")
-                                    }
-
-                                    gridService.placeTile2({
-                                        name: slopeTile.tile + '.png',
-                                        url: slopeTile.tile + '.png',
-                                        x: x,
-                                        y: y + i,
-                                        offsetX: slopeTile.offset ? Number.parseInt(slopeTile.offset) : 0,
-                                        offsetY: slopeTile.offset ? Number.parseInt(slopeTile.offset) : 0,
-                                        layer: roofTileExists && !manualRoofTile ? 'Roof2' : "Roof",
-                                        level: floorCount,
-                                    }, true);
-                                }
-                                else
-                                {
-                                    const roofTileExists = gridService.tileExists(x + i, y, floorCount, "Roof");
-                                    const manualRoofTile = gridService.isUserTile(x + i, y, floorCount, "Roof");
-
-                                    console.log("ROOFTILEEXISTS2: " + roofTileExists);
-                                    console.log("MANUALROOFTILE2: " + manualRoofTile);
-
-                                    if(roofTileExists && !manualRoofTile)
-                                    {
-                                        //alert("Caught an already existing roof tile")
-                                    }
-
-                                    gridService.placeTile2({
-                                        name: slopeTile.tile + '.png',
-                                        url: slopeTile.tile + '.png',
-                                        x: x + i,
-                                        y: y ,
-                                        offsetX: slopeTile.offset ? Number.parseInt(slopeTile.offset) : 0,
-                                        offsetY: slopeTile.offset ? Number.parseInt(slopeTile.offset) : 0,
-                                        layer: roofTileExists && !manualRoofTile ? 'Roof2' : "Roof",
-                                        level: floorCount
-                                    }, true);
-                                }
-                            }
-                        }
+                    if (depth === 'Point5') {
+                        const capTile = capTiles.find(tile => tile.enum === 'PeakPt5S');
+                        placeCapTile(this.gridService, capTile, x, y, height, 0);
                     }
 
-                    function placeCapTile(gridService: GridService, capTile: any, x: number, y: number, height: number, direction: number) {
-                        if (capTile) {
-                            for (let i = 0; i < height + 1; i++) {
-                                console.log("placing cap at " + x + ", " + y + ", level: " + floorCount)
-                                if(i === 0 || i === height) 
-                                {
-                                    if(direction === 0)
-                                    {
-                                        gridService.placeTile2({
-                                            name: capTile.tile + '.png',
-                                            url: capTile.tile + '.png',
-                                            x: x,
-                                            y: y + i,
-                                            layer: 'RoofCap',
-                                            level: floorCount
-                                        }, false);
-                                    }
-                                    else
-                                    {
-                                        gridService.placeTile2({
-                                            name: capTile.tile + '.png',
-                                            url: capTile.tile + '.png',
-                                            x: x + i,
-                                            y: y,
-                                            layer: 'RoofCap',
-                                            level: floorCount
-                                        }, false);
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if(roofType == 'PeakNS')
+                    if(depth === 'One')
                     {
-                        //Place cap tiles
-                        if(cappedN)
-                        {
-                            if (depth === 'Point5') {
-                                const capTile = capTiles.find(tile => tile.enum === 'PeakPt5S');
-                                placeCapTile(this.gridService, capTile, x, y, height, 0);
-                            }
-
-                            if(depth === 'One')
-                            {
-                                const leftCap = capTiles.find(tile => tile.enum === 'CapRiseS1');
-                                const rightCap = capTiles.find(tile => tile.enum === 'CapFallS1');
-                        
-                                placeCapTile(this.gridService, leftCap, x, y, height, 0);
-                                placeCapTile(this.gridService, rightCap, x + 1, y, height, 0);
-                            }
-                        
-                            if (depth === 'OnePoint5') {
-                                const leftCap = capTiles.find(tile => tile.enum === 'CapRiseS1');
-                                const middleCap = capTiles.find(tile => tile.enum === 'PeakOnePt5S');
-                                const rightCap = capTiles.find(tile => tile.enum === 'CapFallS1');
-                        
-                                placeCapTile(this.gridService, leftCap, x, y, height, 0);
-                                placeCapTile(this.gridService, middleCap, x + 1, y, height, 0);
-                                placeCapTile(this.gridService, rightCap, x + 2, y, height, 0);
-                            }
-                        
-                            if (depth === 'Two') {
-                                const leftCap1 = capTiles.find(tile => tile.enum === 'CapRiseS1');
-                                const leftCap2 = capTiles.find(tile => tile.enum === 'CapRiseS2');
-                                const rightCap1 = capTiles.find(tile => tile.enum === 'CapFallS2');
-                                const rightCap2 = capTiles.find(tile => tile.enum === 'CapFallS1');
-                        
-                                placeCapTile(this.gridService, leftCap1, x, y, height, 0);
-                                placeCapTile(this.gridService, leftCap2, x + 1, y, height, 0);
-                                placeCapTile(this.gridService, rightCap1, x + 2, y, height, 0);
-                                placeCapTile(this.gridService, rightCap2, x + 3, y, height, 0);
-                            }
-
-                            if (depth === 'TwoPoint5') {
-                                const leftCap1 = capTiles.find(tile => tile.enum === 'CapRiseS1');
-                                const leftCap2 = capTiles.find(tile => tile.enum === 'CapRiseS2');
-                                const middleCap = capTiles.find(tile => tile.enum === 'PeakTwoPt5S');
-                                const rightCap1 = capTiles.find(tile => tile.enum === 'CapFallS2');
-                                const rightCap2 = capTiles.find(tile => tile.enum === 'CapFallS1');
-
-                                placeCapTile(this.gridService, leftCap1, x, y, height, 0);
-                                placeCapTile(this.gridService, leftCap2, x + 1, y, height, 0);
-                                placeCapTile(this.gridService, middleCap, x + 2, y, height, 0);
-                                placeCapTile(this.gridService, rightCap1, x + 3, y, height, 0);
-                                placeCapTile(this.gridService, rightCap2, x + 4, y, height, 0);
-                            }
-                        
-                            if (depth === 'Three') {
-                                for (let i = 1; i <= 3; i++) {
-                                    const rightCap = capTiles.find(tile => tile.enum === `CapFallS${i}`);
-                                    const leftCap = capTiles.find(tile => tile.enum === `CapRiseS${i}`);
-                                    placeCapTile(this.gridService, leftCap, x + i - 1, y, height, 0);
-                                    placeCapTile(this.gridService, rightCap, x + width - i, y, height, 0);
-
-                                    if(width > 6)
-                                    {
-                                        const middleCap = capTiles.find(tile => tile.enum === 'CapGapS3');
-                                        for(let j = 3; j < width - 3; j++)
-                                        {
-                                            placeCapTile(this.gridService, middleCap, x + j, y, height, 0);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Place slope tiles
-                        if (depth === 'Point5') {
-                            const slopeTile = slopeTiles.find(tile => tile.enum === 'SlopePt5E');
-                            placeSlopeTile(this.gridService, slopeTile, x, y, height, 0);
-                        }
-
-                        if (depth === 'One' || depth === 'OnePoint5') {
-                            const slopeTile1 = slopeTiles.find(tile => tile.enum === 'SlopeE1');
-                            placeSlopeTile(this.gridService, slopeTile1, x + width - 1, y, height, 0);
-
-                            if (depth === 'OnePoint5') {
-                                const halfSlopeTile = slopeTiles.find(tile => tile.enum === 'SlopeOnePt5E');
-                                placeSlopeTile(this.gridService, halfSlopeTile, x + 1, y, height, 0);
-                            }
-                        }
-
-                        if (depth === 'Two' || depth === 'TwoPoint5') {
-                            const slopeTile1 = slopeTiles.find(tile => tile.enum === 'SlopeE1');
-                            const slopeTile2 = slopeTiles.find(tile => tile.enum === 'SlopeE2');
-                            placeSlopeTile(this.gridService, slopeTile1, x + width - 1, y, height, 0);
-                            placeSlopeTile(this.gridService, slopeTile2, x + width - 2, y, height, 0);
-
-                            if (depth === 'TwoPoint5') {
-                                const halfSlopeTile = slopeTiles.find(tile => tile.enum === 'SlopeTwoPt5E');
-                                placeSlopeTile(this.gridService, halfSlopeTile, x + width - 3, y, height, 0);
-                            }
-                        }
-
-                        if (depth === 'Three') {
-                            for (let i = 1; i <= 3; i++) {
-                                const slopeTile = slopeTiles.find(tile => tile.enum === `SlopeE${i}`);
-                                placeSlopeTile(this.gridService, slopeTile, x + width - i, y, height, 0);
-                            }
-                        }
+                        const leftCap = capTiles.find(tile => tile.enum === 'CapRiseS1');
+                        const rightCap = capTiles.find(tile => tile.enum === 'CapFallS1');
+                
+                        placeCapTile(this.gridService, leftCap, x, y, height, 0);
+                        placeCapTile(this.gridService, rightCap, x + 1, y, height, 0);
+                    }
+                
+                    if (depth === 'OnePoint5') {
+                        const leftCap = capTiles.find(tile => tile.enum === 'CapRiseS1');
+                        const middleCap = capTiles.find(tile => tile.enum === 'PeakOnePt5S');
+                        const rightCap = capTiles.find(tile => tile.enum === 'CapFallS1');
+                
+                        placeCapTile(this.gridService, leftCap, x, y, height, 0);
+                        placeCapTile(this.gridService, middleCap, x + 1, y, height, 0);
+                        placeCapTile(this.gridService, rightCap, x + 2, y, height, 0);
+                    }
+                
+                    if (depth === 'Two') {
+                        const leftCap1 = capTiles.find(tile => tile.enum === 'CapRiseS1');
+                        const leftCap2 = capTiles.find(tile => tile.enum === 'CapRiseS2');
+                        const rightCap1 = capTiles.find(tile => tile.enum === 'CapFallS2');
+                        const rightCap2 = capTiles.find(tile => tile.enum === 'CapFallS1');
+                
+                        placeCapTile(this.gridService, leftCap1, x, y, height, 0);
+                        placeCapTile(this.gridService, leftCap2, x + 1, y, height, 0);
+                        placeCapTile(this.gridService, rightCap1, x + 2, y, height, 0);
+                        placeCapTile(this.gridService, rightCap2, x + 3, y, height, 0);
                     }
 
-                    else if(roofType == 'PeakWE')
-                    {
-                        //Place cap tiles
-                        if(cappedW)
-                        {
-                            if(depth === 'Point5')
-                            {
-                                const capTile = capTiles.find(tile => tile.enum === 'PeakPt5E');
-                                placeCapTile(this.gridService, capTile, x, y, width, 1);
-                            }
+                    if (depth === 'TwoPoint5') {
+                        const leftCap1 = capTiles.find(tile => tile.enum === 'CapRiseS1');
+                        const leftCap2 = capTiles.find(tile => tile.enum === 'CapRiseS2');
+                        const middleCap = capTiles.find(tile => tile.enum === 'PeakTwoPt5S');
+                        const rightCap1 = capTiles.find(tile => tile.enum === 'CapFallS2');
+                        const rightCap2 = capTiles.find(tile => tile.enum === 'CapFallS1');
 
-                            if(depth === 'One')
-                            {
-                                const leftCap = capTiles.find(tile => tile.enum === 'CapFallE1');
-                                const rightCap = capTiles.find(tile => tile.enum === 'CapRiseE1');
-                        
-                                placeCapTile(this.gridService, leftCap, x, y, width, 1);
-                                placeCapTile(this.gridService, rightCap, x, y + 1, width, 1);
-                            }
-
-                            if (depth === 'OnePoint5') {
-                                const leftCap = capTiles.find(tile => tile.enum === 'CapFallE1');
-                                const middleCap = capTiles.find(tile => tile.enum === 'PeakOnePt5E');
-                                const rightCap = capTiles.find(tile => tile.enum === 'CapRiseE1');
-                        
-                                placeCapTile(this.gridService, leftCap, x, y, width, 1);
-                                placeCapTile(this.gridService, middleCap, x, y + 1, width, 1);
-                                placeCapTile(this.gridService, rightCap, x, y + 2, width, 1);
-                            }
-
-                            if (depth === 'Two') {
-                                const leftCap1 = capTiles.find(tile => tile.enum === 'CapFallE1');
-                                const leftCap2 = capTiles.find(tile => tile.enum === 'CapFallE2');
-                                const rightCap1 = capTiles.find(tile => tile.enum === 'CapRiseE2');
-                                const rightCap2 = capTiles.find(tile => tile.enum === 'CapRiseE1');
-                        
-                                placeCapTile(this.gridService, leftCap1, x, y, width, 1);
-                                placeCapTile(this.gridService, leftCap2, x, y + 1, width, 1);
-                                placeCapTile(this.gridService, rightCap1, x, y + 2, width, 1);
-                                placeCapTile(this.gridService, rightCap2, x, y + 3, width, 1);
-                            }
-
-                            if (depth === 'TwoPoint5') {
-                                const leftCap1 = capTiles.find(tile => tile.enum === 'CapFallE1');
-                                const leftCap2 = capTiles.find(tile => tile.enum === 'CapFallE2');
-                                const middleCap = capTiles.find(tile => tile.enum === 'PeakTwoPt5E');
-                                const rightCap1 = capTiles.find(tile => tile.enum === 'CapRiseE2');
-                                const rightCap2 = capTiles.find(tile => tile.enum === 'CapRiseE1');
-
-                                placeCapTile(this.gridService, leftCap1, x, y, width, 1);
-                                placeCapTile(this.gridService, leftCap2, x, y + 1, width, 1);
-                                placeCapTile(this.gridService, middleCap, x, y + 2, width, 1);
-                                placeCapTile(this.gridService, rightCap1, x, y + 3, width, 1);
-                                placeCapTile(this.gridService, rightCap2, x, y + 4, width, 1);
-                            }
-
-                            if (depth === 'Three') {
-                                for (let i = 1; i <= 3; i++) {
-                                    const rightCap = capTiles.find(tile => tile.enum === `CapRiseE${i}`);
-                                    const leftCap = capTiles.find(tile => tile.enum === `CapFallE${i}`);
-                                    placeCapTile(this.gridService, leftCap, x, y + i - 1, width, 1);
-                                    placeCapTile(this.gridService, rightCap, x, y + height - i, width, 1);
-
-                                    if(height > 6)
-                                    {
-                                        const middleCap = capTiles.find(tile => tile.enum === 'CapGapE3');
-                                        for(let j = 3; j < height - 3; j++)
-                                        {
-                                            placeCapTile(this.gridService, middleCap, x, y + j, width, 1);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        //Place Slope Tiles
-                        if (depth === 'Point5') {
-                            const slopeTile = slopeTiles.find(tile => tile.enum === 'SlopePt5S');
-                            placeSlopeTile(this.gridService, slopeTile, x, y, width, 1);
-                        }
-
-                        if (depth === 'One' || depth === 'OnePoint5') {
-                            const slopeTile1 = slopeTiles.find(tile => tile.enum === 'SlopeS1');
-                            placeSlopeTile(this.gridService, slopeTile1, x, y + height - 1, width, 1);
-
-                            if (depth === 'OnePoint5') {
-                                const halfSlopeTile = slopeTiles.find(tile => tile.enum === 'SlopeOnePt5S');
-                                placeSlopeTile(this.gridService, halfSlopeTile, x, y + 1, width, 1);
-                            }
-                        }
-
-                        if(depth === 'Two' || depth === 'TwoPoint5') {
-                            const slopeTile1 = slopeTiles.find(tile => tile.enum === 'SlopeS1');
-                            const slopeTile2 = slopeTiles.find(tile => tile.enum === 'SlopeS2');
-                            placeSlopeTile(this.gridService, slopeTile1, x, y + height - 1, width, 1);
-                            placeSlopeTile(this.gridService, slopeTile2, x, y + height - 2, width, 1);
-
-                            if (depth === 'TwoPoint5') {
-                                const halfSlopeTile = slopeTiles.find(tile => tile.enum === 'SlopeTwoPt5S');
-                                placeSlopeTile(this.gridService, halfSlopeTile, x, y + height - 3, width, 1);
-                            }
-                        }
-
-                        if(depth === 'Three') {
-                            for(let i = 1; i <= 3; i++)
-                            {
-                                const slopeTile = slopeTiles.find(tile => tile.enum === `SlopeS${i}`);
-                                placeSlopeTile(this.gridService, slopeTile, x, y + height - i, width, 1);
-                            }
-                        }
-
-                        // if (depth === 'Two') {
-                        //     const slopeTile1 = slopeTiles.find(tile => tile.enum === 'SlopeE1');
-                        //     const slopeTile2 = slopeTiles.find(tile => tile.enum === 'SlopeE2');
-                        //     placeSlopeTile(this.gridService, slopeTile1, x + width - 1, y, height, 1);
-                        //     placeSlopeTile(this.gridService, slopeTile2, x + width - 2, y, height, 1);
-                        // }
-
-                        // if (depth === 'Three') {
-                        //     for (let i = 1; i <= 3; i++) {
-                        //         const slopeTile = slopeTiles.find(tile => tile.enum === `SlopeE${i}`);
-                        //         placeSlopeTile(this.gridService, slopeTile, x + width - i, y, height, 1);
-                        //     }
-                        // }
+                        placeCapTile(this.gridService, leftCap1, x, y, height, 0);
+                        placeCapTile(this.gridService, leftCap2, x + 1, y, height, 0);
+                        placeCapTile(this.gridService, middleCap, x + 2, y, height, 0);
+                        placeCapTile(this.gridService, rightCap1, x + 3, y, height, 0);
+                        placeCapTile(this.gridService, rightCap2, x + 4, y, height, 0);
                     }
+                
+                    if (depth === 'Three') {
+                        for (let i = 1; i <= 3; i++) {
+                            const rightCap = capTiles.find(tile => tile.enum === `CapFallS${i}`);
+                            const leftCap = capTiles.find(tile => tile.enum === `CapRiseS${i}`);
+                            placeCapTile(this.gridService, leftCap, x + i - 1, y, height, 0);
+                            placeCapTile(this.gridService, rightCap, x + width - i, y, height, 0);
 
-                    else if(roofType == 'FlatTop')
-                    {
-                        console.log(topTiles)
-                        const flatRoofTile = topTiles.find(tile => tile.enum === 'West3');
-
-                        if(flatRoofTile)
-                        {
-                            for(let i = 0; i < height; i++)
+                            if(width > 6)
                             {
-                                for(let j = 0; j < width; j++)
+                                const middleCap = capTiles.find(tile => tile.enum === 'CapGapS3');
+                                for(let j = 3; j < width - 3; j++)
                                 {
-                                    const roofTileExists = this.gridService.tileExists(x + j, y + i, floorCount, "Floor");
-                                    const manualRoofTile = this.gridService.isUserTile(x + j, y + i, floorCount, "Floor");
-
-                                    this.gridService.placeTile2({
-                                        name: flatRoofTile.tile + '.png',
-                                        url: flatRoofTile.tile + '.png',
-                                        x: x + j,
-                                        y: y + i,
-                                        offsetX: flatRoofTile.offset ? Number.parseInt(flatRoofTile.offset) : 0,
-                                        offsetY: flatRoofTile.offset ? Number.parseInt(flatRoofTile.offset) : 0,
-                                        layer: roofTileExists && !manualRoofTile ? 'FloorOverlay' : "Floor",
-                                        level: floorCount
-                                    }, true);
+                                    placeCapTile(this.gridService, middleCap, x + j, y, height, 0);
                                 }
                             }
                         }
                     }
                 }
 
-                if(obj.type == 'furniture')
+                // Place slope tiles
+                if (depth === 'Point5') {
+                    const slopeTile = slopeTiles.find(tile => tile.enum === 'SlopePt5E');
+                    placeSlopeTile(this.gridService, slopeTile, x, y, height, 0);
+                }
+
+                if (depth === 'One' || depth === 'OnePoint5') {
+                    const slopeTile1 = slopeTiles.find(tile => tile.enum === 'SlopeE1');
+                    placeSlopeTile(this.gridService, slopeTile1, x + width - 1, y, height, 0);
+
+                    if (depth === 'OnePoint5') {
+                        const halfSlopeTile = slopeTiles.find(tile => tile.enum === 'SlopeOnePt5E');
+                        placeSlopeTile(this.gridService, halfSlopeTile, x + 1, y, height, 0);
+                    }
+                }
+
+                if (depth === 'Two' || depth === 'TwoPoint5') {
+                    const slopeTile1 = slopeTiles.find(tile => tile.enum === 'SlopeE1');
+                    const slopeTile2 = slopeTiles.find(tile => tile.enum === 'SlopeE2');
+                    placeSlopeTile(this.gridService, slopeTile1, x + width - 1, y, height, 0);
+                    placeSlopeTile(this.gridService, slopeTile2, x + width - 2, y, height, 0);
+
+                    if (depth === 'TwoPoint5') {
+                        const halfSlopeTile = slopeTiles.find(tile => tile.enum === 'SlopeTwoPt5E');
+                        placeSlopeTile(this.gridService, halfSlopeTile, x + width - 3, y, height, 0);
+                    }
+                }
+
+                if (depth === 'Three') {
+                    for (let i = 1; i <= 3; i++) {
+                        const slopeTile = slopeTiles.find(tile => tile.enum === `SlopeE${i}`);
+                        placeSlopeTile(this.gridService, slopeTile, x + width - i, y, height, 0);
+                    }
+                }
+            }
+
+            else if(roofType == 'PeakWE')
+            {
+                //Place cap tiles
+                if(cappedW)
+                {
+                    if(depth === 'Point5')
+                    {
+                        const capTile = capTiles.find(tile => tile.enum === 'PeakPt5E');
+                        placeCapTile(this.gridService, capTile, x, y, width, 1);
+                    }
+
+                    if(depth === 'One')
+                    {
+                        const leftCap = capTiles.find(tile => tile.enum === 'CapFallE1');
+                        const rightCap = capTiles.find(tile => tile.enum === 'CapRiseE1');
+                
+                        placeCapTile(this.gridService, leftCap, x, y, width, 1);
+                        placeCapTile(this.gridService, rightCap, x, y + 1, width, 1);
+                    }
+
+                    if (depth === 'OnePoint5') {
+                        const leftCap = capTiles.find(tile => tile.enum === 'CapFallE1');
+                        const middleCap = capTiles.find(tile => tile.enum === 'PeakOnePt5E');
+                        const rightCap = capTiles.find(tile => tile.enum === 'CapRiseE1');
+                
+                        placeCapTile(this.gridService, leftCap, x, y, width, 1);
+                        placeCapTile(this.gridService, middleCap, x, y + 1, width, 1);
+                        placeCapTile(this.gridService, rightCap, x, y + 2, width, 1);
+                    }
+
+                    if (depth === 'Two') {
+                        const leftCap1 = capTiles.find(tile => tile.enum === 'CapFallE1');
+                        const leftCap2 = capTiles.find(tile => tile.enum === 'CapFallE2');
+                        const rightCap1 = capTiles.find(tile => tile.enum === 'CapRiseE2');
+                        const rightCap2 = capTiles.find(tile => tile.enum === 'CapRiseE1');
+                
+                        placeCapTile(this.gridService, leftCap1, x, y, width, 1);
+                        placeCapTile(this.gridService, leftCap2, x, y + 1, width, 1);
+                        placeCapTile(this.gridService, rightCap1, x, y + 2, width, 1);
+                        placeCapTile(this.gridService, rightCap2, x, y + 3, width, 1);
+                    }
+
+                    if (depth === 'TwoPoint5') {
+                        const leftCap1 = capTiles.find(tile => tile.enum === 'CapFallE1');
+                        const leftCap2 = capTiles.find(tile => tile.enum === 'CapFallE2');
+                        const middleCap = capTiles.find(tile => tile.enum === 'PeakTwoPt5E');
+                        const rightCap1 = capTiles.find(tile => tile.enum === 'CapRiseE2');
+                        const rightCap2 = capTiles.find(tile => tile.enum === 'CapRiseE1');
+
+                        placeCapTile(this.gridService, leftCap1, x, y, width, 1);
+                        placeCapTile(this.gridService, leftCap2, x, y + 1, width, 1);
+                        placeCapTile(this.gridService, middleCap, x, y + 2, width, 1);
+                        placeCapTile(this.gridService, rightCap1, x, y + 3, width, 1);
+                        placeCapTile(this.gridService, rightCap2, x, y + 4, width, 1);
+                    }
+
+                    if (depth === 'Three') {
+                        for (let i = 1; i <= 3; i++) {
+                            const rightCap = capTiles.find(tile => tile.enum === `CapRiseE${i}`);
+                            const leftCap = capTiles.find(tile => tile.enum === `CapFallE${i}`);
+                            placeCapTile(this.gridService, leftCap, x, y + i - 1, width, 1);
+                            placeCapTile(this.gridService, rightCap, x, y + height - i, width, 1);
+
+                            if(height > 6)
+                            {
+                                const middleCap = capTiles.find(tile => tile.enum === 'CapGapE3');
+                                for(let j = 3; j < height - 3; j++)
+                                {
+                                    placeCapTile(this.gridService, middleCap, x, y + j, width, 1);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                //Place Slope Tiles
+                if (depth === 'Point5') {
+                    const slopeTile = slopeTiles.find(tile => tile.enum === 'SlopePt5S');
+                    placeSlopeTile(this.gridService, slopeTile, x, y, width, 1);
+                }
+
+                if (depth === 'One' || depth === 'OnePoint5') {
+                    const slopeTile1 = slopeTiles.find(tile => tile.enum === 'SlopeS1');
+                    placeSlopeTile(this.gridService, slopeTile1, x, y + height - 1, width, 1);
+
+                    if (depth === 'OnePoint5') {
+                        const halfSlopeTile = slopeTiles.find(tile => tile.enum === 'SlopeOnePt5S');
+                        placeSlopeTile(this.gridService, halfSlopeTile, x, y + 1, width, 1);
+                    }
+                }
+
+                if(depth === 'Two' || depth === 'TwoPoint5') {
+                    const slopeTile1 = slopeTiles.find(tile => tile.enum === 'SlopeS1');
+                    const slopeTile2 = slopeTiles.find(tile => tile.enum === 'SlopeS2');
+                    placeSlopeTile(this.gridService, slopeTile1, x, y + height - 1, width, 1);
+                    placeSlopeTile(this.gridService, slopeTile2, x, y + height - 2, width, 1);
+
+                    if (depth === 'TwoPoint5') {
+                        const halfSlopeTile = slopeTiles.find(tile => tile.enum === 'SlopeTwoPt5S');
+                        placeSlopeTile(this.gridService, halfSlopeTile, x, y + height - 3, width, 1);
+                    }
+                }
+
+                if(depth === 'Three') {
+                    for(let i = 1; i <= 3; i++)
+                    {
+                        const slopeTile = slopeTiles.find(tile => tile.enum === `SlopeS${i}`);
+                        placeSlopeTile(this.gridService, slopeTile, x, y + height - i, width, 1);
+                    }
+                }
+
+                // if (depth === 'Two') {
+                //     const slopeTile1 = slopeTiles.find(tile => tile.enum === 'SlopeE1');
+                //     const slopeTile2 = slopeTiles.find(tile => tile.enum === 'SlopeE2');
+                //     placeSlopeTile(this.gridService, slopeTile1, x + width - 1, y, height, 1);
+                //     placeSlopeTile(this.gridService, slopeTile2, x + width - 2, y, height, 1);
+                // }
+
+                // if (depth === 'Three') {
+                //     for (let i = 1; i <= 3; i++) {
+                //         const slopeTile = slopeTiles.find(tile => tile.enum === `SlopeE${i}`);
+                //         placeSlopeTile(this.gridService, slopeTile, x + width - i, y, height, 1);
+                //     }
+                // }
+            }
+
+            else if(roofType == 'FlatTop')
+            {
+                console.log(topTiles)
+                const flatRoofTile = topTiles.find(tile => tile.enum === 'West3');
+
+                if(flatRoofTile)
+                {
+                    for(let i = 0; i < height; i++)
+                    {
+                        for(let j = 0; j < width; j++)
+                        {
+                            const roofTileExists = this.gridService.tileExists(x + j, y + i, level, "Floor");
+                            const manualRoofTile = this.gridService.isUserTile(x + j, y + i, level, "Floor");
+
+                            this.gridService.placeTile2({
+                                name: flatRoofTile.tile + '.png',
+                                url: flatRoofTile.tile + '.png',
+                                x: x + j,
+                                y: y + i,
+                                offsetX: flatRoofTile.offset ? Number.parseInt(flatRoofTile.offset) : 0,
+                                offsetY: flatRoofTile.offset ? Number.parseInt(flatRoofTile.offset) : 0,
+                                layer: roofTileExists && !manualRoofTile ? 'FloorOverlay' : "Floor",
+                                level: level
+                            }, true);
+                        }
+                    }
+                }
+            }
+        }
+
+        if(obj.type == 'furniture')
                 {
                     const FurnitureTilesNum = Number.parseInt(obj.FurnitureTiles);
-                    const furnitureIndex = this.building.used_furniture.split(' ')[FurnitureTilesNum];
-                    const furniture = this.building.furniture[Number.parseInt(furnitureIndex)];
+                    const furnitureIndex = building.used_furniture.split(' ')[FurnitureTilesNum];
+                    const furniture = building.furniture[Number.parseInt(furnitureIndex)];
                     let orient: string = obj.orient;
                     const x = Number.parseInt(obj.x);
                     const y = Number.parseInt(obj.y);
@@ -743,7 +759,7 @@ export class BuildingService {
                         tiles: furnitureObjectTiles,
                         x: x,
                         y: y,
-                        level: floorCount,
+                        level: level,
                         width: 0,
                         length: 0,
                         orient: orient,
@@ -752,7 +768,7 @@ export class BuildingService {
 
                     //const furnitureName = furniture.entries.find(entry => entry.orient === orient)?.tiles[0].name + '.png';
 
-                    const containsOrient = this.building.furniture[FurnitureTilesNum].entries.find(entry => entry.orient === orient);
+                    const containsOrient = building.furniture[FurnitureTilesNum].entries.find(entry => entry.orient === orient);
                     if(!containsOrient)
                     {
                         if(orient == 'E')
@@ -765,9 +781,9 @@ export class BuildingService {
                         }
                     }
 
-                    this.building.furniture[FurnitureTilesNum].entries.find(entry => entry.orient === orient)?.tiles.forEach(tile => {
+                    building.furniture[FurnitureTilesNum].entries.find(entry => entry.orient === orient)?.tiles.forEach(tile => {
 
-                        if(this.building.furniture[FurnitureTilesNum].layer == 'Walls')
+                        if(building.furniture[FurnitureTilesNum].layer == 'Walls')
                         {
                             furnitureObject.type = 'Wall';
 
@@ -780,18 +796,18 @@ export class BuildingService {
                                 x: newX,
                                 y: newY,
                                 layer: 'Walls',
-                                level: floorCount
+                                level: level
                             };
 
-                            const wallTile = this.gridService.roomTiles.find(t => t.x == newX + tile.x && t.y == newY && (t.layer == 'Walls' || t.layer == "Walls2") && t.level == floorCount);
+                            const wallTile = this.gridService.roomTiles.find(t => t.x == newX + tile.x && t.y == newY && (t.layer == 'Walls' || t.layer == "Walls2") && t.level == level);
                             
                             console.log(wallTile)
 
-                            if(wallTile && !this.gridService.isUserTile(newX, newY, floorCount, "Walls") && !this.gridService.isUserTile(newX, newY, floorCount, "Walls2"))
+                            if(wallTile && !this.gridService.isUserTile(newX, newY, level, "Walls") && !this.gridService.isUserTile(newX, newY, level, "Walls2"))
                             {
                                 const wallType = wallTile.layer;
-                                const wallEntry = this.building.entries.find(entry => entry.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]));
-                                const selectedEntry = this.building.entries.find(entry => entry.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]))?.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]);
+                                const wallEntry = building.entries.find(entry => entry.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]));
+                                const selectedEntry = building.entries.find(entry => entry.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]))?.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]);
                                 const replacementTile = wallEntry?.tiles.find(tile => tile.enum == 'West');
 
                                 if(selectedEntry?.enum?.includes('NorthWest'))
@@ -804,7 +820,7 @@ export class BuildingService {
                                         x: newX,
                                         y: newY,
                                         layer: 'Walls2',
-                                        level: floorCount
+                                        level: level
                                     };
                                     console.log('cornerTile', cornerTile);
                                     this.gridService.placeTile2(cornerTile, true);
@@ -827,7 +843,7 @@ export class BuildingService {
                                 furnitureObject.width = tile.y;
                             }
                         }
-                        else if(this.building.furniture[FurnitureTilesNum].layer == 'WallFurniture')
+                        else if(building.furniture[FurnitureTilesNum].layer == 'WallFurniture')
                         {
                             furnitureObject.type = 'WallFurniture';
 
@@ -837,7 +853,7 @@ export class BuildingService {
                                 x: x + tile.x,
                                 y: y + tile.y,
                                 layer: 'WallFurniture',
-                                level: floorCount
+                                level: level
                             };
 
                             this.gridService.placeTile2(tileToPlace, false);
@@ -853,7 +869,7 @@ export class BuildingService {
                             }
                         }
 
-                        else if(this.building.furniture[FurnitureTilesNum].layer == 'Frames')
+                        else if(building.furniture[FurnitureTilesNum].layer == 'Frames')
                         {
                             const tileToPlace = {
                                 name: tile.name + '.png',
@@ -861,13 +877,13 @@ export class BuildingService {
                                 x: x + tile.x,
                                 y: y + tile.y,
                                 layer: 'Frames',
-                                level: floorCount
+                                level: level
                             };
 
                             this.gridService.placeTile2(tileToPlace, false);
                         }
 
-                        else if(!this.building.furniture[FurnitureTilesNum].layer || this.building.furniture[FurnitureTilesNum].layer == undefined)
+                        else if(!building.furniture[FurnitureTilesNum].layer || building.furniture[FurnitureTilesNum].layer == undefined)
                         {
                             const tileToPlace = {
                                 name: tile.name + '.png',
@@ -875,22 +891,22 @@ export class BuildingService {
                                 x: x + tile.x,
                                 y: y + tile.y,
                                 layer: 'Furniture',
-                                level: floorCount
+                                level: level
                             };
 
-                            if(this.gridService.getTileAt(x + tile.x, y + tile.y, floorCount, "Furniture") != undefined)
+                            if(this.gridService.getTileAt(x + tile.x, y + tile.y, level, "Furniture") != undefined)
                             {
                                 tileToPlace.layer = "Furniture2"
                                 //this.building.furniture[FurnitureTilesNum].layer = "Furniture2"
                             }
 
-                            if(this.gridService.getTileAt(x + tile.x, y + tile.y, floorCount, "Furniture2") != undefined)
+                            if(this.gridService.getTileAt(x + tile.x, y + tile.y, level, "Furniture2") != undefined)
                             {
                                 tileToPlace.layer = "Furniture3"
                                 //this.building.furniture[FurnitureTilesNum].layer = "Furniture3"
                             }
 
-                            if(this.gridService.getTileAt(x + tile.x, y + tile.y, floorCount, "Furniture3") != undefined)
+                            if(this.gridService.getTileAt(x + tile.x, y + tile.y, level, "Furniture3") != undefined)
                             {
                                 tileToPlace.layer = "Furniture4"
                                 //this.building.furniture[FurnitureTilesNum].layer = "Furniture4"
@@ -912,333 +928,360 @@ export class BuildingService {
 
                     console.log(furnitureObject);
                     this.gridService.addObject(furnitureObject);
-                }
+        }
 
-                if(obj.type == 'wall')
+        if(obj.type == 'wall')
+        {
+            const length = Number.parseInt(obj.length);
+            const interiorTile = Number.parseInt(obj.InteriorTile);
+            const exteriorTrim = Number.parseInt(obj.ExteriorTrim);
+            const interiorTrim = Number.parseInt(obj.InteriorTrim);
+            const Tile = Number.parseInt(obj.Tile);
+            const x = Number.parseInt(obj.x);
+            const y = Number.parseInt(obj.y);
+            const dir = obj.dir;
+            const wallDir = (obj.dir == 'E' || obj.dir == 'W') ? 'N' : 'W';
+            const dirFullName = this.getFullDir(wallDir);
+            
+            const tile = building.entries[Tile - 1]?.tiles.find(tile => tile.enum === dirFullName);
+            const intTile = building.entries[interiorTile - 1]?.tiles.find(tile => tile.enum === dirFullName);
+
+            const wallObjectTiles: SvgTile[] = [];
+            const wallObject = {
+                tiles: wallObjectTiles,
+                x: x,
+                y: y,
+                level: level,
+                width: 0,
+                length: 0,
+                orient: wallDir,
+                type: 'Wall'
+            }
+
+            
+            // Place wall tiles for the entire length
+            for (let i = 0; i < length; i++) {
+
+                //Set temp variables
+                const newX = dir === 'E' || dir === 'W' ? x + i : x;
+                const newY = dir === 'N' || dir === 'S' ? y + i : y;
+                let newLayer = this.gridService.getTileAt(newX, newY, level, "Walls") ? "Walls2" : "Walls";
+                const isInRoom = this.roomService.getRoomFromTile(newX, newY, level) != null;
+
+                if(isInRoom)
                 {
-                    const length = Number.parseInt(obj.length);
-                    const interiorTile = Number.parseInt(obj.InteriorTile);
-                    const exteriorTrim = Number.parseInt(obj.ExteriorTrim);
-                    const interiorTrim = Number.parseInt(obj.InteriorTrim);
-                    const Tile = Number.parseInt(obj.Tile);
-                    const x = Number.parseInt(obj.x);
-                    const y = Number.parseInt(obj.y);
-                    const dir = obj.dir;
-                    const wallDir = (obj.dir == 'E' || obj.dir == 'W') ? 'N' : 'W';
-                    const dirFullName = this.getFullDir(wallDir);
-                    
-                    const tile = this.building.entries[Tile - 1]?.tiles.find(tile => tile.enum === dirFullName);
-                    const intTile = this.building.entries[interiorTile - 1]?.tiles.find(tile => tile.enum === dirFullName);
-
-                    const wallObjectTiles: SvgTile[] = [];
-                    const wallObject = {
-                        tiles: wallObjectTiles,
-                        x: x,
-                        y: y,
-                        level: floorCount,
-                        width: 0,
-                        length: 0,
-                        orient: wallDir,
-                        type: 'Wall'
-                    }
-
-                    
-                    // Place wall tiles for the entire length
-                    for (let i = 0; i < length; i++) {
-
-                        //Set temp variables
-                        const newX = dir === 'E' || dir === 'W' ? x + i : x;
-                        const newY = dir === 'N' || dir === 'S' ? y + i : y;
-                        let newLayer = this.gridService.getTileAt(newX, newY, floorCount, "Walls") ? "Walls2" : "Walls";
-                        const isInRoom = this.roomService.getRoomFromTile(newX, newY, floorCount) != null;
-
-                        if(isInRoom)
-                        {
-                            if(intTile)
-                            {
-                                console.log(intTile);
-                                const tileToPlace = {
-                                    name: intTile.tile + '.png',
-                                    url: intTile.tile + '.png',
-                                    x: newX, // Increment x position for horizontal walls
-                                    y: newY, // Increment y position for vertical walls
-                                    layer: newLayer,
-                                    level: floorCount
-                                };
-                                this.gridService.placeTile2(tileToPlace, true);
-
-                                wallObject.tiles.push(tileToPlace);
-
-                                //this.gridService.roomTiles.push(tileToPlace);
-                            }
-                            else if(!this.gridService.isUserTile(newX, newY, floorCount, "Walls") && !this.gridService.isUserTile(newX, newY, floorCount, "Walls2"))
-                            {
-                                //alert("Excluding a tile")
-                                this.gridService.excludeTile(newX, newY, floorCount, "Walls");
-                                this.gridService.excludeTile(newX, newY, floorCount, "Walls2");
-                            }
-                        }
-                        else
-                        {
-                            if(tile)
-                            {
-                                const tileToPlace = {
-                                    name: tile.tile + '.png',
-                                    url: tile.tile + '.png',
-                                    x: newX, // Increment x position for horizontal walls
-                                    y: newY, // Increment y position for vertical walls
-                                    layer: newLayer,
-                                    level: floorCount
-                                };
-                                this.gridService.placeTile2(tileToPlace, true);
-
-                                wallObject.tiles.push(tileToPlace);
-
-                                //this.gridService.roomTiles.push(tileToPlace);
-                            }
-                            else if(!this.gridService.isUserTile(newX, newY, floorCount, "Walls") && !this.gridService.isUserTile(newX, newY, floorCount, "Walls2"))
-                            {
-                                //alert("Excluding a tile")
-                                this.gridService.excludeTile(newX, newY, floorCount, "Walls");
-                                this.gridService.excludeTile(newX, newY, floorCount, "Walls2");
-                            }
-                        }
-                        
-                    }
-                    
-                    if(wallDir == 'N')
+                    if(intTile)
                     {
-                        wallObject.length = length - 1;
-                    }
-                    if(wallDir == 'W')
-                    {
-                        wallObject.width = length - 1;
-                    }
-
-                    this.gridService.addObject(wallObject);
-                    console.log("PLACING WALL AT " + tile)
-                }
-
-                if(obj.type == 'door')
-                {
-                    const FrameTile = Number.parseInt(obj.FrameTile);
-                    const Tile = Number.parseInt(obj.Tile);
-                    const dir = obj.dir;
-                    const dirFullName = this.getFullDir(dir);
-                    const x = Number.parseInt(obj.x);
-                    const y = Number.parseInt(obj.y);
-
-                    const frameTile = this.building.entries[FrameTile - 1]?.tiles.find(tile => tile.enum === dirFullName);
-                    const tile = this.building.entries[Tile - 1]?.tiles.find(tile => tile.enum === dirFullName);
-
-                    const doorObjectTiles: SvgTile[] = [];
-                    const doorObject = {
-                        tiles: doorObjectTiles,
-                        x: x,
-                        y: y,
-                        level: floorCount,
-                        width: 0,
-                        length: 0,
-                        orient: dir,
-                        type: 'Door'
-                    }
-
-                    this.gridService.addObject(doorObject);
-
-                    const tileToPlace = {
-                        name: tile?.tile + '.png',
-                        url: tile?.tile + '.png',
-                        x: x,
-                        y: y,
-                        layer: 'Doors',
-                        level: floorCount
-                    };
-
-                    const frameTileToPlace = {
-                        name: frameTile?.tile + '.png',
-                        url: frameTile?.tile + '.png',
-                        x: x,
-                        y: y,
-                        layer: 'Frames',
-                        level: floorCount
-                    };
-
-                    const wallTile = this.gridService.roomTiles.find(tile => tile.x == x && tile.y == y && (tile.layer == 'Walls' || tile.layer == "Walls2") && tile.level == floorCount);
-                    if(wallTile && !this.gridService.isUserTile(x, y, floorCount, "Walls") && !this.gridService.isUserTile(x, y, floorCount, "Walls2"))
-                    {
-                        const wallType = wallTile.layer;
-                        const wallEntry = this.building.entries.find(entry => entry.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]));
-                        const selectedEntry = this.building.entries.find(entry => entry.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]))?.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]);
-                        const doorwayTile = wallEntry?.tiles.find(tile => tile.enum == dirFullName + "Door");
-
-                        console.log('wallTile', wallTile);
-                        console.log('selectedEntry', selectedEntry);
-                        console.log('wallEntry', wallEntry);
-                        console.log('doorwayTile', doorwayTile);
-                        const doorWallTile = {
-                            name: doorwayTile?.tile + '.png',
-                            url: doorwayTile?.tile + '.png',
-                            x: x,
-                            y: y,
-                            layer: wallType,
-                            level: floorCount
+                        console.log(intTile);
+                        const tileToPlace = {
+                            name: intTile.tile + '.png',
+                            url: intTile.tile + '.png',
+                            x: newX, // Increment x position for horizontal walls
+                            y: newY, // Increment y position for vertical walls
+                            layer: newLayer,
+                            level: level
                         };
-                        this.gridService.placeTile2(doorWallTile, true);
-
-                        if(selectedEntry?.enum?.includes('NorthWest'))
-                        {
-                            const oppositeDir = dirFullName == 'North' ? 'West' : 'North';
-                            const cornerTile = {
-                                name: wallEntry?.tiles.find(tile => tile.enum == oppositeDir)?.tile + '.png',
-                                url: wallEntry?.tiles.find(tile => tile.enum == oppositeDir)?.tile + '.png',
-                                x: x,
-                                y: y,
-                                layer: 'Walls2',
-                                level: floorCount
-                            };
-                            console.log('cornerTile', cornerTile);
-                            this.gridService.placeTile2(cornerTile, true);
-                        }
-                        else if(selectedEntry?.enum?.includes('NorthEast'))
-                        {}
-                    }
-
-                    console.log("PLACING DOOR AT ");
-                    console.log(frameTileToPlace)
-
-                    if(Tile != 0)
-                    {
                         this.gridService.placeTile2(tileToPlace, true);
+
+                        wallObject.tiles.push(tileToPlace);
+
+                        //this.gridService.roomTiles.push(tileToPlace);
                     }
-                    if(FrameTile != 0)
+                    else if(!this.gridService.isUserTile(newX, newY, level, "Walls") && !this.gridService.isUserTile(newX, newY, level, "Walls2"))
                     {
-                        this.gridService.placeTile2(frameTileToPlace, true);
+                        //alert("Excluding a tile")
+                        this.gridService.excludeTile(newX, newY, level, "Walls");
+                        this.gridService.excludeTile(newX, newY, level, "Walls2");
                     }
                 }
-
-                if(obj.type == 'window')
+                else
                 {
-                    const CurtainsTile = Number.parseInt(obj.CurtainsTile);
-                    const ShuttersTile = Number.parseInt(obj.ShuttersTile);
-                    const Tile = Number.parseInt(obj.Tile);
-                    const dir = obj.dir;
-                    const dirFullName = this.getFullDir(dir);
-                    const x = Number.parseInt(obj.x);
-                    const y = Number.parseInt(obj.y);
-                    const windowInside = this.roomService.getRoomFromTile(x, y, floorCount) != null
-
-                    const curtainsTile = this.building.entries[CurtainsTile - 1]?.tiles.find(tile => tile.enum === dirFullName);
-                    const shuttersTile = this.building.entries[ShuttersTile - 1]?.tiles.find(tile => tile.enum === dirFullName);
-                    const tile = this.building.entries[Tile - 1]?.tiles.find(tile => tile.enum === dirFullName);
-
-                    const windowObjectTiles: SvgTile[] = [];
-                    const windowObject = {
-                        tiles: windowObjectTiles,
-                        x: x,
-                        y: y,
-                        level: floorCount,
-                        width: 0,
-                        length: 0,
-                        orient: dir,
-                        type: 'Door'
-                    }
-
-                    this.gridService.addObject(windowObject);
-
-                    const tileToPlace = {
-                        name: tile?.tile + '.png',
-                        url: tile?.tile + '.png',
-                        x: x,
-                        y: y,
-                        layer: 'Windows',
-                        level: floorCount
-                    };
-
-                    const curtainTileToPlace = {
-                        name: curtainsTile?.tile + '.png',
-                        url: curtainsTile?.tile + '.png',
-                        x: x,
-                        y: y,
-                        layer: 'Curtains',
-                        level: floorCount
-                    };
-
-                    if(!windowInside)
+                    if(tile)
                     {
-                        if(dir === 'N')
-                        {
-                            curtainTileToPlace.y -= 1;
-                            const newCurtainsTile = this.building.entries[CurtainsTile - 1]?.tiles.find(tile => tile.enum === this.getFullDir("S"));
-                            curtainTileToPlace.name = newCurtainsTile?.tile + ".png";
-                            curtainTileToPlace.url = newCurtainsTile?.tile + ".png";
-                            curtainTileToPlace.layer = "Curtains2"
-                        }
-                        else {
-                            curtainTileToPlace.x -= 1;
-                            const newCurtainsTile = this.building.entries[CurtainsTile - 1]?.tiles.find(tile => tile.enum === this.getFullDir("E"));
-                            curtainTileToPlace.name = newCurtainsTile?.tile + ".png";
-                            curtainTileToPlace.url = newCurtainsTile?.tile + ".png";
-                            curtainTileToPlace.layer = "Curtains2"
-                        }
-                    }
-
-                    const shuttersTileToPlace = {
-                        name: curtainsTile?.tile + '.png',
-                        url: curtainsTile?.tile + '.png',
-                        x: x,
-                        y: y,
-                        layer: 'Curtains',
-                        level: floorCount
-                    }
-
-                    const wallTile = this.gridService.roomTiles.find(tile => tile.x == x && tile.y == y && (tile.layer == 'Walls' || tile.layer == "Walls2") && tile.level == floorCount);
-                    if(wallTile && !this.gridService.isUserTile(x, y, floorCount, "Walls") && !this.gridService.isUserTile(x, y, floorCount, "Walls2"))
-                    {
-                        const wallType = wallTile.layer;
-                        const wallEntry = this.building.entries.find(entry => entry.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]));
-                        const selectedEntry = this.building.entries.find(entry => entry.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]))?.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]);
-                        const openingTile = wallEntry?.tiles.find(tile => tile.enum == dirFullName + "Window");
-
-                        const doorWallTile = {
-                            name: openingTile?.tile + '.png',
-                            url: openingTile?.tile + '.png',
-                            x: x,
-                            y: y,
-                            layer: wallType,
-                            level: floorCount
+                        const tileToPlace = {
+                            name: tile.tile + '.png',
+                            url: tile.tile + '.png',
+                            x: newX, // Increment x position for horizontal walls
+                            y: newY, // Increment y position for vertical walls
+                            layer: newLayer,
+                            level: level
                         };
-                        this.gridService.placeTile2(doorWallTile, true);
-
-                        if(selectedEntry?.enum?.includes('NorthWest'))
-                        {
-                            const oppositeDir = dirFullName == 'North' ? 'West' : 'North';
-                            const cornerTile = {
-                                name: wallEntry?.tiles.find(tile => tile.enum == oppositeDir)?.tile + '.png',
-                                url: wallEntry?.tiles.find(tile => tile.enum == oppositeDir)?.tile + '.png',
-                                x: x,
-                                y: y,
-                                layer: 'Walls2',
-                                level: floorCount
-                            };
-                            console.log('cornerTile', cornerTile);
-                            this.gridService.placeTile2(cornerTile, true);
-                        }
-                        else if(selectedEntry?.enum?.includes('NorthEast'))
-                        {}
-                    }
-
-                    console.log("PLACING WINDOW AT ");
-                    console.log(curtainTileToPlace)
-
-                    if(Tile != 0)
-                    {
                         this.gridService.placeTile2(tileToPlace, true);
+
+                        wallObject.tiles.push(tileToPlace);
+
+                        //this.gridService.roomTiles.push(tileToPlace);
                     }
-                    if(CurtainsTile != 0)
+                    else if(!this.gridService.isUserTile(newX, newY, level, "Walls") && !this.gridService.isUserTile(newX, newY, level, "Walls2"))
                     {
-                        this.gridService.placeTile2(curtainTileToPlace, true);
+                        //alert("Excluding a tile")
+                        this.gridService.excludeTile(newX, newY, level, "Walls");
+                        this.gridService.excludeTile(newX, newY, level, "Walls2");
                     }
                 }
+                
+            }
+            
+            if(wallDir == 'N')
+            {
+                wallObject.length = length - 1;
+            }
+            if(wallDir == 'W')
+            {
+                wallObject.width = length - 1;
+            }
+
+            this.gridService.addObject(wallObject);
+            console.log("PLACING WALL AT " + tile)
+        }
+
+        if(obj.type == 'door')
+        {
+            const FrameTile = Number.parseInt(obj.FrameTile);
+            const Tile = Number.parseInt(obj.Tile);
+            const dir = obj.dir;
+            const dirFullName = this.getFullDir(dir);
+            const x = Number.parseInt(obj.x);
+            const y = Number.parseInt(obj.y);
+
+            const frameTile = building.entries[FrameTile - 1]?.tiles.find(tile => tile.enum === dirFullName);
+            const tile = building.entries[Tile - 1]?.tiles.find(tile => tile.enum === dirFullName);
+
+            const doorObjectTiles: SvgTile[] = [];
+            const doorObject = {
+                tiles: doorObjectTiles,
+                x: x,
+                y: y,
+                level: level,
+                width: 0,
+                length: 0,
+                orient: dir,
+                type: 'Door'
+            }
+
+            this.gridService.addObject(doorObject);
+
+            const tileToPlace = {
+                name: tile?.tile + '.png',
+                url: tile?.tile + '.png',
+                x: x,
+                y: y,
+                layer: 'Doors',
+                level: level
+            };
+
+            const frameTileToPlace = {
+                name: frameTile?.tile + '.png',
+                url: frameTile?.tile + '.png',
+                x: x,
+                y: y,
+                layer: 'Frames',
+                level: level
+            };
+
+            doorObject.tiles.push(tileToPlace);
+            doorObject.tiles.push(frameTileToPlace);
+
+            console.log(doorObject);
+
+            const wallTile = this.gridService.roomTiles.find(tile => tile.x == x && tile.y == y && (tile.layer == 'Walls' || tile.layer == "Walls2") && tile.level == level);
+            if(wallTile && !this.gridService.isUserTile(x, y, level, "Walls") && !this.gridService.isUserTile(x, y, level, "Walls2"))
+            {
+                const wallType = wallTile.layer;
+                const wallEntry = building.entries.find(entry => entry.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]));
+                const selectedEntry = building.entries.find(entry => entry.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]))?.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]);
+                const doorwayTile = wallEntry?.tiles.find(tile => tile.enum == dirFullName + "Door");
+
+                console.log('wallTile', wallTile);
+                console.log('selectedEntry', selectedEntry);
+                console.log('wallEntry', wallEntry);
+                console.log('doorwayTile', doorwayTile);
+                const doorWallTile = {
+                    name: doorwayTile?.tile + '.png',
+                    url: doorwayTile?.tile + '.png',
+                    x: x,
+                    y: y,
+                    layer: wallType,
+                    level: level
+                };
+                this.gridService.placeTile2(doorWallTile, true);
+
+                if(selectedEntry?.enum?.includes('NorthWest'))
+                {
+                    const oppositeDir = dirFullName == 'North' ? 'West' : 'North';
+                    const cornerTile = {
+                        name: wallEntry?.tiles.find(tile => tile.enum == oppositeDir)?.tile + '.png',
+                        url: wallEntry?.tiles.find(tile => tile.enum == oppositeDir)?.tile + '.png',
+                        x: x,
+                        y: y,
+                        layer: 'Walls2',
+                        level: level
+                    };
+                    console.log('cornerTile', cornerTile);
+                    this.gridService.placeTile2(cornerTile, true);
+                }
+                else if(selectedEntry?.enum?.includes('NorthEast'))
+                {}
+            }
+
+            console.log("PLACING DOOR AT ");
+            console.log(frameTileToPlace)
+
+            if(Tile != 0)
+            {
+                this.gridService.placeTile2(tileToPlace, true);
+            }
+            if(FrameTile != 0)
+            {
+                this.gridService.placeTile2(frameTileToPlace, true);
+            }
+        }
+
+        if(obj.type == 'window')
+        {
+            const CurtainsTile = Number.parseInt(obj.CurtainsTile);
+            const ShuttersTile = Number.parseInt(obj.ShuttersTile);
+            const Tile = Number.parseInt(obj.Tile);
+            const dir = obj.dir;
+            const dirFullName = this.getFullDir(dir);
+            const x = Number.parseInt(obj.x);
+            const y = Number.parseInt(obj.y);
+            const windowInside = this.roomService.getRoomFromTile(x, y, level) != null
+
+            const curtainsTile = building.entries[CurtainsTile - 1]?.tiles.find(tile => tile.enum === dirFullName);
+            const shuttersTile = building.entries[ShuttersTile - 1]?.tiles.find(tile => tile.enum === dirFullName);
+            const tile = building.entries[Tile - 1]?.tiles.find(tile => tile.enum === dirFullName);
+
+            const windowObjectTiles: SvgTile[] = [];
+            const windowObject = {
+                tiles: windowObjectTiles,
+                x: x,
+                y: y,
+                level: level,
+                width: 0,
+                length: 0,
+                orient: dir,
+                type: 'Window'
+            }
+
+            this.gridService.addObject(windowObject);
+
+            const tileToPlace = {
+                name: tile?.tile + '.png',
+                url: tile?.tile + '.png',
+                x: x,
+                y: y,
+                layer: 'Windows',
+                level: level
+            };
+
+            const curtainTileToPlace = {
+                name: curtainsTile?.tile + '.png',
+                url: curtainsTile?.tile + '.png',
+                x: x,
+                y: y,
+                layer: 'Curtains',
+                level: level
+            };
+
+            if(!windowInside)
+            {
+                if(dir === 'N')
+                {
+                    curtainTileToPlace.y -= 1;
+                    const newCurtainsTile = building.entries[CurtainsTile - 1]?.tiles.find(tile => tile.enum === this.getFullDir("S"));
+                    curtainTileToPlace.name = newCurtainsTile?.tile + ".png";
+                    curtainTileToPlace.url = newCurtainsTile?.tile + ".png";
+                    curtainTileToPlace.layer = "Curtains2"
+                }
+                else {
+                    curtainTileToPlace.x -= 1;
+                    const newCurtainsTile = building.entries[CurtainsTile - 1]?.tiles.find(tile => tile.enum === this.getFullDir("E"));
+                    curtainTileToPlace.name = newCurtainsTile?.tile + ".png";
+                    curtainTileToPlace.url = newCurtainsTile?.tile + ".png";
+                    curtainTileToPlace.layer = "Curtains2"
+                }
+            }
+
+            const shuttersTileToPlace = {
+                name: curtainsTile?.tile + '.png',
+                url: curtainsTile?.tile + '.png',
+                x: x,
+                y: y,
+                layer: 'Curtains',
+                level: level
+            }
+
+            const wallTile = this.gridService.roomTiles.find(tile => tile.x == x && tile.y == y && (tile.layer == 'Walls' || tile.layer == "Walls2") && tile.level == level);
+            if(wallTile && !this.gridService.isUserTile(x, y, level, "Walls") && !this.gridService.isUserTile(x, y, level, "Walls2"))
+            {
+                const wallType = wallTile.layer;
+                const wallEntry = building.entries.find(entry => entry.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]));
+                const selectedEntry = building.entries.find(entry => entry.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]))?.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]);
+                const openingTile = wallEntry?.tiles.find(tile => tile.enum == dirFullName + "Window");
+
+                const doorWallTile = {
+                    name: openingTile?.tile + '.png',
+                    url: openingTile?.tile + '.png',
+                    x: x,
+                    y: y,
+                    layer: wallType,
+                    level: level
+                };
+                this.gridService.placeTile2(doorWallTile, true);
+
+                if(selectedEntry?.enum?.includes('NorthWest'))
+                {
+                    const oppositeDir = dirFullName == 'North' ? 'West' : 'North';
+                    const cornerTile = {
+                        name: wallEntry?.tiles.find(tile => tile.enum == oppositeDir)?.tile + '.png',
+                        url: wallEntry?.tiles.find(tile => tile.enum == oppositeDir)?.tile + '.png',
+                        x: x,
+                        y: y,
+                        layer: 'Walls2',
+                        level: level
+                    };
+                    console.log('cornerTile', cornerTile);
+                    this.gridService.placeTile2(cornerTile, true);
+                }
+                else if(selectedEntry?.enum?.includes('NorthEast'))
+                {}
+            }
+
+            console.log("PLACING WINDOW AT ");
+            console.log(curtainTileToPlace)
+
+            if(Tile != 0)
+            {
+                this.gridService.placeTile2(tileToPlace, true);
+            }
+            if(CurtainsTile != 0)
+            {
+                this.gridService.placeTile2(curtainTileToPlace, true);
+            }
+        }
+    }
+
+    placeTiles()
+    {
+        let building = this.building;
+        this.store.select(fromRoot.getBuilding).subscribe(b => {
+            if (b) {
+                building = b;
+                // Do something with the building
+                // For example, you can store it locally or perform other operations
+            }
+        });
+
+        //this.gridService.roomTiles = [];
+        //this.gridService.userTiles = [];
+        this.gridService.objects = [];
+
+        let floorCount = -1
+        building.floors.forEach(floor => {
+            floorCount++;
+            floor.objects.forEach(obj => {
+                this.placeTile(obj, floorCount);
             });
         });
     }
@@ -1248,7 +1291,7 @@ export class BuildingService {
         return Number.parseInt(elem.getAttribute(attr)!) ?? 0;
     }
 
-    private getFullDir(dir: string): string
+    public getFullDir(dir: string): string
     {
         switch(dir)
         {

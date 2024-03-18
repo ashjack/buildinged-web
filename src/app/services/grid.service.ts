@@ -11,9 +11,6 @@ import { CacheService } from "./cache.service";
 export class GridService {
     //rooms: GridRoom[] = [];
 
-    rowArray = Array(20).fill(0).map((x,i)=>i);
-    colArray = Array(20).fill(0).map((x,i)=>i);
-
     roomTiles: SvgTile[] = [];
     userTiles: SvgTile[] = [];
     tiles: SvgTile[] = [];
@@ -276,6 +273,14 @@ export class GridService {
     });
   }
 
+  getObjectFromTile(x: number, y: number, level: number, layer: string): SvgObject | undefined {
+    return this.objects.find((obj: SvgObject) => {
+        return obj.tiles.some((tile: SvgTile) => {
+          tile.x === x && tile.y === y && tile.level === level && tile.layer === layer;
+        });
+    });
+}
+
   tileExists(x: number, y: number, level: number, layer: string): boolean {
     return this.tiles.some((tile: SvgTile) => {
       return tile.x === x && tile.y === y && tile.level === level && tile.layer == layer;
@@ -351,6 +356,31 @@ export class GridService {
     setSelectedLevel(level: number) {
       console.log(level);
       localStorage.setItem('selectedLevel', level.toString());
+    }
+
+    public getFullDir(dir: string): string
+    {
+        switch(dir)
+        {
+            case 'N':
+                return 'North';
+            case 'S':
+                return 'South';
+            case 'E':
+                return 'East';
+            case 'W':
+                return 'West';
+            case 'NE':
+                return 'NorthEast';
+            case 'NW':
+                return 'NorthWest';
+            case 'SE':
+                return 'SouthEast';
+            case 'SW':
+                return 'SouthWest';
+            default:
+                return '';
+        }
     }
 
 }
