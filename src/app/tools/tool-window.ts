@@ -1,12 +1,13 @@
 import { SvgTile } from "../models/app.models";
-import { DoorService } from "../services/door.service";
+import { BuildingService } from "../services/building.service";
 import { GridService } from "../services/grid.service";
+import { WindowService } from "../services/window.service";
 import ToolDraw from "./tool-draw";
 import ToolPlace from "./tool-place";
 
-export default class ToolDoor extends ToolDraw {
+export default class ToolWindow extends ToolDraw {
 
-    doorTile = '';
+    windowTile = '';
     frameTile = '';
     archTile = '';
 
@@ -14,21 +15,24 @@ export default class ToolDoor extends ToolDraw {
 
     tileGhosts: SvgTile[] = [];
 
-    constructor(private doorService: DoorService, private gridService: GridService) {
+    constructor(private windowService: WindowService, private gridService: GridService, private buildingService: BuildingService) {
         super();
     }
 
-    override hoverTile(x: number, y: number, closestEdge?: string, closestCorner?: string) {
+    override hoverTile(x: number, y: number, closestEdge?: string, closestCorner?: string) 
+    {
+        const windowTiles = this.buildingService.getEntry(this.buildingService.building.Window);
+        const curtainTiles = this.buildingService.getEntry(this.buildingService.building.Curtains);
 
-        let selectedTile = 'fixtures_doors_01_005.png';
-        const selectedLayer = 'Doors';
+        let selectedTile = windowTiles.tiles.find(x => x.enum == 'North');
+        const selectedLayer = 'Windows';
         const selectedLevel = this.gridService.getSelectedLevel();
 
         this.edge = closestEdge ?? '';
-    
+
         if(closestEdge === 'N' || closestEdge === 'S')
         {
-            selectedTile = 'fixtures_doors_01_005.png';
+            selectedTile = windowTiles.tiles.find(x => x.enum == 'North');
             if(closestEdge === 'S')
             {
                 y += 1;
@@ -36,7 +40,7 @@ export default class ToolDoor extends ToolDraw {
         }
         else if(closestEdge === 'W' || closestEdge === 'E')
         {
-            selectedTile = 'fixtures_doors_01_004.png';
+            selectedTile = windowTiles.tiles.find(x => x.enum == 'West');
             if(closestEdge === 'E')
             {
                 x += 1;
@@ -47,8 +51,8 @@ export default class ToolDoor extends ToolDraw {
         {
         this.tileGhosts = [];
         const tile: SvgTile = {
-          name: selectedTile,
-          url: this.gridService.getIndividualTile(selectedTile),
+          name: selectedTile?.tile + ".png",
+          url: this.gridService.getIndividualTile(selectedTile + ".png"),
           x: x,
           y: y, 
           layer: selectedLayer,
@@ -74,7 +78,7 @@ export default class ToolDoor extends ToolDraw {
             x += 1;
             this.edge = 'W'
         }
-        this.doorService.placeDoor(x, y, 0, this.edge);
+        this.windowService.placeWindow(x, y, 0, this.edge);
     }
 
     override clickTile(x: number, y: number): void {

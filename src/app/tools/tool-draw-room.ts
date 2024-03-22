@@ -219,7 +219,19 @@ export default class ToolDrawRoom extends ToolDraw {
                 else
                 {
                     topTiles.push(tile);
-                    placeTile(tile.x, tile.y, tile.level, this.interiorWallTiles[1], true);
+                    console.log(this.gridService.objects)
+                    if(this.gridService.getObjectAt(tile.x, tile.y, tile.level, 'Door'))
+                    {
+                        placeTile(tile.x, tile.y, tile.level, this.interiorWallTiles[7], true);
+                    }
+                    else if(this.gridService.getObjectAt(tile.x, tile.y, tile.level, 'Window'))
+                    {
+                        placeTile(tile.x, tile.y, tile.level, this.interiorWallTiles[5], true);
+                    }
+                    else
+                    {
+                        placeTile(tile.x, tile.y, tile.level, this.interiorWallTiles[1], true);
+                    }
                 }
             }
             //Bottom
@@ -234,7 +246,19 @@ export default class ToolDrawRoom extends ToolDraw {
                 else
                 {
                     bottomTiles.push(tile);
-                    placeTile(tile.x, tile.y + 1, tile.level, this.exteriorWallTiles[1]);
+                    if(this.gridService.getObjectAt(tile.x, tile.y + 1, tile.level, 'Door'))
+                    {
+                        placeTile(tile.x, tile.y + 1, tile.level, this.exteriorWallTiles[7]);
+                    }
+                    else if(this.gridService.getObjectAt(tile.x, tile.y + 1, tile.level, 'Window'))
+                    {
+                        placeTile(tile.x, tile.y + 1, tile.level, this.exteriorWallTiles[5]);
+                    }
+                    else
+                    {
+                        placeTile(tile.x, tile.y + 1, tile.level, this.exteriorWallTiles[1]);
+                    }
+                    //placeTile(tile.x, tile.y + 1, tile.level, this.exteriorWallTiles[1]);
                 }
             }
             //Left
@@ -248,7 +272,19 @@ export default class ToolDrawRoom extends ToolDraw {
                 else
                 {
                     leftTiles.push(tile);
-                    placeTile(tile.x, tile.y, tile.level, this.interiorWallTiles[0], true);
+                    if(this.gridService.getObjectAt(tile.x, tile.y, tile.level, 'Door'))
+                    {
+                        placeTile(tile.x, tile.y, tile.level, this.interiorWallTiles[6], true);
+                    }
+                    else if(this.gridService.getObjectAt(tile.x, tile.y, tile.level, 'Window'))
+                    {
+                        placeTile(tile.x, tile.y, tile.level, this.interiorWallTiles[4], true);
+                    }
+                    else
+                    {
+                        placeTile(tile.x, tile.y, tile.level, this.interiorWallTiles[0], true);
+                    }
+                    //placeTile(tile.x, tile.y, tile.level, this.interiorWallTiles[0], true);
                 }
             }
             //Right
@@ -261,7 +297,19 @@ export default class ToolDrawRoom extends ToolDraw {
                 }
 
                 rightTiles.push(tile);
-                placeTile(tile.x + 1, tile.y, tile.level, this.exteriorWallTiles[0]);
+                if(this.gridService.getObjectAt(tile.x + 1, tile.y, tile.level, 'Door'))
+                {
+                    placeTile(tile.x + 1, tile.y, tile.level, this.exteriorWallTiles[6]);
+                }
+                else if(this.gridService.getObjectAt(tile.x + 1, tile.y, tile.level, 'Window'))
+                {
+                    placeTile(tile.x + 1, tile.y, tile.level, this.exteriorWallTiles[4]);
+                }
+                else
+                {
+                    placeTile(tile.x + 1, tile.y, tile.level, this.exteriorWallTiles[0]);
+                }
+                //placeTile(tile.x + 1, tile.y, tile.level, this.exteriorWallTiles[0]);
                 
             }
         });

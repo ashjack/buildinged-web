@@ -71,8 +71,8 @@ export default class ToolTile extends ToolDraw {
         {
           this.tileGhosts.push(tile);
         }
-    }
       }
+    }
 
     override beginDrag(x: number, y: number): void {
         this.beginDragCoords = [x, y];
