@@ -12,12 +12,14 @@ import * as fromRoot from '../app.reducers';
 import ToolDraw from "../tools/tool-draw";
 import ToolDrawRoom from "../tools/tool-draw-room";
 import ToolTile from "../tools/tool-tile";
-import { GridTile, SvgObject, SvgTile } from "../models/app.models";
+import { GridTile, Point, SvgObject, SvgObjectOverlay, SvgTile } from "../models/app.models";
 import { CacheService } from "../services/cache.service";
 import { BuildingService } from "../services/building.service";
-import { ScheduleRedraw } from "../app.actions";
+import { RemoveObject, ScheduleRedraw } from "../app.actions";
 import ToolDoor from "../tools/tool-door";
 import { DoorService } from "../services/door.service";
+import ToolWindow from "../tools/tool-window";
+import { WindowService } from "../services/window.service";
 
 @Component({
     selector: 'app-viewport-canvas',
@@ -48,6 +50,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
 
   currentHoverCoords: Point = {x: 0, y: 0};
   currentHoverCoordSegments = {edge: '', corner: ''}
+  currentHoverObject: SvgObject | undefined = undefined;
 
   newPositions: Position[] = [];
 
@@ -69,7 +72,8 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     private gridService: GridService,
     private roomService: RoomService,
     private cacheService: CacheService,
-    private doorService: DoorService) 
+    private doorService: DoorService,
+    private windowService: WindowService) 
   { 
     this.selectedTool$ = store.select(fromRoot.getCurrentTool);
     this.scheduleRedraw$ = store.select(fromRoot.getRedrawSchedule);
@@ -119,6 +123,9 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
           break;
         case 'tool-door':
           this.selectedTool = new ToolDoor(this.doorService, this.gridService);
+          break;return;
+        case 'tool-window':
+          this.selectedTool = new ToolWindow(this.windowService, this.gridService, this.buildingService);
           break;
         default:
           this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService);
@@ -167,13 +174,12 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     //this.gridService.showAllTiles();
     //this.gridService.redrawTiles();
 
-    if(closestEdge != this.currentHoverCoordSegments.edge || closestCorner != this.currentHoverCoordSegments.corner)
+    if(closestEdge !== this.currentHoverCoordSegments.edge || closestCorner !== this.currentHoverCoordSegments.corner)
     {
       this.currentHoverCoordSegments = {edge: closestEdge ?? '', corner: closestCorner ?? ''}
-      //if(this.selectedTool)
     }
 
-    if(this.currentHoverCoords.x == x && this.currentHoverCoords.y == y)
+    else if(this.currentHoverCoords.x == x && this.currentHoverCoords.y == y)
     {
       return;
     }
@@ -344,7 +350,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
 
   drawTiles() {
 
-    if (this.selectedTool instanceof ToolTile || this.selectedTool instanceof ToolDoor) {
+    if (this.selectedTool instanceof ToolTile || this.selectedTool instanceof ToolDoor || this.selectedTool instanceof ToolWindow) {
       this.selectedTool.tileGhosts.forEach((tile: SvgTile) => {
           // Filter out tiles with the same position and layer on the same level as the hovering tile
           this.gridService.tiles = this.gridService.tiles.filter((t: SvgTile) => {
@@ -422,16 +428,17 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   }
 
   drawTileOverlays() {
+    this.gridService.objectOverlays = [];
     this.gridService.objects.forEach((obj: SvgObject) => {   
       if(obj.level === this.gridService.getSelectedLevel())
       {   
-        this.drawOverlayBlock(obj.x, obj.y, obj.length ?? 0, obj.width ?? 0, '#1d1aeb60', '#ffffff30', obj.orient, obj.type);
+        this.drawOverlayBlock(obj.x, obj.y, obj.length ?? 0, obj.width ?? 0, '#1d1aeb60', '#ffffff30', obj.orient, obj.type, obj);
       }
     });
   }
 
   drawOverlay() {
-    if(this.selectedTool instanceof ToolDraw && !(this.selectedTool instanceof ToolDoor))
+    if(this.selectedTool instanceof ToolDraw && !(this.selectedTool instanceof ToolDoor) && !(this.selectedTool instanceof ToolWindow))
     {
       this.selectedTool.dragTiles.forEach((tile: SvgTile) => {
         this.drawOverlaySquare(tile.x, tile.y, 'black', this.selectedTool.getTileFill(tile.x, tile.y));
@@ -491,7 +498,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     return polygon;
   }
 
-  drawOverlayBlock(x: number, y: number, length: number, width: number, lineColor: string, fillColor: string, orient?: string, type?: string) {
+  drawOverlayBlock(x: number, y: number, length: number, width: number, lineColor: string, fillColor: string, orient?: string, type?: string, obj?: SvgObject) {
     if(!this.ctx) {
       throw new Error('Canvas context is not defined')
     };
@@ -502,6 +509,11 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     if(orient == 'W' && (type == 'Wall' || type == 'Door' || type == 'Window'))
     {
       x--;
+    }
+
+    if(this.currentHoverObject == obj)
+    {
+      console.log(fillColor + " " + lineColor)
     }
 
     const canvasX = 2500 + x * 100 - y * 100;
@@ -542,6 +554,12 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
 
         this.ctx.fillStyle = fillColor;
         this.ctx.fill();
+
+        const objOverlay: SvgObjectOverlay = {
+          points: [{x: topX, y: topY}, {x: rightX, y: rightY}, {x: rightX - 20 * this.zoom, y: rightY + 10 * this.zoom}, {x: topX - 20 * this.zoom, y: topY + 10 * this.zoom}],
+          object: obj
+        }
+        if(obj) { this.gridService.objectOverlays.push(objOverlay); }
       }
       if(orient?.includes('W'))
       {
@@ -558,6 +576,12 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
         
         this.ctx.fillStyle = fillColor;
         this.ctx.fill();
+
+        const objOverlay: SvgObjectOverlay = {
+          points: [{x: topX, y: topY}, {x: leftX, y: leftY}, {x: leftX + 20 * this.zoom, y: leftY + 10 * this.zoom}, {x: topX + 20 * this.zoom, y: topY + 10 * this.zoom}],
+          object: obj
+        }
+        if(obj) { this.gridService.objectOverlays.push(objOverlay); }
       }
       if(orient?.includes('S'))
       {
@@ -574,6 +598,12 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
         
         this.ctx.fillStyle = fillColor;
         this.ctx.fill();
+
+        const objOverlay: SvgObjectOverlay = {
+          points: [{x: bottomX, y: bottomY}, {x: leftX, y: leftY}, {x: leftX + 20 * this.zoom, y: leftY - 10 * this.zoom}, {x: bottomX + 20 * this.zoom, y: bottomY - 10 * this.zoom}],
+          object: obj
+        }
+        if(obj) { this.gridService.objectOverlays.push(objOverlay); }
       }
       if(orient?.includes('E'))
       {
@@ -590,6 +620,12 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
         
         this.ctx.fillStyle = fillColor;
         this.ctx.fill();
+
+        const objOverlay: SvgObjectOverlay = {
+          points: [{x: bottomX, y: bottomY}, {x: rightX, y: rightY}, {x: rightX - 20 * this.zoom, y: rightY - 10 * this.zoom}, {x: bottomX - 20 * this.zoom, y: bottomY - 10 * this.zoom}],
+          object: obj
+        }
+        if(obj) { this.gridService.objectOverlays.push(objOverlay); }
       }
     }
     else if(type == 'Wall' || type == 'Door' || type == 'Window')
@@ -619,6 +655,19 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
 
         this.ctx.fillStyle = fillColor;
         this.ctx.fill();
+
+        const objOverlay: SvgObjectOverlay = {
+          points: [
+              {x: topX, y: topY},
+              {x: rightX, y: rightY},
+              {x: rightX + 20 * this.zoom, y: rightY - 10 * this.zoom},
+              {x: topX + 20 * this.zoom, y: topY - 10 * this.zoom}
+          ],
+          object: obj
+      };
+      
+      if(obj) { this.gridService.objectOverlays.push(objOverlay); }
+      
       }
       if(orient?.includes('W'))
       {
@@ -635,6 +684,19 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
         
         this.ctx.fillStyle = fillColor;
         this.ctx.fill();
+
+        const objOverlay: SvgObjectOverlay = {
+          points: [
+              {x: bottomX, y: bottomY},
+              {x: rightX, y: rightY},
+              {x: rightX + 20 * this.zoom, y: rightY + 10 * this.zoom},
+              {x: bottomX + 20 * this.zoom, y: bottomY + 10 * this.zoom}
+          ],
+          object: obj
+      };
+      
+      if(obj) { this.gridService.objectOverlays.push(objOverlay); }
+      
       }
 
       return;
@@ -654,6 +716,19 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
 
       this.ctx.fillStyle = fillColor; // Set the fill color
       this.ctx.fill(); // Fill the shape with the specified color
+
+      const objOverlay: SvgObjectOverlay = {
+        points: [
+            {x: x, y: y - ypadding}, // Bottom Corner
+            {x: x + size + xsize - xpadding, y: y - (xsize / 2) - size / 2}, // Right Corner
+            {x: x - ysize + xsize, y: y - (ysize / 2) - (xsize / 2) - size + ypadding}, // Top Corner
+            {x: x - size - ysize + xpadding, y: y - (ysize / 2) - size / 2} // Left Corner
+        ],
+        object: obj
+    };
+    
+    if(obj) { this.gridService.objectOverlays.push(objOverlay); }
+    
     }
 
     //Orientation Marker
@@ -758,6 +833,10 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
 
   dragStartPos: Point = {x: 0, y: 0};
   
+  @HostListener('contextmenu', ['$event']) onContextMenu(event: MouseEvent) {
+    event.preventDefault();
+  }
+
   @HostListener('mousedown', ['$event']) onMouseDown(event: MouseEvent){
     if(event.which === 2)
     {
@@ -769,10 +848,23 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
       event.preventDefault();
       this.beginDrag(event, this.currentHoverCoords.x, this.currentHoverCoords.y);
     }
+    else if(event.button === 2)
+    {
+      event.preventDefault();
+      if(this.currentHoverObject)
+      {
+        this.store.dispatch(new RemoveObject(this.currentHoverObject, this.gridService.getSelectedLevel()));
+        this.gridService.removeObject(this.currentHoverObject, this.gridService.getSelectedLevel());
+        //this.buildingService.placeTiles();
+        this.buildingService.removeTile(this.currentHoverObject, this.gridService.getSelectedLevel())
+        this.gridService.redrawTiles();
+        this.drawCanvas();
+      }
+    }
   }
 
   @HostListener('mouseup', ['$event']) onMouseUp(event: MouseEvent){
-    if(event.which === 2)
+    if(event.which === 2 || event.button === 2)
     {
       event.preventDefault();
     }
@@ -797,21 +889,97 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   }
 
   getMousePos(event: MouseEvent) {
-    if(!this.ctx) return;
-    const canvas = this.ctx!.canvas;
+    if (!this.ctx) return;
+    const canvas = this.ctx.canvas;
     const rect = canvas?.getBoundingClientRect();
     const x: number = (Math.round(event.clientX - rect.left) / (rect.right - rect.left) * canvas.width);
-    const y: number =  (Math.round(event.clientY - rect.top) / (rect.bottom - rect.top) * canvas.height);
-    const pos = this.getCoordsFromMousePos(x, y);
+    const y: number = (Math.round(event.clientY - rect.top) / (rect.bottom - rect.top) * canvas.height);
+
+    let nearestEdgeDistanceSq = Infinity;
+    let nearestEdgeIndex = -1;
+    let nearestEdgePoint: Point = { x: 0, y: 0 };
+
     this.newPositions.forEach((pos: Position) => {
-      const pointToCheck: Point = { x: x, y: y };
-      const found = this.pointInPolygon(pointToCheck, pos.point);
-      if(found) {
-        const localX = pos.localPoint.x
-        const localY = pos.localPoint.y
-        this.hoverTile(localX, localY);
-      }
+        const pointToCheck: Point = { x: x, y: y };
+        const found = this.pointInPolygon(pointToCheck, pos.point);
+        if (found) {
+            const localX = pos.localPoint.x;
+            const localY = pos.localPoint.y;
+
+            // Calculate nearest edge
+            for (let i = 0; i < pos.point.length; i++) {
+                const p1 = pos.point[i];
+                const p2 = pos.point[(i + 1) % pos.point.length];
+                const edgeVector = { x: p2.x - p1.x, y: p2.y - p1.y };
+                const pointVector = { x: x - p1.x, y: y - p1.y };
+                const edgeLengthSq = edgeVector.x * edgeVector.x + edgeVector.y * edgeVector.y;
+                const dotProduct = (pointVector.x * edgeVector.x + pointVector.y * edgeVector.y) / edgeLengthSq;
+                let edgePoint: Point;
+                if (dotProduct < 0) {
+                    edgePoint = p1;
+                } else if (dotProduct > 1) {
+                    edgePoint = p2;
+                } else {
+                    edgePoint = { x: p1.x + dotProduct * edgeVector.x, y: p1.y + dotProduct * edgeVector.y };
+                }
+                const distanceSq = (edgePoint.x - x) * (edgePoint.x - x) + (edgePoint.y - y) * (edgePoint.y - y);
+                if (distanceSq < nearestEdgeDistanceSq) {
+                    nearestEdgeDistanceSq = distanceSq;
+                    nearestEdgeIndex = i;
+                    nearestEdgePoint = edgePoint;
+                }
+            }
+
+            let nearestEdge = '';
+            switch(nearestEdgeIndex)
+            {
+              case 0:
+                nearestEdge = 'E';
+                break;
+              case 1:
+                nearestEdge = 'N';
+                break;
+              case 2:
+                nearestEdge = 'W';
+                break;
+              case 3:
+                nearestEdge = 'S';
+                break;
+              default:
+                break;
+            }
+
+            
+
+        //Check for object overlays
+        let foundOverlay = false;
+
+        this.gridService.objectOverlays.forEach((obj) => {
+            const foundOverlayInCurrentIteration = this.pointInPolygon(pointToCheck, obj.points);
+            if (foundOverlayInCurrentIteration) {
+                foundOverlay = true;
+                if (this.currentHoverObject !== obj.object) {
+                    this.currentHoverObject = obj.object;
+                    this.drawCanvas();
+                }
+            }
+        });
+
+        if (!foundOverlay && this.currentHoverObject) {
+            this.currentHoverObject = undefined;
+            this.drawCanvas();
+        }
+
+            this.hoverTile(localX, localY, nearestEdge, ''); // Perform hover action
+        }
     });
+
+    if(nearestEdgeIndex == -1)
+    {
+      this.gridService.showAllTiles();
+      this.gridService.redrawTiles();
+      this.drawCanvas();
+    }
 
     if(event.which === 2)
     {
@@ -884,11 +1052,6 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   }
 
   
-}
-
-interface Point {
-  x: number;
-  y: number;
 }
 
 interface Position {

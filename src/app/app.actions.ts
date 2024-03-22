@@ -4,6 +4,7 @@ import { Building } from "./models/app.models";
 export enum ActionTypes {
     SetBuilding = '[Building] Set Building',
     AddObject = '[Building] Add Object',
+    RemoveObject = '[Building] Remove Object',
 
     SetCurrentTool = '[Grid] Set Current Tool',
     ScheduleRedraw = '[Grid] Schedule Redraw'
@@ -18,6 +19,12 @@ export class SetBuilding implements Action {
 
 export class AddObject implements Action {
     readonly type = ActionTypes.AddObject;
+
+    constructor(public obj: any, public level: number) { }
+}
+
+export class RemoveObject implements Action {
+    readonly type = ActionTypes.RemoveObject;
 
     constructor(public obj: any, public level: number) { }
 }
@@ -40,5 +47,6 @@ export type ActionsUnion =
     SetCurrentTool |
     ScheduleRedraw |
     SetBuilding |
-    AddObject
+    AddObject |
+    RemoveObject
     ;

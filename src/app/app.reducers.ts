@@ -61,6 +61,34 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
           building: updatedBuilding
         };
       }
+      case Actions.ActionTypes.RemoveObject: {
+        if (!state.building) {
+          return state;
+        }
+      
+       
+
+        const updatedBuilding: Building = {
+          ...state.building,
+          floors: state.building.floors.map((floor, index) => {
+            if (index === action.level) {
+              return {
+                ...floor,
+                objects: floor.objects.filter(object => {
+                  return object.x !== action.obj.x || object.y !== action.obj.y || object.type !== action.obj.type || object.orient !== action.obj.orient;
+                })
+              };
+            }
+            return floor;
+          })
+        };
+      
+        return {
+          ...state,
+          building: updatedBuilding
+        };
+      }
+      
       
 
       default: {

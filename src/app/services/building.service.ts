@@ -1043,6 +1043,7 @@ export class BuildingService {
             const dirFullName = this.getFullDir(dir);
             const x = Number.parseInt(obj.x);
             const y = Number.parseInt(obj.y);
+            const room = this.roomService.getRoomFromTile(obj.x, obj.y, level)
 
             const frameTile = building.entries[FrameTile - 1]?.tiles.find(tile => tile.enum === dirFullName);
             const tile = building.entries[Tile - 1]?.tiles.find(tile => tile.enum === dirFullName);
@@ -1067,7 +1068,8 @@ export class BuildingService {
                 x: x,
                 y: y,
                 layer: 'Doors',
-                level: level
+                level: level,
+                object: true
             };
 
             const frameTileToPlace = {
@@ -1076,7 +1078,8 @@ export class BuildingService {
                 x: x,
                 y: y,
                 layer: 'Frames',
-                level: level
+                level: level,
+                object: true
             };
 
             doorObject.tiles.push(tileToPlace);
@@ -1102,9 +1105,11 @@ export class BuildingService {
                     x: x,
                     y: y,
                     layer: wallType,
-                    level: level
+                    level: level,
+                    object: true
                 };
-                this.gridService.placeTile2(doorWallTile, true);
+                this.gridService.placeTile2(doorWallTile, room != null);
+                doorObject.tiles.push(doorWallTile);
 
                 if(selectedEntry?.enum?.includes('NorthWest'))
                 {
@@ -1115,10 +1120,12 @@ export class BuildingService {
                         x: x,
                         y: y,
                         layer: 'Walls2',
-                        level: level
+                        level: level,
+                        object: true
                     };
                     console.log('cornerTile', cornerTile);
-                    this.gridService.placeTile2(cornerTile, true);
+                    this.gridService.placeTile2(cornerTile, room != null);
+                    doorObject.tiles.push(cornerTile);
                 }
                 else if(selectedEntry?.enum?.includes('NorthEast'))
                 {}
@@ -1172,7 +1179,8 @@ export class BuildingService {
                 x: x,
                 y: y,
                 layer: 'Windows',
-                level: level
+                level: level,
+                object: true
             };
 
             const curtainTileToPlace = {
@@ -1181,8 +1189,12 @@ export class BuildingService {
                 x: x,
                 y: y,
                 layer: 'Curtains',
-                level: level
+                level: level,
+                object: true
             };
+
+            windowObject.tiles.push(tileToPlace);
+            windowObject.tiles.push(curtainTileToPlace);
 
             if(!windowInside)
             {
@@ -1209,7 +1221,8 @@ export class BuildingService {
                 x: x,
                 y: y,
                 layer: 'Curtains',
-                level: level
+                level: level,
+                object: true
             }
 
             const wallTile = this.gridService.roomTiles.find(tile => tile.x == x && tile.y == y && (tile.layer == 'Walls' || tile.layer == "Walls2") && tile.level == level);
@@ -1226,9 +1239,11 @@ export class BuildingService {
                     x: x,
                     y: y,
                     layer: wallType,
-                    level: level
+                    level: level,
+                    object: true
                 };
-                this.gridService.placeTile2(doorWallTile, true);
+                this.gridService.placeTile2(doorWallTile, windowInside);
+                windowObject.tiles.push(doorWallTile);
 
                 if(selectedEntry?.enum?.includes('NorthWest'))
                 {
@@ -1239,10 +1254,12 @@ export class BuildingService {
                         x: x,
                         y: y,
                         layer: 'Walls2',
-                        level: level
+                        level: level,
+                        object: true
                     };
                     console.log('cornerTile', cornerTile);
-                    this.gridService.placeTile2(cornerTile, true);
+                    this.gridService.placeTile2(cornerTile, windowInside);
+                    windowObject.tiles.push(cornerTile);
                 }
                 else if(selectedEntry?.enum?.includes('NorthEast'))
                 {}
@@ -1284,6 +1301,142 @@ export class BuildingService {
                 this.placeTile(obj, floorCount);
             });
         });
+    }
+
+    removeTile(obj: SvgObject, level: number)
+    {
+        //alert('removing tile at ' + obj.x + ", " + obj.y)
+        let building = this.building;
+        this.store.select(fromRoot.getBuilding).subscribe(b => {
+            if (b) {
+                building = b;
+            }
+        });
+
+        //if (obj.type == 'Door') {
+            // Reverse the actions for removing tiles on the grid
+            obj.tiles.forEach(tile => {
+                this.gridService.roomTiles = this.gridService.roomTiles.filter(t => t.x !== tile.x || t.y !== tile.y || t.level !== tile.level || t.layer !== tile.layer || t.object !== tile.object)
+                this.gridService.userTiles = this.gridService.userTiles.filter(t => t.x !== tile.x || t.y !== tile.y || t.level !== tile.level || t.layer !== tile.layer || t.object !== tile.object)
+                //this.gridService.removeTile(tile.x, tile.y, obj.level, tile.layer);
+            });
+        
+            // Reverse the actions for adding the object to the grid service
+            this.gridService.removeObject(obj, level);
+        
+            //console.log('Door removed:', obj);
+        //}
+
+        // if(obj.type == 'window')
+        // {
+        //     const CurtainsTile = Number.parseInt(obj.CurtainsTile);
+        //     const ShuttersTile = Number.parseInt(obj.ShuttersTile);
+        //     const Tile = Number.parseInt(obj.Tile);
+        //     const dir = obj.dir;
+        //     const dirFullName = this.getFullDir(dir);
+        //     const x = Number.parseInt(obj.x);
+        //     const y = Number.parseInt(obj.y);
+        //     const windowInside = this.roomService.getRoomFromTile(x, y, level) != null
+
+        //     const curtainsTile = building.entries[CurtainsTile - 1]?.tiles.find(tile => tile.enum === dirFullName);
+        //     const shuttersTile = building.entries[ShuttersTile - 1]?.tiles.find(tile => tile.enum === dirFullName);
+        //     const tile = building.entries[Tile - 1]?.tiles.find(tile => tile.enum === dirFullName);
+
+        //     const windowObjectTiles: SvgTile[] = [];
+        //     const windowObject = {
+        //         tiles: windowObjectTiles,
+        //         x: x,
+        //         y: y,
+        //         level: level,
+        //         width: 0,
+        //         length: 0,
+        //         orient: dir,
+        //         type: 'Window'
+        //     }
+
+        //     this.gridService.removeObject(windowObject, level);
+        //     this.gridService.removeTile(x, y, level, 'Windows');
+
+        //     const curtainTileToPlace = {
+        //         name: curtainsTile?.tile + '.png',
+        //         url: curtainsTile?.tile + '.png',
+        //         x: x,
+        //         y: y,
+        //         layer: 'Curtains',
+        //         level: level
+        //     };
+
+        //     if(!windowInside)
+        //     {
+        //         if(dir === 'N')
+        //         {
+        //             curtainTileToPlace.y -= 1;
+        //             const newCurtainsTile = building.entries[CurtainsTile - 1]?.tiles.find(tile => tile.enum === this.getFullDir("S"));
+        //             curtainTileToPlace.name = newCurtainsTile?.tile + ".png";
+        //             curtainTileToPlace.url = newCurtainsTile?.tile + ".png";
+        //             curtainTileToPlace.layer = "Curtains2"
+        //         }
+        //         else {
+        //             curtainTileToPlace.x -= 1;
+        //             const newCurtainsTile = building.entries[CurtainsTile - 1]?.tiles.find(tile => tile.enum === this.getFullDir("E"));
+        //             curtainTileToPlace.name = newCurtainsTile?.tile + ".png";
+        //             curtainTileToPlace.url = newCurtainsTile?.tile + ".png";
+        //             curtainTileToPlace.layer = "Curtains2"
+        //         }
+        //     }
+
+        //     this.gridService.removeTile(curtainTileToPlace.x, curtainTileToPlace.y, curtainTileToPlace.level, curtainTileToPlace.layer);
+
+        //     const shuttersTileToPlace = {
+        //         name: curtainsTile?.tile + '.png',
+        //         url: curtainsTile?.tile + '.png',
+        //         x: x,
+        //         y: y,
+        //         layer: 'Curtains',
+        //         level: level
+        //     }
+
+        //     const wallTile = this.gridService.roomTiles.find(tile => tile.x == x && tile.y == y && (tile.layer == 'Walls' || tile.layer == "Walls2") && tile.level == level);
+        //     if(wallTile && !this.gridService.isUserTile(x, y, level, "Walls") && !this.gridService.isUserTile(x, y, level, "Walls2"))
+        //     {
+        //         const wallType = wallTile.layer;
+        //         const wallEntry = building.entries.find(entry => entry.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]));
+        //         const selectedEntry = building.entries.find(entry => entry.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]))?.tiles.find(tile => tile.tile == wallTile.name?.split('.')[0]);
+        //         const openingTile = wallEntry?.tiles.find(tile => tile.enum == dirFullName);
+
+        //         const doorWallTile = {
+        //             name: openingTile?.tile + '.png',
+        //             url: openingTile?.tile + '.png',
+        //             x: x,
+        //             y: y,
+        //             layer: wallType,
+        //             level: level
+        //         };
+        //         this.gridService.placeTile2(doorWallTile, true);
+
+        //         if(selectedEntry?.enum?.includes('NorthWest'))
+        //         {
+        //             const oppositeDir = dirFullName == 'North' ? 'West' : 'North';
+        //             const cornerTile = {
+        //                 name: wallEntry?.tiles.find(tile => tile.enum == oppositeDir)?.tile + '.png',
+        //                 url: wallEntry?.tiles.find(tile => tile.enum == oppositeDir)?.tile + '.png',
+        //                 x: x,
+        //                 y: y,
+        //                 layer: 'Walls2',
+        //                 level: level
+        //             };
+        //             console.log('cornerTile', cornerTile);
+        //             this.gridService.placeTile2(cornerTile, true);
+        //         }
+        //         else if(selectedEntry?.enum?.includes('NorthEast'))
+        //         {}
+        //     }
+        // }
+    }
+
+    getEntry(id: number): TileEntry
+    {
+        return this.building.entries[id - 1];
     }
 
     private getAttr(attr: string, elem: Element): number

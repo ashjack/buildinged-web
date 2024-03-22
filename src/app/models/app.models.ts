@@ -14,6 +14,7 @@ export interface SvgTile {
     excluded?: boolean;
     orient?: boolean;
     auto?: boolean;
+    object?: boolean;
 }
 
 export interface SvgObject {
@@ -27,6 +28,12 @@ export interface SvgObject {
     gridLength?: number; //How long one grid worth of the white overlay is
     orient?: string;
     type?: string;
+    overlayCorners?: {x: number, y: number}[]
+}
+
+export interface SvgObjectOverlay {
+    points: Point[];
+    object: SvgObject | undefined;
 }
 
 export interface GridTile {
@@ -41,6 +48,11 @@ export interface GridRoom {
     placedTiles: SvgTile[];
     placedInteriorTiles: SvgTile[];
 }
+
+export interface Point {
+    x: number;
+    y: number;
+  }
 
 //Building File Specific
 export interface Building {

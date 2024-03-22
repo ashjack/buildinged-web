@@ -1,5 +1,5 @@
 import { Injectable } from "@angular/core";
-import { GridRoom, SvgObject, SvgTile } from "../models/app.models";
+import { GridRoom, SvgObject, SvgObjectOverlay, SvgTile } from "../models/app.models";
 import ToolDrawRoom from "../tools/tool-draw-room";
 import { DbService, PngTile } from "./db.service";
 import { SafeResourceUrl } from "@angular/platform-browser";
@@ -18,6 +18,7 @@ export class GridService {
     excludedTiles: SvgTile[] = []; //Tiles that are permenantly hidden but still technically part of the building e.g. hidden walls
 
     objects: SvgObject[] = [];
+    objectOverlays: SvgObjectOverlay[] = [];
 
     fetchedTiles: PngTile[] = [];
     fetchingTiles: string[] = [];
@@ -113,9 +114,9 @@ export class GridService {
       if(isRoom)
       {
         //check if roomTiles contains tile
-        if(this.roomTiles.some((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y && roomTile.layer === tile.layer && roomTile.level == tile.level;}))
+        if(this.roomTiles.some((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y && roomTile.layer === tile.layer && roomTile.level == tile.level && roomTile.object == tile.object;}))
         {
-          const roomTile = this.roomTiles.find((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y && roomTile.layer === tile.layer && roomTile.level == tile.level;});
+          const roomTile = this.roomTiles.find((roomTile: SvgTile) => {return roomTile.x === tile.x && roomTile.y === tile.y && roomTile.layer === tile.layer && roomTile.level == tile.level && roomTile.object == tile.object;});
           if(roomTile)
           {
             roomTile.name = tile.name;
@@ -186,6 +187,16 @@ export class GridService {
   {
     this.objects.push(obj);
   }
+
+  removeObject(obj: any, level: number) {
+    this.objects = this.objects.filter(x => 
+        x.x !== obj.x || 
+        x.y !== obj.y || 
+        x.type !== obj.type || 
+        x.orient !== obj.orient || 
+        x.level !== level
+    );
+}
 
   layers: string[] = [
     'Floor', 
@@ -263,7 +274,7 @@ export class GridService {
 
   removeTile(x: number, y: number, level: number, layer: string) {
     this.tiles = this.tiles.filter((tile: SvgTile) => {
-      return tile.x !== x || tile.y !== y && tile.layer !== layer;
+      return tile.x !== x || tile.y !== y || tile.layer !== layer || tile.level !== level;
     });
   }
 
@@ -276,10 +287,15 @@ export class GridService {
   getObjectFromTile(x: number, y: number, level: number, layer: string): SvgObject | undefined {
     return this.objects.find((obj: SvgObject) => {
         return obj.tiles.some((tile: SvgTile) => {
-          tile.x === x && tile.y === y && tile.level === level && tile.layer === layer;
-        });
+          return tile.x === x && tile.y === y && tile.level === level && tile.layer === layer;
+        }) && obj.tiles.length > 0;
     });
 }
+
+  getObjectAt(x: number, y: number, level: number, type: string, orient?: string): SvgObject | undefined {
+    return this.objects.find(obj => obj.x === x && obj.y === y && obj.level === level && obj.type === type &&
+                                    (obj.orient === orient || !orient))
+  }
 
   tileExists(x: number, y: number, level: number, layer: string): boolean {
     return this.tiles.some((tile: SvgTile) => {
