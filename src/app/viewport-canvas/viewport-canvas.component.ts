@@ -371,6 +371,14 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     let drawnDarkOverlay = false;
 
     this.gridService.tiles.forEach((tile: SvgTile) => {
+      const underObject = this.gridService.getObjectFromTile(tile.x, tile.y, tile.level - 1, "Furniture");
+      if(underObject && underObject.type == 'Stairs')
+      {
+        if(tile.layer == 'Floor')
+        {
+          tile.excluded = true;
+        }
+      }
       if(!tile.hidden && !tile.excluded)
       {
         if(!drawnDarkOverlay && this.gridService.getSelectedLevel() == tile.level && this.ctx)
@@ -383,11 +391,6 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
 
         const tileImage = this.getIndividualTile(tile.name!);
         this.drawTile(tile.x + (tile.offsetX ?? 0), tile.y + (tile.offsetY ?? 0), tile.name!, tileImage as string);
-      }
-      else
-      {
-        console.log(tile)
-        alert(tile.name)
       }
     });
 
