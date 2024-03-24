@@ -171,9 +171,6 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
 }
 
   hoverTile(x: number, y: number, closestEdge?: string, closestCorner?: string) {
-    //this.gridService.showAllTiles();
-    //this.gridService.redrawTiles();
-
     if(closestEdge !== this.currentHoverCoordSegments.edge || closestCorner !== this.currentHoverCoordSegments.corner)
     {
       this.currentHoverCoordSegments = {edge: closestEdge ?? '', corner: closestCorner ?? ''}
@@ -182,6 +179,12 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     else if(this.currentHoverCoords.x == x && this.currentHoverCoords.y == y)
     {
       return;
+    }
+
+    if(this.currentHoverCoords.x != x || this.currentHoverCoords.y != y)
+    {
+      this.gridService.showAllTiles();
+      this.gridService.redrawTiles();
     }
 
     //Gets room within specific walls being hovered over
