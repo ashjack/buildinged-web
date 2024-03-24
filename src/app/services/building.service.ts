@@ -1153,7 +1153,7 @@ export class BuildingService {
             const dirFullName = this.getFullDir(dir);
             const x = Number.parseInt(obj.x);
             const y = Number.parseInt(obj.y);
-            const windowInside = this.roomService.getRoomFromTile(x, y, level) != null
+            const windowInside = this.roomService.getRoomFromTile(obj.x, obj.y, level) != null
 
             const curtainsTile = building.entries[CurtainsTile - 1]?.tiles.find(tile => tile.enum === dirFullName);
             const shuttersTile = building.entries[ShuttersTile - 1]?.tiles.find(tile => tile.enum === dirFullName);
@@ -1276,6 +1276,69 @@ export class BuildingService {
             {
                 this.gridService.placeTile2(curtainTileToPlace, true);
             }
+        }
+
+        if(obj.type == 'stairs') {
+            const StairsTiles = Number.parseInt(obj.Tile);
+            const dir = obj.dir;
+            const dirFullName = this.getFullDir(dir);
+            const x = Number.parseInt(obj.x);
+            const y = Number.parseInt(obj.y);
+            const stairsTile1 = building.entries[StairsTiles - 1]?.tiles.find(tile => tile.enum === dirFullName + "1");
+            const stairsTile2 = building.entries[StairsTiles - 1]?.tiles.find(tile => tile.enum === dirFullName + "2");
+            const stairsTile3 = building.entries[StairsTiles - 1]?.tiles.find(tile => tile.enum === dirFullName + "3");
+
+            const stairObjectTiles: SvgTile[] = [];
+            const stairObject = {
+                tiles: stairObjectTiles,
+                x: x,
+                y: y,
+                level: level,
+                width: (dir == 'N' ? 4 : 0),
+                length: (dir == 'W' ? 4 : 0),
+                orient: dir,
+                type: 'Stairs'
+            }
+
+            this.gridService.addObject(stairObject);
+
+            const tile1 = {
+                name: stairsTile1?.tile + '.png',
+                url: stairsTile1?.tile + '.png',
+                x: x + (dir == 'W' ? 3 : 0),
+                y: y + (dir == 'N' ? 3 : 0),
+                layer: 'Furniture',
+                level: level,
+                object: true
+            };
+
+            const tile2 = {
+                name: stairsTile2?.tile + '.png',
+                url: stairsTile2?.tile + '.png',
+                x: x + (dir == 'W' ? 2 : 0),
+                y: y + (dir == 'N' ? 2 : 0),
+                layer: 'Furniture',
+                level: level,
+                object: true
+            };
+
+            const tile3 = {
+                name: stairsTile3?.tile + '.png',
+                url: stairsTile3?.tile + '.png',
+                x: x + (dir == 'W' ? 1 : 0),
+                y: y + (dir == 'N' ? 1 : 0),
+                layer: 'Furniture',
+                level: level,
+                object: true
+            };
+
+            stairObject.tiles.push(tile1);
+            stairObject.tiles.push(tile2);
+            stairObject.tiles.push(tile3);
+
+            this.gridService.placeTile2(tile1, true);
+            this.gridService.placeTile2(tile2, true);
+            this.gridService.placeTile2(tile3, true);
         }
     }
 
