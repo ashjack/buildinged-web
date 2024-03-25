@@ -124,7 +124,7 @@ export class ViewportComponent implements OnInit{
           {
             const tilesheet = data2[i].url;
             const tilesheetName = data2[i].name;
-            this.tileService.saveTilesToCache(tilesheetName, tilesheet);
+            //this.tileService.saveTilesToCache(tilesheetName, tilesheet);
           }
         });
       });

@@ -1,12 +1,15 @@
-<app-menu></app-menu>
+<div>
+    <app-tile-download-window></app-tile-download-window>
 
-<!-- <pan-zoom [config]="panZoomConfig" [ngClass]="isPanning ? 'grabbing' : ''" > -->
-<!-- <app-viewport></app-viewport> -->
+    <app-menu></app-menu>
 
-<!-- </pan-zoom> -->
-<app-viewport-canvas></app-viewport-canvas>
+    <!-- <pan-zoom [config]="panZoomConfig" [ngClass]="isPanning ? 'grabbing' : ''" > -->
+    <!-- <app-viewport></app-viewport> -->
 
-<app-tile-selection-menu></app-tile-selection-menu>
+    <!-- </pan-zoom> -->
+    <app-viewport-canvas></app-viewport-canvas>
 
+    <app-tile-selection-menu></app-tile-selection-menu>
 
-<router-outlet></router-outlet>
+    <router-outlet></router-outlet>
+</div>

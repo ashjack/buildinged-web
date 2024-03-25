@@ -6,6 +6,8 @@ export enum ActionTypes {
     AddObject = '[Building] Add Object',
     RemoveObject = '[Building] Remove Object',
 
+    SetTileCount = '[Loading] Set Tile Count',
+
     SetCurrentTool = '[Grid] Set Current Tool',
     ScheduleRedraw = '[Grid] Schedule Redraw'
 }
@@ -29,6 +31,13 @@ export class RemoveObject implements Action {
     constructor(public obj: any, public level: number) { }
 }
 
+//Loading
+export class SetTileCount implements Action {
+    readonly type = ActionTypes.SetTileCount;
+
+    constructor(public tileCount: number) { }
+}
+
 //Other
 
 export class SetCurrentTool implements Action {
@@ -48,5 +57,6 @@ export type ActionsUnion =
     ScheduleRedraw |
     SetBuilding |
     AddObject |
-    RemoveObject
+    RemoveObject |
+    SetTileCount
     ;

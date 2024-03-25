@@ -55,6 +55,12 @@ export interface Point {
     y: number;
   }
 
+//Tilepacks
+export interface Tilepack {
+    name: string;
+    url: string;
+}
+
 //Building File Specific
 export interface Building {
     version: number;

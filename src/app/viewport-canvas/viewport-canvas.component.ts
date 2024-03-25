@@ -12,7 +12,7 @@ import * as fromRoot from '../app.reducers';
 import ToolDraw from "../tools/tool-draw";
 import ToolDrawRoom from "../tools/tool-draw-room";
 import ToolTile from "../tools/tool-tile";
-import { GridTile, Point, SvgObject, SvgObjectOverlay, SvgTile } from "../models/app.models";
+import { GridTile, Point, SvgObject, SvgObjectOverlay, SvgTile, Tilepack } from "../models/app.models";
 import { CacheService } from "../services/cache.service";
 import { BuildingService } from "../services/building.service";
 import { RemoveObject, ScheduleRedraw } from "../app.actions";
@@ -85,29 +85,21 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     this.yOffset = (this.screenHeight / 2);
   }
 
+  tilepacks: Tilepack[] = [];
 
   ngOnInit() {
     //Get tilesheets
 
-    const tilepacks: string[] = [];
+    
     this.http.get('assets/tilepacks.json').subscribe((data: any) => {
-      for(let i = 0; i < data.length; i++)
-      {
+      for (let i = 0; i < data.length; i++) {
         const tilepack = data[i].Url;
-        tilepacks.push(tilepack);
+        const packName = data[i].Name;
+        this.tilepacks.push({ url: tilepack, name: packName });
+        console.log(tilepack);
       }
 
-      tilepacks.forEach((tilepack: string) => {
-        this.http.get(tilepack).subscribe((data2: any) => {
-
-          for(let i = 0; i < data2.length; i++)
-          {
-            const tilesheet = data2[i].url;
-            const tilesheetName = data2[i].name;
-            this.tileService.saveTilesToCache(tilesheetName, tilesheet);
-          }
-        });
-      });
+      this.processTilepacks(this.tilepacks, 0);
     });
 
     this.selectedTool$.pipe(
@@ -143,6 +135,42 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
       }
     })
   }
+
+processTilepacks(tilepacks: Tilepack[], index: number) {
+  if (index >= tilepacks.length) {
+    console.log(this.tileService.failedDecodes);
+    return;
+  }
+
+  const tilepack = tilepacks[index];
+  this.http.get(tilepack.url).subscribe((data2: any) => {
+    this.processTilesheets(data2, tilepack.name, 0);
+  });
+}
+
+processTilesheets(tilesheets: any[], packName: string, index: number) {
+  if (index >= tilesheets.length) {
+    // Proceed to the next tilepack
+    this.processTilepacks(this.tilepacks, index + 1);
+    return;
+  }
+
+  const tilesheet = tilesheets[index];
+  const tilesheetName = tilesheet.name;
+  const tilesheetUrl = tilesheet.url;
+
+  this.tileService.saveTilesToCache(tilesheetName, tilesheetUrl, packName)
+    .then(() => {
+      // Process the next tilesheet
+      this.processTilesheets(tilesheets, packName, index + 1);
+    })
+    .catch((error) => {
+      console.error('Error processing tilesheet:', error);
+      // Proceed to the next tilesheet
+      this.processTilesheets(tilesheets, packName, index + 1);
+    });
+}
+
 
   ngAfterViewInit() {
     const canvas: HTMLCanvasElement = this.canvasElement.nativeElement;

@@ -11,6 +11,7 @@ export interface PngTile {
 export interface Tileset {
   name: string;
   url: string;
+  packName: string
 }
 
 @Injectable({
@@ -25,13 +26,15 @@ export class DbService extends Dexie {
     this.version(4).stores({
 
       pngTiles: '&name, url, tileset',
-      tilesets: '&name, url',
+      tilesets: '&name, url, packName',
     });
-    //this.open(); // <---- Missing in OP
+    //
+    
+    this.open(); // <---- Missing in OP
   }
 
   //Tilesets
-  async addTileset(name: string, url: string) {    
+  async addTileset(name: string, url: string, packName: string) {    
     const tileset = await this.tilesets.where({
       name: name
     })
@@ -43,7 +46,8 @@ export class DbService extends Dexie {
 
     await this.tilesets.add({
       name,
-      url
+      url,
+      packName
     });
   }
 

@@ -7,12 +7,16 @@ export interface State
     building: Building | undefined;
     currentTool: string;
     redraw: boolean;
+    loading: boolean;
+    tileCount: number;
 }
 
 export const initialState: State = {
     building: undefined,
     currentTool: 'tool-draw-room',
-    redraw: false
+    redraw: false,
+    loading: false,
+    tileCount: 0
 }
 
 export function reducer(state = initialState, action: Actions.ActionsUnion): State {
@@ -29,6 +33,12 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
         return {
           ...state,
           redraw: action.schedule
+        }
+      }
+      case Actions.ActionTypes.SetTileCount: {
+        return {
+          ...state,
+          tileCount: state.tileCount + action.tileCount
         }
       }
 
@@ -101,3 +111,4 @@ export const getRootState = createFeatureSelector<State>('root');
 export const getBuilding = createSelector(getRootState, (state: State) => state.building);
 export const getCurrentTool = createSelector(getRootState, (state: State) => state.currentTool);
 export const getRedrawSchedule = createSelector(getRootState, (state: State) => state.redraw);
+export const getTileCount = createSelector(getRootState, (state: State) => state.tileCount);

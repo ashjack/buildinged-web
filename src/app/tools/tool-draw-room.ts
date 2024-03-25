@@ -226,7 +226,6 @@ export default class ToolDrawRoom extends ToolDraw {
                 else
                 {
                     topTiles.push(tile);
-                    console.log(this.gridService.objects)
                     if(this.gridService.getObjectAt(tile.x, tile.y, tile.level, 'Door'))
                     {
                         placeTile(tile.x, tile.y, tile.level, this.interiorWallTiles[7], true);
