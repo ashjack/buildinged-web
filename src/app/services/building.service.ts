@@ -179,7 +179,7 @@ export class BuildingService {
             const grimeFloor = room.getAttribute('GrimeFloor');
             const grimeWall = room.getAttribute('GrimeWall');
 
-            this.building.rooms.push({
+            const roomToAdd = {
                 Name: name!,
                 InternalName: internamName!,
                 Color: color!,
@@ -188,10 +188,13 @@ export class BuildingService {
                 Floor: Number.parseInt(floor!),
                 GrimeFloor: Number.parseInt(grimeFloor!),
                 GrimeWall: Number.parseInt(grimeWall!),
-            });
+            }
+
+            this.building.rooms.push(roomToAdd);
 
             this.roomService.rooms.push({
                 name: name!,
+                room: roomToAdd!,
                 tiles: [],
                 placedTiles: [],
                 placedInteriorTiles: []
@@ -1364,6 +1367,8 @@ export class BuildingService {
                 this.placeTile(obj, floorCount);
             });
         });
+
+        new ToolDrawRoom(this.roomService, this.gridService, this).drawRooms();
     }
 
     removeTile(obj: SvgObject, level: number)

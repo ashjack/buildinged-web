@@ -91,7 +91,7 @@ export class GridService {
           if (!tile.hidden && !tile.excluded && tile.level <= level) {
               const offsetX = 3 * (level - tile.level);
               const offsetY = 3 * (level - tile.level);
-              this.placeTile_old(tile.x + offsetX, tile.y + offsetY, tile.level, tile.offsetX ? tile.offsetX : 0, tile.offsetY ? tile.offsetY : 0, tile.name, tile.layer);
+              this.placeTile_old(tile.x + offsetX, tile.y + offsetY, tile.level, tile.offsetX ? tile.offsetX : 0, tile.offsetY ? tile.offsetY : 0, tile.name, tile.layer, tile.auto);
           }
       });
   
@@ -99,7 +99,7 @@ export class GridService {
           if (!tile.hidden && !tile.excluded && tile.level <= level) {
               const offsetX = 3 * (level - tile.level);
               const offsetY = 3 * (level - tile.level);
-              this.placeTile_old(tile.x + offsetX, tile.y + offsetY, tile.level, tile.offsetX ? tile.offsetX : 0, tile.offsetY ? tile.offsetY : 0, tile.name, tile.layer);
+              this.placeTile_old(tile.x + offsetX, tile.y + offsetY, tile.level, tile.offsetX ? tile.offsetX : 0, tile.offsetY ? tile.offsetY : 0, tile.name, tile.layer,  tile.auto);
           }
       });
   
@@ -150,7 +150,7 @@ export class GridService {
       this.redrawTiles();
   }
 
-  placeTile_old(x: number, y: number, level: number, xOffset: number, yOffset: number, name: string = '', layer: string = 'Walls') {
+  placeTile_old(x: number, y: number, level: number, xOffset: number, yOffset: number, name: string = '', layer: string = 'Walls', auto: boolean = false) {
 
     if(name === '')
     {

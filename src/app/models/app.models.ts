@@ -44,6 +44,7 @@ export interface GridTile {
 
 export interface GridRoom {
     name: string;
+    room: Room;
     tiles: GridTile[];
     placedTiles: SvgTile[];
     placedInteriorTiles: SvgTile[];
