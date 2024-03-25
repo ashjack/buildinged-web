@@ -2,7 +2,6 @@ import { GridRoom, GridTile, Room, SvgTile, Tile } from "../models/app.models";
 import { BuildingService } from "../services/building.service";
 import { GridService } from "../services/grid.service";
 import { RoomService } from "../services/room.service";
-import { ViewportComponent } from "../viewport/viewport.component";
 import ToolDraw from "./tool-draw";
 
 export default class ToolDrawRoom extends ToolDraw {

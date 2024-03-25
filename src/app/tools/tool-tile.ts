@@ -1,6 +1,5 @@
 import { SvgTile } from "../models/app.models";
 import { GridService } from "../services/grid.service";
-import { ViewportComponent } from "../viewport/viewport.component";
 import ToolDraw from "./tool-draw";
 
 export default class ToolTile extends ToolDraw {

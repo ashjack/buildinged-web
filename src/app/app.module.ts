@@ -4,7 +4,6 @@ import { BrowserModule } from '@angular/platform-browser';
 import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
 import { MenuComponent } from './menu/menu.component';
-import { ViewportComponent } from './viewport/viewport.component';
 import { NgxPanZoomModule } from 'ngx-panzoom';
 import { HttpClientModule } from '@angular/common/http';
 import { TileSelectionMenuComponent } from './tile-selection-menu/tile-selection-menu.component';
@@ -21,7 +20,6 @@ import { TileDownloadWindowComponent } from './components/tile-download-window/t
   declarations: [
     AppComponent,
     MenuComponent,
-    ViewportComponent,
     ViewportCanvasComponent,
     TileSelectionMenuComponent,
     FurnitureSelectionMenuComponent,

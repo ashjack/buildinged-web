@@ -1,5 +1,4 @@
 import { SvgTile } from "../models/app.models";
-import { ViewportComponent } from "../viewport/viewport.component";
 import Tool from "./tool";
 
 export default abstract class ToolDraw extends Tool {
