@@ -15,6 +15,7 @@ import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { BsDropdownModule } from 'ngx-bootstrap/dropdown';
 import { FurnitureSelectionMenuComponent } from './furniture-selection-menu/furniture-selection-menu.component';
 import { TileDownloadWindowComponent } from './components/tile-download-window/tile-download-window.component';
+import { FormsModule } from '@angular/forms';
 
 @NgModule({
   declarations: [
@@ -30,6 +31,7 @@ import { TileDownloadWindowComponent } from './components/tile-download-window/t
     AppRoutingModule,
     NgxPanZoomModule,
     HttpClientModule,
+    FormsModule,
     StoreModule.forRoot({}),
     StoreModule.forFeature('root', reducer),
     EffectsModule.forRoot([]),

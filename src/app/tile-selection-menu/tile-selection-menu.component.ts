@@ -17,6 +17,8 @@ export class TileSelectionMenuComponent implements OnInit{
   tilesets: string[] = [];
   tiles: SvgTile[] = [];
 
+  searchTerm: string;
+
   layers: string[] = [
     'RoofTop',
     'Roof2',
@@ -79,6 +81,15 @@ export class TileSelectionMenuComponent implements OnInit{
         level: this.getSelectedLevel(),
       });
     });
+  }
+
+  getFilteredTilesets()
+  {
+    if(!this.searchTerm || this.searchTerm.length == 0)
+    {
+      return this.tilesets;
+    }
+    return this.tilesets.filter(x => x.toLowerCase().includes(this.searchTerm.toLowerCase()));
   }
 
   setSelectedTile(tileName: string) {
