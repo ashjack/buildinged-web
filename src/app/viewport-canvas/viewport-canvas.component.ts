@@ -108,10 +108,10 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
       switch(x)
       {
         case 'tool-tile':
-          this.selectedTool = new ToolTile(this.gridService);
+          this.selectedTool = new ToolTile(this.gridService, this.store);
           break;
         case 'tool-draw-room':
-          this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService);
+          this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService, this.store);
           break;
         case 'tool-door':
           this.selectedTool = new ToolDoor(this.doorService, this.gridService);
@@ -120,7 +120,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
           this.selectedTool = new ToolWindow(this.windowService, this.gridService, this.buildingService);
           break;
         default:
-          this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService);
+          this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService, this.store);
           break;
       }
     });

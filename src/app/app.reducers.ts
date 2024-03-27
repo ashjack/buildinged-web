@@ -49,6 +49,126 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
           building: action.building
         }
       }
+      case Actions.ActionTypes.AddRoom: {
+        if (!state.building) {
+          return state;
+        }
+
+        const updatedBuilding: Building = {
+          ...state.building,
+          floors: state.building.floors.map((floor, index) => {
+            if (index === action.level) {
+              const updatedRooms = floor.rooms.split('\n').map((col, colIndex) => {
+                return col.split(',').map((row, rowIndex) => {
+                  if (colIndex === action.y + 1 && rowIndex === action.x) {
+                    console.log('Found match at ', colIndex, rowIndex)
+                    return action.room;
+                  }
+                  return row;
+                }).join(',');
+              }).join('\n');
+              return {
+                ...floor,
+                rooms: updatedRooms
+              };
+            }
+            return floor;
+          })
+        }
+
+        return {
+          ...state,
+          building: updatedBuilding
+        };
+      }
+
+      case Actions.ActionTypes.AddTile: {
+        if (!state.building) {
+          return state;
+        }
+
+        //Get/Create user_tile listing
+        let userTileIndex = state.building.user_tiles.findIndex(x => x.tile == action.url.replace(".png", ""))
+        let updatedUserTiles = state.building.user_tiles;
+        console.log(userTileIndex)
+        if(userTileIndex == -1)
+        {
+          updatedUserTiles = [...state.building.user_tiles, { tile: action.url.replace(".png", "") }];
+          userTileIndex = updatedUserTiles.length;
+        }
+        else
+        {
+          userTileIndex++;
+        }
+
+        const updatedBuilding: Building = {
+          ...state.building,
+          user_tiles: updatedUserTiles,
+          floors: state.building.floors.map((floor, index) => {
+            if (index === action.level) {
+              // Found existing layer to modify
+              const existingLayerIndex = floor.tileLayers?.findIndex(layer => layer.layer === action.layer) ?? -1;
+              if (existingLayerIndex !== -1) {
+                const updatedTileLayers = [...floor.tileLayers!];
+                const layer = updatedTileLayers[existingLayerIndex];
+        
+                const tilesArray = layer.tiles.split('\n').map(row => row.split(','));
+        
+                tilesArray[action.y][action.x] = userTileIndex.toString();
+        
+                const updatedTiles = tilesArray.map(row => row.join(',')).join('\n');
+        
+                updatedTileLayers[existingLayerIndex] = {
+                  ...layer,
+                  tiles: updatedTiles
+                };
+        
+                return {
+                  ...floor,
+                  tileLayers: updatedTileLayers
+                };
+              } else {
+                // Create new layer
+                const newLayer = {
+                  layer: action.layer,
+                  tiles: createEmptyMatrix(state.building!.width + 1, state.building!.height + 1, action.x, action.y, userTileIndex)
+                };
+                const updatedTileLayers = floor.tileLayers ? [...floor.tileLayers, newLayer] : [newLayer];
+              
+                return {
+                  ...floor,
+                  tileLayers: updatedTileLayers
+                };
+              }
+              
+              function createEmptyMatrix(width: number, height: number, posX: number, posY: number, tileIndex: number) {
+                const matrix = [];
+                for (let y = 0; y < height; y++) {
+                  const row = [];
+                  for (let x = 0; x < width; x++) {
+                    if (x === posX && y === posY) {
+                      row.push(tileIndex.toString());
+                    } else {
+                      row.push('0');
+                    }
+                  }
+                  matrix.push(row.join(','));
+                }
+                return '\n' + matrix.join(',\n') + '\n';
+              }
+              
+              
+            }
+            return floor;
+          })
+        };
+        
+        return {
+          ...state,
+          building: updatedBuilding
+        };
+      }        
+
       case Actions.ActionTypes.AddObject: {
         if (!state.building) {
           return state;

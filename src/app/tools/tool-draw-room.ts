@@ -3,6 +3,9 @@ import { BuildingService } from "../services/building.service";
 import { GridService } from "../services/grid.service";
 import { RoomService } from "../services/room.service";
 import ToolDraw from "./tool-draw";
+import * as fromRoot from '../app.reducers';
+import { Store } from "@ngrx/store";
+import { AddRoom } from "../app.actions";
 
 export default class ToolDrawRoom extends ToolDraw {
 
@@ -40,7 +43,8 @@ export default class ToolDrawRoom extends ToolDraw {
     constructor(
         private roomService: RoomService,
         private gridService: GridService,
-        private buildingService: BuildingService) {
+        private buildingService: BuildingService,
+        private store: Store<fromRoot.State>,) {
         super();
 
         //this.selectedRoomObject = this.roomService.getRoomFromName(this.selectedRoom);
@@ -59,6 +63,8 @@ export default class ToolDrawRoom extends ToolDraw {
                     }
                 });
             });
+
+            this.store.dispatch(new AddRoom(i, j, level, 0))
 
             return;
         }
@@ -99,6 +105,11 @@ export default class ToolDrawRoom extends ToolDraw {
                 placedInteriorTiles: []
             });
         }
+
+        const roomName = this.roomService.rooms.findIndex(x => x.name == this.roomService.selectedRoom?.Name);
+
+        this.store.dispatch(new AddRoom(i, j, level, roomName + 1))
+        console.log(i, j, level, roomName  + 1)
 
     }
 

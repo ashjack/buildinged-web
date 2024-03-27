@@ -451,7 +451,7 @@ export class BuildingService {
 
     async drawBuilding()
     {
-        const drawRoomTool = new ToolDrawRoom(this.roomService, this.gridService, this);
+        const drawRoomTool = new ToolDrawRoom(this.roomService, this.gridService, this, this.store);
 
         //TODO REMOVE FLOOR COUNT
         let floorCount = -1;
@@ -1541,7 +1541,7 @@ export class BuildingService {
             });
         });
 
-        new ToolDrawRoom(this.roomService, this.gridService, this).drawRooms();
+        new ToolDrawRoom(this.roomService, this.gridService, this, this.store).drawRooms();
     }
 
     removeTile(obj: SvgObject, level: number)

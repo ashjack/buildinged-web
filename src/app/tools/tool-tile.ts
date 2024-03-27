@@ -1,6 +1,9 @@
 import { SvgTile } from "../models/app.models";
 import { GridService } from "../services/grid.service";
 import ToolDraw from "./tool-draw";
+import * as fromRoot from '../app.reducers';
+import { Store } from "@ngrx/store";
+import { AddTile } from "../app.actions";
 
 export default class ToolTile extends ToolDraw {
     
@@ -10,7 +13,8 @@ export default class ToolTile extends ToolDraw {
     selectedLayer: string = 'Walls';
     selectedLevel: number = 0;
 
-    constructor(private gridService: GridService) {
+    constructor(private gridService: GridService,
+                private store: Store<fromRoot.State>,) {
         super();
     }
 
@@ -107,6 +111,7 @@ export default class ToolTile extends ToolDraw {
                     level: this.selectedLevel
                 };
                 this.gridService.placeTile2(tile, false);
+                this.store.dispatch(new AddTile(i, j, this.selectedLevel, this.selectedLayer, this.selectedTile))
               }
             }
         }

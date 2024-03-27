@@ -5,6 +5,10 @@ export enum ActionTypes {
     SetBuilding = '[Building] Set Building',
     AddObject = '[Building] Add Object',
     RemoveObject = '[Building] Remove Object',
+    AddRoom = '[Building] Add Room',
+    RemoveRoom = '[Building] Remove Room',
+    AddTile = '[Building] Add Tile',
+    RemoveTile = '[Building] Remove Tile',
 
     SetTileCount = '[Loading] Set Tile Count',
 
@@ -29,6 +33,30 @@ export class RemoveObject implements Action {
     readonly type = ActionTypes.RemoveObject;
 
     constructor(public obj: any, public level: number) { }
+}
+
+export class AddRoom implements Action {
+    readonly type = ActionTypes.AddRoom;
+
+    constructor(public x: number, public y: number, public level: number, public room: number) { }
+}
+
+export class RemoveRoom implements Action {
+    readonly type = ActionTypes.RemoveRoom;
+
+    constructor(public x: number, public y: number, public level: number, public room: number) { }
+}
+
+export class AddTile implements Action {
+    readonly type = ActionTypes.AddTile;
+
+    constructor(public x: number, public y: number, public level: number, public layer: string, public url: string) { }
+}
+
+export class RemoveTile implements Action {
+    readonly type = ActionTypes.RemoveTile;
+
+    constructor(public x: number, public y: number, public level: number, public layer: string) { }
 }
 
 //Loading
@@ -58,5 +86,9 @@ export type ActionsUnion =
     SetBuilding |
     AddObject |
     RemoveObject |
+    AddRoom |
+    RemoveRoom |
+    AddTile |
+    RemoveTile |
     SetTileCount
     ;
