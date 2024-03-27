@@ -17,10 +17,17 @@ import { Store } from "@ngrx/store";
 
     totalTiles: number;
     processedTiles: number;
-    loading: boolean = false;
+    loading: boolean = true;
 
   ngOnInit(): void {
     this.tileCount$ = this.store.select(fromRoot.getTileCount);
+
+    this.tileCount$.subscribe((tc) => {
+      if(tc < 0)
+      {
+        this.loading = false;
+      }
+    })
 
     let finishCount = 0;
 

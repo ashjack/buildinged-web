@@ -1,13 +1,16 @@
 import { Injectable } from "@angular/core";
 import { DbService } from "./db.service";
 import { HttpClient } from "@angular/common/http";
+import * as fromRoot from '../app.reducers';
+import { Store } from "@ngrx/store";
+import { SetTileCount } from "../app.actions";
 
 @Injectable({
     providedIn: "root",
 })
 export class TileService {
 
-    constructor(private db: DbService, private http: HttpClient) { }
+    constructor(private db: DbService, private http: HttpClient, private store: Store<fromRoot.State>) { }
 
     failedDecodes: string[] = [];
     totalTiles = 0;
@@ -65,8 +68,6 @@ export class TileService {
                     individualTiles.push(dataUrl);
                 }
             }
-
-            console.log('FINISHED ' + url)
     
             return individualTiles;
         } catch (e) {
@@ -77,11 +78,17 @@ export class TileService {
     }
     
     
+      hasHiddenLoading = false;
       async saveTilesToCache(sheetName: string, sheetPath: string, packName: string) {
 
         const hasTileset = await this.db.hasTileset(sheetName);
         if (hasTileset) {
           console.log(`Tileset ${sheetName} already exists in cache`);
+          if(!this.hasHiddenLoading)
+          {
+            this.hasHiddenLoading = true;
+            this.store.dispatch(new SetTileCount(-1));
+          }
           return;
         }
 
