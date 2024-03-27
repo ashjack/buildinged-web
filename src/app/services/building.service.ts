@@ -276,6 +276,179 @@ export class BuildingService {
         localStorage.setItem('buildingXml', new XMLSerializer().serializeToString(xmlDoc));
     }
 
+    async saveBuildingToXml() {
+        this.store.select(fromRoot.getBuilding).subscribe(b => {
+            if(!b)
+            {
+                return null;
+            }
+
+            var doc: XMLDocument = document.implementation.createDocument("", "", null);
+
+            var buildingEl = doc.createElement('building');
+            buildingEl.setAttribute('version', b.version.toString());
+            buildingEl.setAttribute('width', b.width.toString());
+            buildingEl.setAttribute('height', b.height.toString());
+            buildingEl.setAttribute('ExteriorWall', b.ExteriorWall.toString());
+            buildingEl.setAttribute('ExteriorWallTrim', b.ExteriorWallTrim.toString());
+            buildingEl.setAttribute('Door', b.Door.toString());
+            buildingEl.setAttribute('DoorFrame', b.DoorFrame.toString());
+            buildingEl.setAttribute('Window', b.Window.toString());
+            buildingEl.setAttribute('Curtains', b.Curtains.toString());
+            buildingEl.setAttribute('Shutters', b.Shutters.toString());
+            buildingEl.setAttribute('Stairs', b.Stairs.toString());
+            buildingEl.setAttribute('RoofCap', b.RoofCap.toString());
+            buildingEl.setAttribute('RoofSlope', b.RoofSlope.toString());
+            buildingEl.setAttribute('RoofTop', b.RoofTop.toString());
+            buildingEl.setAttribute('GrimeWall', b.GrimeWall.toString());
+            
+            //tile_entry
+            b.entries.forEach((entry) => {
+                var entryEl = doc.createElement('tile_entry');
+                entryEl.setAttribute('category', entry.category)
+
+                entry.tiles.forEach((tile) => {
+                    var tileEl = doc.createElement('tile');
+
+                    if(tile.enum)
+                        tileEl.setAttribute('enum', tile.enum);
+
+                    tileEl.setAttribute('tile', tile.tile);
+
+                    if(tile.offset)
+                        tileEl.setAttribute('offset', tile.offset);
+
+                    entryEl.appendChild(tileEl);
+                })
+
+                buildingEl.appendChild(entryEl);
+            });
+
+            //furniture
+            b.furniture.forEach((furniture) => {
+                var furnitureEl = doc.createElement('furniture')
+
+                if(furniture.layer)
+                    furnitureEl.setAttribute('layer', furniture.layer)
+                
+                furniture.entries.forEach((entry) => {
+                    var entryEl = doc.createElement('entry');
+
+                    entryEl.setAttribute('orient', entry.orient);
+
+                    entry.tiles.forEach((tile) => {
+                        var tileEl = doc.createElement('tile');
+                        tileEl.setAttribute('x', tile.x.toString());
+                        tileEl.setAttribute('y', tile.y.toString());
+                        tileEl.setAttribute('name', tile.name);
+
+                        entryEl.appendChild(tileEl);
+                    })
+
+                    furnitureEl.appendChild(entryEl);
+                })
+
+                buildingEl.appendChild(furnitureEl);
+            })
+
+            //user_tiles
+            var userTilesEl = doc.createElement('user_tiles');
+            b.user_tiles.forEach((tile) => {
+                var tileEl = doc.createElement('tile');
+
+                if(tile.enum)
+                    tileEl.setAttribute('enum', tile.enum);
+                if(tile.offset)
+                    tileEl.setAttribute('offset', tile.offset);
+
+                tileEl.setAttribute('tile', tile.tile)
+
+                userTilesEl.appendChild(tileEl);
+            })
+
+            buildingEl.appendChild(userTilesEl);
+
+            //used_tiles
+            var usedTilesEl = doc.createElement('used_tiles');
+            usedTilesEl.innerHTML = b.used_tiles;
+            buildingEl.appendChild(usedTilesEl);
+
+            //used_furniture
+            var usedFurnitureEl = doc.createElement('used_furniture');
+            usedFurnitureEl.innerHTML = b.used_furniture;
+            buildingEl.appendChild(usedFurnitureEl);
+
+            //rooms
+            b.rooms.forEach((room) => {
+                var roomEl = doc.createElement('room');
+                roomEl.setAttribute('Name', room.Name)
+                roomEl.setAttribute('InternalName', room.InternalName)
+                roomEl.setAttribute('Color', room.Color)
+                roomEl.setAttribute('InteriorWall', room.InteriorWall.toString())
+                roomEl.setAttribute('InteriorWallTrim', room.InteriorWallTrim.toString())
+                roomEl.setAttribute('Floor', room.Floor.toString())
+                roomEl.setAttribute('GrimeFloor', room.GrimeFloor.toString())
+                roomEl.setAttribute('GrimeWall', room.GrimeWall.toString())
+                
+                buildingEl.appendChild(roomEl);
+            })
+
+            //floors
+            b.floors.forEach((floor) => {
+                var floorEl = doc.createElement('floor');
+                floor.objects.forEach((object) => {
+                    var objectEl = doc.createElement('object');
+                    Object.getOwnPropertyNames(object).forEach((attr) => {
+                        objectEl.setAttribute(attr, object[attr]);
+                    })
+
+                    floorEl.appendChild(objectEl);
+                })
+
+                var roomsEl = doc.createElement('rooms');
+                roomsEl.innerHTML = floor.rooms;
+                floorEl.appendChild(roomsEl);
+
+                floor.tileLayers?.forEach((tileLayer) => {
+                    var tileLayerEl = doc.createElement('tiles')
+                    tileLayerEl.setAttribute('layer', tileLayer.layer);
+                    tileLayerEl.innerHTML = tileLayer.tiles;
+
+                    floorEl.appendChild(tileLayerEl);
+                })
+
+                buildingEl.appendChild(floorEl);
+            })
+            
+            doc.appendChild(buildingEl);
+            console.log(doc);
+
+            // Convert XML document to string
+            var serializer = new XMLSerializer();
+            var xmlString = serializer.serializeToString(doc);
+            xmlString = `<?xml version="1.0" encoding="UTF-8"?>` + xmlString;
+
+            // Create Blob
+            var blob = new Blob([xmlString], { type: "text/xml" });
+
+            // Prompt user to save file
+            var link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'building.tbx';
+            link.style.display = 'none';
+
+            // Add event listener to clean up after downloading
+            link.addEventListener('click', function () {
+                document.body.removeChild(link);
+            });
+
+            document.body.appendChild(link);
+            link.click();
+
+            return doc;
+        })
+    }
+
     async drawBuilding()
     {
         const drawRoomTool = new ToolDrawRoom(this.roomService, this.gridService, this);

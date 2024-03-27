@@ -25,6 +25,10 @@ export class MenuComponent {
     this.store.dispatch(new SetCurrentTool(tool));
   }
 
+  createXml(): void {
+    this.buildingService.saveBuildingToXml();
+  }
+
   openFileUpload(): void {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
