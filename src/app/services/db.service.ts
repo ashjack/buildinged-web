@@ -11,7 +11,12 @@ export interface PngTile {
 export interface Tileset {
   name: string;
   url: string;
-  packName: string
+  packName: string;
+}
+
+export interface Tilepack {
+  name: string;
+  enabled: boolean;
 }
 
 @Injectable({
@@ -20,6 +25,7 @@ export interface Tileset {
 export class DbService extends Dexie {
   pngTiles!: Table<PngTile, number>;
   tilesets!: Table<Tileset, number>;
+  tilepacks!: Table<Tilepack, boolean>;
 
   constructor() {
     super('tilesets');
@@ -27,10 +33,48 @@ export class DbService extends Dexie {
 
       pngTiles: '&name, url, tileset',
       tilesets: '&name, url, packName',
+      tilepacks: '&name, enabled',
     });
     //
     
     this.open(); // <---- Missing in OP
+  }
+
+  //Tilepacks
+  async addTilepack(name: string, enabled: boolean) {
+    const tilepack = await this.tilepacks.where({
+      name: name
+    }).toArray();
+
+    if(tilepack.length > 0) {
+      return;
+    }
+
+    await this.tilepacks.add({
+      name,
+      enabled
+    });
+  }
+
+  async getTilepack(name: string) {
+    return await this.tilepacks
+    .where({
+      name: name
+    })
+      .toArray();
+  }
+
+  async getTilepacks() {
+    return await this.tilepacks.toArray();
+  }
+
+  async hasTilepack(name: string) {
+    const tilepack = await this.tilepacks.where({
+      name: name
+    })
+    .toArray();
+
+    return tilepack.length > 0;
   }
 
   //Tilesets

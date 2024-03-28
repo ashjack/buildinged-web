@@ -1,7 +1,7 @@
 import { Component } from '@angular/core';
 import * as fromRoot from '../app.reducers';
 import { Store } from '@ngrx/store';
-import { ScheduleRedraw, SetCurrentTool } from '../app.actions';
+import { ScheduleRedraw, SetCurrentTool, TogglePopup } from '../app.actions';
 import { BuildingService } from '../services/building.service';
 import { Room } from '../models/app.models';
 import { RoomService } from '../services/room.service';
@@ -59,9 +59,10 @@ export class MenuComponent {
       console.log(xmlDoc);
     }
     reader.readAsText(file);
+  }
 
-    
-
+  toggleWindow() {
+    this.store.dispatch(new TogglePopup('tileset-list', true));
   }
 
   getSelectedRoom(): Room | null {

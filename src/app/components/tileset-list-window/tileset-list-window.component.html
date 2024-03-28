@@ -1,0 +1,18 @@
+<div class="window" *ngIf="isOpen$|async">
+    <div class="loading-box">
+        <button (click)="close()" class="close-button">X</button>
+
+        <div style="margin-top: -25px;">
+            <h3>Tilepacks</h3>
+            <div *ngFor="let tilepack of tilepacks;" class="tilepack-listing">
+                <p style="margin-right:5px;">{{tilepack.name}}</p>
+                <button (click)="downloadPack(tilepack.name)" [disabled]="tilepack.name === 'Vanilla'">{{tilepack.enabled ? 'Disable' : 'Enable'}}</button>
+            </div>
+        </div>
+
+        
+    </div>
+
+    <div class="background"></div>
+
+</div>

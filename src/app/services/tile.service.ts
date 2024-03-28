@@ -4,6 +4,7 @@ import { HttpClient } from "@angular/common/http";
 import * as fromRoot from '../app.reducers';
 import { Store } from "@ngrx/store";
 import { SetTileCount } from "../app.actions";
+import { Tilepack } from "../models/app.models";
 
 @Injectable({
     providedIn: "root",
@@ -16,8 +17,54 @@ export class TileService {
     totalTiles = 0;
     processedTiles = 0;
 
+    tilepacks: Tilepack[] = [];
+
     async saveTilesetToIndexedDb(name: string, url: string) {
 
+    }
+
+    async processTilepacks(tilepacks: Tilepack[], index: number) {
+      if (index >= tilepacks.length) {
+        console.log(this.failedDecodes);
+        return;
+      }
+    
+      const tilepack = tilepacks[index];
+      const existingTilepack = localStorage.getItem(tilepack.name)
+      if(existingTilepack)
+      {
+        tilepack.enabled = true;
+      }
+    
+      if(tilepack.enabled || index == 0)
+      {
+        this.http.get(tilepack.url).subscribe((data2: any) => {
+          this.processTilesheets(data2, tilepack.name, index);
+        });
+      }
+    }
+    
+    processTilesheets(tilesheets: any[], packName: string, index: number) {
+      if (index >= tilesheets.length) {
+        // Proceed to the next tilepack
+        this.processTilepacks(this.tilepacks, index + 1);
+        return;
+      }
+    
+      const tilesheet = tilesheets[index];
+      const tilesheetName = tilesheet.name;
+      const tilesheetUrl = tilesheet.url;
+    
+      this.saveTilesToCache(tilesheetName, tilesheetUrl, packName)
+        .then(() => {
+          // Process the next tilesheet
+          this.processTilesheets(tilesheets, packName, index + 1);
+        })
+        .catch((error) => {
+          console.error('Error processing tilesheet:', error);
+          // Proceed to the next tilesheet
+          this.processTilesheets(tilesheets, packName, index + 1);
+        });
     }
 
     fetchTilesheet(url: string) {

@@ -12,6 +12,8 @@ export enum ActionTypes {
 
     SetTileCount = '[Loading] Set Tile Count',
 
+    TogglePopup = '[Popup] Toggle Popup',
+
     SetCurrentTool = '[Grid] Set Current Tool',
     ScheduleRedraw = '[Grid] Schedule Redraw'
 }
@@ -66,6 +68,13 @@ export class SetTileCount implements Action {
     constructor(public tileCount: number) { }
 }
 
+//Popups
+export class TogglePopup implements Action {
+    readonly type = ActionTypes.TogglePopup;
+
+    constructor(public popupName: string, public open: boolean) { }
+}
+
 //Other
 
 export class SetCurrentTool implements Action {
@@ -90,5 +99,6 @@ export type ActionsUnion =
     RemoveRoom |
     AddTile |
     RemoveTile |
-    SetTileCount
+    SetTileCount |
+    TogglePopup
     ;

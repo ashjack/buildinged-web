@@ -59,6 +59,7 @@ export interface Point {
 export interface Tilepack {
     name: string;
     url: string;
+    enabled: boolean;
 }
 
 //Building File Specific

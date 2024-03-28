@@ -9,6 +9,7 @@ export interface State
     redraw: boolean;
     loading: boolean;
     tileCount: number;
+    popups: string[];
 }
 
 export const initialState: State = {
@@ -16,7 +17,8 @@ export const initialState: State = {
     currentTool: 'tool-draw-room',
     redraw: false,
     loading: false,
-    tileCount: 0
+    tileCount: 0,
+    popups: []
 }
 
 export function reducer(state = initialState, action: Actions.ActionsUnion): State {
@@ -40,6 +42,31 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
           ...state,
           tileCount: state.tileCount + action.tileCount
         }
+      }
+
+      //Popup
+      case Actions.ActionTypes.TogglePopup: {
+        const { popupName, open } = action;
+        const existingIndex = state.popups.findIndex(popup => popup === popupName);
+      
+        if (open) {
+          if (existingIndex === -1) {
+            return {
+              ...state,
+              popups: [...state.popups,  popupName]
+            };
+          }
+        } else {
+          if (existingIndex !== -1) {
+            const updatedPopups = [...state.popups];
+            updatedPopups.splice(existingIndex, 1);
+            return {
+              ...state,
+              popups: updatedPopups
+            };
+          }
+        }
+        return state;
       }
 
       //Building
@@ -232,3 +259,8 @@ export const getBuilding = createSelector(getRootState, (state: State) => state.
 export const getCurrentTool = createSelector(getRootState, (state: State) => state.currentTool);
 export const getRedrawSchedule = createSelector(getRootState, (state: State) => state.redraw);
 export const getTileCount = createSelector(getRootState, (state: State) => state.tileCount);
+export const getPopups = createSelector(getRootState, (state: State) => state.popups);
+
+export const isPopupOpen = (name: string) => createSelector(getPopups, (popups) => {
+  return popups.some(popup => popup === name);
+});

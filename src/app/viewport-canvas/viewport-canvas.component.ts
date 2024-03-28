@@ -85,8 +85,6 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     this.yOffset = (this.screenHeight / 2);
   }
 
-  tilepacks: Tilepack[] = [];
-
   ngOnInit() {
     //Get tilesheets
 
@@ -95,11 +93,15 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
       for (let i = 0; i < data.length; i++) {
         const tilepack = data[i].Url;
         const packName = data[i].Name;
-        this.tilepacks.push({ url: tilepack, name: packName });
+        this.tileService.tilepacks.push({ url: tilepack, name: packName, enabled: false });
         console.log(tilepack);
       }
 
-      this.processTilepacks(this.tilepacks, 0);
+      if(!localStorage.getItem('Vanilla'))
+      {
+        localStorage.setItem('Vanilla', '1');
+      }
+      this.tileService.processTilepacks(this.tileService.tilepacks, 0);
     });
 
     this.selectedTool$.pipe(
@@ -136,40 +138,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     })
   }
 
-processTilepacks(tilepacks: Tilepack[], index: number) {
-  if (index >= tilepacks.length) {
-    console.log(this.tileService.failedDecodes);
-    return;
-  }
-
-  const tilepack = tilepacks[index];
-  this.http.get(tilepack.url).subscribe((data2: any) => {
-    this.processTilesheets(data2, tilepack.name, 0);
-  });
-}
-
-processTilesheets(tilesheets: any[], packName: string, index: number) {
-  if (index >= tilesheets.length) {
-    // Proceed to the next tilepack
-    this.processTilepacks(this.tilepacks, index + 1);
-    return;
-  }
-
-  const tilesheet = tilesheets[index];
-  const tilesheetName = tilesheet.name;
-  const tilesheetUrl = tilesheet.url;
-
-  this.tileService.saveTilesToCache(tilesheetName, tilesheetUrl, packName)
-    .then(() => {
-      // Process the next tilesheet
-      this.processTilesheets(tilesheets, packName, index + 1);
-    })
-    .catch((error) => {
-      console.error('Error processing tilesheet:', error);
-      // Proceed to the next tilesheet
-      this.processTilesheets(tilesheets, packName, index + 1);
-    });
-}
+  
 
 
   ngAfterViewInit() {
