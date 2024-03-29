@@ -45,20 +45,33 @@ import { TogglePopup } from "src/app/app.actions";
         this.store.dispatch(new TogglePopup('tileset-list', false))
     }
 
-    downloadPack(name: string) {
-        if(localStorage.getItem(name) == '1')
-        {
-            localStorage.setItem(name, '0');
-            return;   
-        }
-        else if(localStorage.getItem(name) == '0')
-        {
-            localStorage.setItem(name, '1');
-            return;   
-        }
+    downloadPack(name: string, redownload = true) {
 
-        localStorage.setItem(name, '1');
-        const packIndex = this.tileService.tilepacks.findIndex(x => x.name == name);
-        this.tileService.processTilepacks(this.tileService.tilepacks, packIndex);
+        if(redownload)
+        {
+            this.db.clearTiles(name).then(() => {
+                localStorage.setItem(name, '1');
+                const packIndex = this.tileService.tilepacks.findIndex(x => x.name == name);
+                this.tileService.processTilepacks(this.tileService.tilepacks, packIndex);
+                return;
+            })
+        }
+        else
+        {
+            if(localStorage.getItem(name) == '1')
+            {
+                localStorage.setItem(name, '0');
+                return;   
+            }
+            else if(localStorage.getItem(name) == '0')
+            {
+                localStorage.setItem(name, '1');
+                return;   
+            }
+
+            localStorage.setItem(name, '1');
+            const packIndex = this.tileService.tilepacks.findIndex(x => x.name == name);
+            this.tileService.processTilepacks(this.tileService.tilepacks, packIndex);
+        }
     }
   }

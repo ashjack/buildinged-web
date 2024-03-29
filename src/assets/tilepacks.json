@@ -2,5 +2,25 @@
     {
         "Name": "Vanilla",
         "Url": "https://storage.googleapis.com/buildinged-online.appspot.com/vanilla/vanilla.json"
+    },
+    {
+        "Name": "DDD",
+        "Url": "https://storage.googleapis.com/buildinged-online.appspot.com/ddd/ddd.json"
+    },
+    {
+        "Name": "Dylan's Tiles",
+        "Url": "https://storage.googleapis.com/buildinged-online.appspot.com/dylan/dylan.json"
+    },
+    {
+        "Name": "Newburbs",
+        "Url": "https://storage.googleapis.com/buildinged-online.appspot.com/newburbs/newburbs__.json"
+    },
+    {
+        "Name": "Melos Tiles for Miles",
+        "Url": "https://storage.googleapis.com/buildinged-online.appspot.com/melos/melos.json"
+    },
+    {
+        "Name": "Perts Party Tiles",
+        "Url": "https://storage.googleapis.com/buildinged-online.appspot.com/pert/pert.json"
     }
 ]

@@ -7,6 +7,7 @@
             <div *ngFor="let tilepack of tilepacks;" class="tilepack-listing">
                 <p style="margin-right:5px;">{{tilepack.name}}</p>
                 <button (click)="downloadPack(tilepack.name)" [disabled]="tilepack.name === 'Vanilla'">{{tilepack.enabled ? 'Disable' : 'Enable'}}</button>
+                <button (click)="downloadPack(tilepack.name, true)">Redownload</button>
             </div>
         </div>
 

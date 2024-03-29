@@ -1,6 +1,6 @@
 import { Injectable } from "@angular/core";
 import { DbService } from "./db.service";
-import { HttpClient } from "@angular/common/http";
+import { HttpClient, HttpHeaders } from "@angular/common/http";
 import * as fromRoot from '../app.reducers';
 import { Store } from "@ngrx/store";
 import { SetTileCount } from "../app.actions";
@@ -38,7 +38,8 @@ export class TileService {
     
       if(tilepack.enabled || index == 0)
       {
-        this.http.get(tilepack.url).subscribe((data2: any) => {
+        const headers = new HttpHeaders().set('Cache-Control', 'no-cache');
+        this.http.get(tilepack.url, {headers}).subscribe((data2: any) => {
           this.processTilesheets(data2, tilepack.name, index);
         });
       }

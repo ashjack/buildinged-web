@@ -155,6 +155,32 @@ export class DbService extends Dexie {
       .toArray();
   }
 
+  async clearTiles(tilepackName: string) {
+  try {
+    // Retrieve the matching tilesets
+    const matchingTilesets = await this.tilesets
+      .where('packName')
+      .equals(tilepackName)
+      .toArray();
+
+    // Retrieve the names of the matching tilesets
+    const tilesetNames = matchingTilesets.map(tileset => tileset.name);
+
+    // Delete tiles from pngTiles where tileset matches the names of the matching tilesets
+    await Promise.all(tilesetNames.map(name => this.pngTiles.where('tileset').equals(name).delete()));
+
+    // Delete matching tilesets from the tilesets table
+    await this.tilesets
+      .where('name')
+      .anyOf(tilesetNames)
+      .delete();
+  } catch (error) {
+    console.error('Error clearing tiles:', error);
+    throw error; // Propagate the error
+  }
+}
+
+
 }
 
 //export const db = new AppDB();
