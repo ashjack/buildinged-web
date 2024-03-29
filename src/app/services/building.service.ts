@@ -927,18 +927,19 @@ export class BuildingService {
                     const furnitureIndex = building.used_furniture.split(' ')[FurnitureTilesNum];
                     const furniture = building.furniture[Number.parseInt(furnitureIndex)];
                     let orient: string = obj.orient;
+                    const correctedOrient = (orient === 'E') ? 'W' : (orient === 'S' ? 'N' : orient);
                     const x = Number.parseInt(obj.x);
                     const y = Number.parseInt(obj.y);
 
                     const furnitureObjectTiles: SvgTile[] = [];
                     const furnitureObject = {
                         tiles: furnitureObjectTiles,
-                        x: x,
-                        y: y,
+                        x: x + (orient == 'E' ? 1 : 0),
+                        y: y + (orient == 'S' ? 1 : 0),
                         level: level,
                         width: 0,
                         length: 0,
-                        orient: orient,
+                        orient: correctedOrient,
                         type: ''
                     }
 
@@ -963,8 +964,8 @@ export class BuildingService {
                         {
                             furnitureObject.type = 'Wall';
 
-                            const newX = x + tile.x + ((orient == 'S' || orient == 'N') ? 0 : 1);
-                            const newY = y + tile.y + ((orient == 'E' || orient == 'W') ? 0 : 1);
+                            let newX = x + tile.x + (obj.orient == 'E' ? 1 : 0)// + ((orient == 'S' || orient == 'N') ? 0 : 1);
+                            let newY = y + tile.y + (obj.orient == 'S' ? 1 : 0)// + ((orient == 'E' || orient == 'W') ? 0 : 1);
 
                             const tileToPlace = {
                                 name: tile.name + '.png',
