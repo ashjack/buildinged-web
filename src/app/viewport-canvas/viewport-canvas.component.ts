@@ -20,6 +20,7 @@ import ToolDoor from "../tools/tool-door";
 import { DoorService } from "../services/door.service";
 import ToolWindow from "../tools/tool-window";
 import { WindowService } from "../services/window.service";
+import ToolFurniture from "../tools/tool-furniture";
 
 @Component({
     selector: 'app-viewport-canvas',
@@ -120,6 +121,9 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
           break;return;
         case 'tool-window':
           this.selectedTool = new ToolWindow(this.windowService, this.gridService, this.buildingService);
+          break;
+        case 'tool-furniture':
+          this.selectedTool = new ToolFurniture(this.gridService, this.store, this.furnitureService);
           break;
         default:
           this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService, this.store);
@@ -350,7 +354,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
 
   drawTiles() {
 
-    if (this.selectedTool instanceof ToolTile || this.selectedTool instanceof ToolDoor || this.selectedTool instanceof ToolWindow) {
+    if (this.selectedTool instanceof ToolTile || this.selectedTool instanceof ToolDoor || this.selectedTool instanceof ToolWindow || this.selectedTool instanceof ToolFurniture) {
       this.selectedTool.tileGhosts.forEach((tile: SvgTile) => {
           // Filter out tiles with the same position and layer on the same level as the hovering tile
           this.gridService.tiles = this.gridService.tiles.filter((t: SvgTile) => {

@@ -18,7 +18,6 @@ export class BuildingService {
     constructor(
         private db: DbService, 
         private tileService: TileService, 
-        private furnitureService: FurnitureService, 
         private gridService: GridService,
         private roomService: RoomService,
         private store: Store<fromRoot.State>,) { }

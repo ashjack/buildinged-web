@@ -1,11 +1,13 @@
 import { createFeatureSelector, createSelector } from '@ngrx/store';
 import * as Actions from './app.actions';
-import { Building } from './models/app.models';
+import { Building, FurnitureTileEntry, SvgTile } from './models/app.models';
+import { VisualFurniture } from './models/furniture-window.models';
 
 export interface State
 {
     building: Building | undefined;
     currentTool: string;
+    selectedfurniture: VisualFurniture | undefined;
     redraw: boolean;
     loading: boolean;
     tileCount: number;
@@ -14,6 +16,7 @@ export interface State
 
 export const initialState: State = {
     building: undefined,
+    selectedfurniture: undefined,
     currentTool: 'tool-draw-room',
     redraw: false,
     loading: false,
@@ -41,6 +44,32 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
         return {
           ...state,
           tileCount: state.tileCount + action.tileCount
+        }
+      }
+      case Actions.ActionTypes.SetSelectedFurniture: {
+
+        if (!state.building) {
+          return {
+            ...state,
+            selectedfurniture: action.furniture
+          };
+        }
+
+        let furn = [...state.building.furniture]
+
+        // furn.push({
+        //   entries: action.furniture.tiles
+        // })
+
+        const updatedBuilding: Building = {
+          ...state.building,
+          furniture: furn
+        }
+
+        return {
+          ...state,
+          selectedfurniture: action.furniture,
+          building: updatedBuilding
         }
       }
 
@@ -200,6 +229,74 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
         if (!state.building) {
           return state;
         }
+
+        if(action.obj.type == 'furniture')
+        {
+          const furnitureObj = {
+            type: 'furniture',
+            FurnitureTiles: 0,
+            orient: action.obj.orient,
+            x: action.obj.x,
+            y: action.obj.y,
+          }
+
+          // let foundMatchingFurniture = false;
+          // state.building.furniture.forEach((furniture, fIndex) => {
+          //   if(!foundMatchingFurniture){
+          //     furniture.entries.forEach((entry, eIndex) => {
+          //       if(!foundMatchingFurniture) {
+          //         const allTilesMatch = action.obj.FurnitureTiles.every((tileToMatch: any) => {
+          //           return entry.tiles.some((tile) => {
+          //             return tile.name === tileToMatch.name && tile.x === tileToMatch.x && tile.y === tileToMatch.y;
+          //           });
+          //         });
+                  
+
+          //         if (allTilesMatch) {
+          //           foundMatchingFurniture = true;
+          //           furnitureObj.FurnitureTiles = fIndex;
+          //         }
+          //       }
+          //     });
+          //   }
+          // });
+
+          let furn = state.building.furniture;
+
+          //if (!foundMatchingFurniture) //Add tiles to furniture
+          //{
+            furn = [...state.building.furniture]
+
+            const entries: FurnitureTileEntry[] = [];
+            action.obj.FurnitureTiles.forEach((tile: SvgTile) => {
+              console.log(tile)
+            })
+
+            // furn.push({
+            //   entries: 
+            // })
+          //}
+
+          const updatedBuilding: Building = {
+            ...state.building,
+            furniture: furn,
+            floors: state.building.floors.map((floor, index) => {
+              if (index === action.level) {
+                return {
+                  ...floor,
+                  objects: [...floor.objects, furnitureObj]
+                };
+              }
+              return floor;
+            })
+          };
+        
+          return {
+            ...state,
+            building: updatedBuilding
+          };
+        }
+
         const updatedBuilding: Building = {
           ...state.building,
           floors: state.building.floors.map((floor, index) => {
@@ -256,6 +353,7 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
 
 export const getRootState = createFeatureSelector<State>('root');
 export const getBuilding = createSelector(getRootState, (state: State) => state.building);
+export const getSelectedFurniture = createSelector(getRootState, (state: State) => state.selectedfurniture);
 export const getCurrentTool = createSelector(getRootState, (state: State) => state.currentTool);
 export const getRedrawSchedule = createSelector(getRootState, (state: State) => state.redraw);
 export const getTileCount = createSelector(getRootState, (state: State) => state.tileCount);

@@ -1,5 +1,6 @@
 import { Action } from "@ngrx/store";
 import { Building } from "./models/app.models";
+import { VisualFurniture } from "./models/furniture-window.models";
 
 export enum ActionTypes {
     SetBuilding = '[Building] Set Building',
@@ -15,6 +16,7 @@ export enum ActionTypes {
     TogglePopup = '[Popup] Toggle Popup',
 
     SetCurrentTool = '[Grid] Set Current Tool',
+    SetSelectedFurniture = '[Grid] Set Selected Furniture',
     ScheduleRedraw = '[Grid] Schedule Redraw'
 }
 
@@ -83,6 +85,12 @@ export class SetCurrentTool implements Action {
     constructor(public tool: string) { }
 }
 
+export class SetSelectedFurniture implements Action {
+    readonly type = ActionTypes.SetSelectedFurniture;
+
+    constructor(public furniture: VisualFurniture) { }
+}
+
 export class ScheduleRedraw implements Action {
     readonly type = ActionTypes.ScheduleRedraw;
 
@@ -91,6 +99,7 @@ export class ScheduleRedraw implements Action {
 
 export type ActionsUnion = 
     SetCurrentTool |
+    SetSelectedFurniture |
     ScheduleRedraw |
     SetBuilding |
     AddObject |
