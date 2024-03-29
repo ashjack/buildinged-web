@@ -6,7 +6,7 @@ import { AppComponent } from './app.component';
 import { MenuComponent } from './menu/menu.component';
 import { NgxPanZoomModule } from 'ngx-panzoom';
 import { HttpClientModule } from '@angular/common/http';
-import { TileSelectionMenuComponent } from './tile-selection-menu/tile-selection-menu.component';
+import { TileSelectionMenuComponent } from './components/tile-selection-menu/tile-selection-menu.component';
 import { Store, StoreModule } from '@ngrx/store';
 import { EffectsModule } from '@ngrx/effects';
 import { reducer } from './app.reducers';

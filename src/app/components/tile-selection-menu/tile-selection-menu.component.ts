@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
-import { SvgTile } from '../models/app.models';
-import { DbService } from '../services/db.service';
+import { SvgTile } from '../../models/app.models';
+import { DbService } from '../../services/db.service';
 import { liveQuery } from 'dexie';
 
 
