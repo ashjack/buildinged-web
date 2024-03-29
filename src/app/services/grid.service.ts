@@ -89,17 +89,26 @@ export class GridService {
       // Draw lower layers offset & greyed out
       this.roomTiles.forEach((tile: SvgTile) => {
           if (!tile.hidden && !tile.excluded && tile.level <= level) {
+              const levelDif = Math.abs(tile.level - level)
               const offsetX = 3 * (level - tile.level);
               const offsetY = 3 * (level - tile.level);
-              this.placeTile_old(tile.x + offsetX, tile.y + offsetY, tile.level, tile.offsetX ? tile.offsetX : 0, tile.offsetY ? tile.offsetY : 0, tile.name, tile.layer, tile.auto);
+
+              const tileOffsetX = tile.offsetX ? tile.offsetX : 0;
+              const tileOffsetY = tile.offsetY ? tile.offsetY : 0;
+
+              this.placeTile_old(tile.x + offsetX, tile.y + offsetY, tile.level, tileOffsetX + (levelDif * 0.05), tileOffsetY + (levelDif * 0.05), tile.name, tile.layer, tile.auto);
           }
       });
   
       this.userTiles.forEach((tile: SvgTile) => {
           if (!tile.hidden && !tile.excluded && tile.level <= level) {
-              const offsetX = 3 * (level - tile.level);
-              const offsetY = 3 * (level - tile.level);
-              this.placeTile_old(tile.x + offsetX, tile.y + offsetY, tile.level, tile.offsetX ? tile.offsetX : 0, tile.offsetY ? tile.offsetY : 0, tile.name, tile.layer,  tile.auto);
+            const levelDif = Math.abs(tile.level - level)
+            const offsetX = 3 * (level - tile.level);
+            const offsetY = 3 * (level - tile.level);
+
+            const tileOffsetX = tile.offsetX ? tile.offsetX : 0;
+            const tileOffsetY = tile.offsetY ? tile.offsetY : 0;
+              this.placeTile_old(tile.x + offsetX, tile.y + offsetY, tile.level, tileOffsetX + (levelDif * 0.05), tileOffsetY + (levelDif * 0.05), tile.name, tile.layer,  tile.auto);
           }
       });
   
