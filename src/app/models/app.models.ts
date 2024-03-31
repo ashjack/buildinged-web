@@ -12,7 +12,7 @@ export interface SvgTile {
     offsetY?: number;
     hidden?: boolean;
     excluded?: boolean;
-    orient?: boolean;
+    orient?: string;
     auto?: boolean;
     object?: boolean;
 }

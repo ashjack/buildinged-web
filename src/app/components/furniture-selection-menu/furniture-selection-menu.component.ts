@@ -6,7 +6,7 @@ import { liveQuery } from 'dexie';
 import * as fromRoot from '../../app.reducers';
 import { Store } from "@ngrx/store";
 import { HttpClient } from '@angular/common/http';
-import { BEntry, BEntryItem, BFurniture, BFurnitureGroup, VisualFurniture } from 'src/app/models/furniture-window.models';
+import { BEntry, BEntryItem, BFurniture, BFurnitureGroup, VisualFurniture, VisualFurnitureEntry } from 'src/app/models/furniture-window.models';
 import { SetSelectedFurniture } from 'src/app/app.actions';
 
 
@@ -178,12 +178,13 @@ export class FurnitureSelectionMenuComponent implements OnInit{
     this.furnitureTiles = [];
   
     for (const furniture of furnitureGroup.furniture) {
-      let retTiles: SvgTile[] = [];
+      
+      let retEntry: VisualFurnitureEntry[] = [];
       let maxX = 0;
       let maxY = 0;
   
       for (const entry of furniture.entries) {
-        retTiles = [];
+        let retTiles: SvgTile[] = [];
         maxX = 0;
         maxY = 0;
         for (const item of entry.items) {
@@ -212,14 +213,33 @@ export class FurnitureSelectionMenuComponent implements OnInit{
             console.error("Error fetching tile:", error);
           }
         }
-        // Push retTiles for each entry
-        this.furnitureTiles.push({
+
+        retEntry.push({
           orient: entry.orient,
-          tiles: retTiles,
+          tiles: [...retTiles],
           xSize: maxX,
           ySize: maxY
+          // tiles: [...retTiles].sort((a, b) => {
+          //   if (entry.orient === 'W' || entry.orient === 'E') {
+          //     // If orient is 'W' or 'E', sort by reverse x and then by y
+          //     if (a.x === b.x) {
+          //       return a.y - b.y; // Compare by y if x values are equal
+          //     }
+          //     return b.x - a.x; // Compare by reverse x
+          //   } else {
+          //     // For other orientations, sort by x and then by y
+          //     if (a.x === b.x) {
+          //       return a.y - b.y; // Compare by y if x values are equal
+          //     }
+          //     return a.x - b.x; // Compare by x
+          //   }
+          // })
         });
       }
+      // Push retTiles for each entry
+      this.furnitureTiles.push({
+        entries: retEntry
+      });
     }
   
     console.log(this.tiles);

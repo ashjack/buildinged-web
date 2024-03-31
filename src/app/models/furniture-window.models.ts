@@ -22,13 +22,12 @@ export interface BEntryItem {
 
 //Misc
 export interface VisualFurniture {
-    orient: string;
-    tiles: SvgTile[]
-    xSize: number;
-    ySize: number;
+    entries: VisualFurnitureEntry[];
 }
 
 export interface VisualFurnitureEntry {
     orient: string;
-    tiles: SvgTile[]
+    tiles: SvgTile[];
+    xSize: number;
+    ySize: number;
 }

@@ -61,7 +61,7 @@ export default class ToolFurniture extends ToolDraw {
         {
             this.store.select(fromRoot.getSelectedFurniture).subscribe((furn) => {
                 this.tileGhosts = [];
-                furn?.tiles.forEach((fTile) => {
+                furn?.entries.find(x => x.orient == 'W')?.tiles.forEach((fTile) => {
                     const tile: SvgTile = {
                         name: fTile.name,
                         url: fTile.url,
@@ -97,6 +97,14 @@ export default class ToolFurniture extends ToolDraw {
         const xMax = Math.max(x1, x2);
         const yMin = Math.min(y1, y2);
         const yMax = Math.max(y1, y2);
+
+        this.store.select(fromRoot.getSelectedFurniture).subscribe((furn) => {
+            if(furn)
+            {
+                this.furnitureService.placeFurniture(x1, y1, this.selectedLevel, 'W', furn)
+            }
+        })
+
         for(let i = xMin; i <= xMax; i++)
         {
             for(let j = yMin; j <= yMax; j++)
@@ -107,12 +115,7 @@ export default class ToolFurniture extends ToolDraw {
               }
               else
               {
-                this.store.select(fromRoot.getSelectedFurniture).subscribe((furn) => {
-                    if(furn)
-                    {
-                        this.furnitureService.placeFurniture(x, y, this.selectedLevel, furn)
-                    }
-                })
+                
                 // const tile: SvgTile = {
                 //     name: this.selectedTile,
                 //     url: this.selectedTile,
@@ -162,7 +165,7 @@ export default class ToolFurniture extends ToolDraw {
         this.store.select(fromRoot.getSelectedFurniture).subscribe((furn) => {
             if(furn)
             {
-                this.furnitureService.placeFurniture(x, y, this.selectedLevel, furn)
+                this.furnitureService.placeFurniture(x, y, this.selectedLevel, 'W', furn)
             }
         })
     }

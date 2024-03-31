@@ -1,6 +1,6 @@
 import { createFeatureSelector, createSelector } from '@ngrx/store';
 import * as Actions from './app.actions';
-import { Building, FurnitureTileEntry, SvgTile } from './models/app.models';
+import { Building, FurnitureTile, FurnitureTileEntry, SvgTile } from './models/app.models';
 import { VisualFurniture } from './models/furniture-window.models';
 
 export interface State
@@ -56,15 +56,40 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
         }
 
         let furn = [...state.building.furniture]
+        let furnEntries: FurnitureTileEntry[] = []
+        let furnTiles: FurnitureTile[] = []
+        action.furniture.entries.forEach((f) => {
+          furnTiles = []
+          
+          f.tiles.forEach((fTile) => {
+            console.log(f.orient, fTile.orient)
+            //if(f.orient == fTile.orient)
+            //{
+              furnTiles.push({
+                x: fTile.x,
+                y: fTile.y,
+                name: fTile.name?.replace('.png', "")!
+              })
+            //}
+          })
 
-        // furn.push({
-        //   entries: action.furniture.tiles
-        // })
+          furnEntries.push({
+            orient: f.orient,
+            tiles: [...furnTiles]
+          })
+        })
+        //action.furniture.entries.push()
+
+        furn.push({
+          entries: furnEntries
+        })
 
         const updatedBuilding: Building = {
           ...state.building,
           furniture: furn
         }
+
+        console.log(furn)
 
         return {
           ...state,

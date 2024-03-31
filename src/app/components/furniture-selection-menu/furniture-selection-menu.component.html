@@ -8,14 +8,19 @@
 
 <div style="position: absolute; height: 60%; width: 20%; background-color: lightgray; top: 40%; right: 0px; overflow-y: auto;">
   <ng-container *ngFor="let furniture of furnitureTiles; let i = index">
-    <div (click)="setSelectedFurniture(furniture)" style="display: flex; position: relative;" [style.height]="100 + (furniture.xSize > furniture.ySize ? (furniture.xSize * 15) : (furniture.ySize * 15)) + 'px'"
+    <div>
+    <ng-container *ngFor="let entry of furniture.entries">
+    <div (click)="setSelectedFurniture(furniture)" style="display: flex; position: relative;" [style.height]="100 + (entry.xSize > entry.ySize ? (entry.xSize * 30) : (entry.ySize * 30)) + 'px'"
          [ngClass]="selectedFurniture == furniture ? 'selected-layer' : ''">
-      <p>{{furniture.orient}}</p>
-      <ng-container *ngFor="let fTile of furniture.tiles">
-        <img class="furnitureTile" [src]="fTile.url" [style.left]="(fTile.x * 26) + (abs(fTile.y - furniture.ySize) * 26) + 'px'" 
-              [style.bottom]="(abs(fTile.x - furniture.xSize) * 13) + (abs(fTile.y - furniture.ySize) * 13) + 'px'">
-      </ng-container>
+      
+        <p>{{entry.orient}}</p>
+        <ng-container *ngFor="let fTile of entry.tiles">
+          <img id="{{fTile.x + ', ' + fTile.y}}" class="furnitureTile" [src]="fTile.url" [style.left]="(fTile.x * 26) + (abs(fTile.y - entry.ySize) * 26) + 'px'" 
+                [style.bottom]="(abs(fTile.x - entry.xSize) * 13) + (abs(fTile.y - entry.ySize) * 13) + 'px'">
+        </ng-container>
     </div>
+  </ng-container>
+</div>
   </ng-container>
 </div>
 

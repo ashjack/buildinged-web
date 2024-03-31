@@ -13,7 +13,7 @@ import { VisualFurniture } from "../models/furniture-window.models";
 export class FurnitureService {
     constructor(private db: DbService, private buildingService: BuildingService,  private store: Store<fromRoot.State>) { }
 
-    placeFurniture(x: number, y: number, level: number, furniture: VisualFurniture) 
+    placeFurniture(x: number, y: number, level: number, orient: string, furniture: VisualFurniture) 
     {
         const building = this.buildingService.building;
         console.log(furniture)
@@ -22,8 +22,8 @@ export class FurnitureService {
             type: 'furniture',
             x: x,
             y: y,
-            orient: furniture.orient,
-            FurnitureTiles: furniture.tiles
+            orient: orient,
+            FurnitureTiles: furniture.entries
         };
 
         this.store.dispatch(new AddObject(newFurniture, level));
@@ -32,10 +32,10 @@ export class FurnitureService {
             type: 'furniture',
             x: x,
             y: y,
-            orient: furniture.orient,
+            orient: orient,
             FurnitureTiles: building.furniture.length
         };
 
-        this.buildingService.placeTile(newFurniture, level);
+        this.buildingService.placeTile(newFurnitureToPlace, level);
     }
 }
