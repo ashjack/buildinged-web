@@ -88,7 +88,7 @@ export class SetCurrentTool implements Action {
 export class SetSelectedFurniture implements Action {
     readonly type = ActionTypes.SetSelectedFurniture;
 
-    constructor(public furniture: VisualFurniture) { }
+    constructor(public furniture: VisualFurniture, public orient: string) { }
 }
 
 export class ScheduleRedraw implements Action {

@@ -6,6 +6,7 @@ import { Store } from "@ngrx/store";
 import { AddTile } from "../app.actions";
 import { VisualFurniture } from "../models/furniture-window.models";
 import { FurnitureService } from "../services/furniture.service";
+import { combineLatest, take } from "rxjs";
 
 export default class ToolFurniture extends ToolDraw {
     
@@ -59,9 +60,14 @@ export default class ToolFurniture extends ToolDraw {
     
         if(!this.isDragging)
         {
-            this.store.select(fromRoot.getSelectedFurniture).subscribe((furn) => {
+            combineLatest([
+                this.store.select(fromRoot.getSelectedFurniture),
+                this.store.select(fromRoot.getSelectedFurnitureOrient)
+            ]).pipe(
+                take(1) // Take only the first emitted value and then unsubscribe
+            ).subscribe(([furn, orient]) => {
                 this.tileGhosts = [];
-                furn?.entries.find(x => x.orient == 'W')?.tiles.forEach((fTile) => {
+                furn?.entries.find(x => x.orient == orient)?.tiles.forEach((fTile) => {
                     const tile: SvgTile = {
                         name: fTile.name,
                         url: fTile.url,
@@ -73,12 +79,11 @@ export default class ToolFurniture extends ToolDraw {
                     };
                     this.dragTiles = [];
                     this.dragTiles.push({name: '', url: '', x: x, y: y, level: this.selectedLevel, layer: 'Walls'});
-                    if(this.key !== 'Control')
-                    {
+                    if(this.key !== 'Control') {
                         this.tileGhosts.push(tile);
                     }
-                })
-            })
+                });
+            });
         }
     }
 
@@ -98,12 +103,16 @@ export default class ToolFurniture extends ToolDraw {
         const yMin = Math.min(y1, y2);
         const yMax = Math.max(y1, y2);
 
-        this.store.select(fromRoot.getSelectedFurniture).subscribe((furn) => {
-            if(furn)
-            {
-                this.furnitureService.placeFurniture(x1, y1, this.selectedLevel, 'W', furn)
+        combineLatest([
+            this.store.select(fromRoot.getSelectedFurniture),
+            this.store.select(fromRoot.getSelectedFurnitureOrient)
+        ]).pipe(
+            take(1) // Take only the first emitted value and then unsubscribe
+        ).subscribe(([furn, orient]) => {
+            if (furn) {
+                this.furnitureService.placeFurniture(x1, y1, this.selectedLevel, orient, furn);
             }
-        })
+        });
 
         for(let i = xMin; i <= xMax; i++)
         {
@@ -162,11 +171,15 @@ export default class ToolFurniture extends ToolDraw {
         //     level: this.selectedLevel
         // };
         // this.gridService.placeTile2(tile, false);
-        this.store.select(fromRoot.getSelectedFurniture).subscribe((furn) => {
-            if(furn)
-            {
-                this.furnitureService.placeFurniture(x, y, this.selectedLevel, 'W', furn)
+        combineLatest([
+            this.store.select(fromRoot.getSelectedFurniture),
+            this.store.select(fromRoot.getSelectedFurnitureOrient)
+        ]).pipe(
+            take(1) // Take only the first emitted value and then unsubscribe
+        ).subscribe(([furn, orient]) => {
+            if (furn) {
+                this.furnitureService.placeFurniture(x, y, this.selectedLevel, orient, furn);
             }
-        })
+        });
     }
 }

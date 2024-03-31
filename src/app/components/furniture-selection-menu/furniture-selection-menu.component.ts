@@ -28,6 +28,7 @@ export class FurnitureSelectionMenuComponent implements OnInit{
   furnitureTiles: VisualFurniture[] = [];
 
   selectedFurniture: VisualFurniture | undefined;
+  selectedFurnitureOrient: string;
 
   ngOnInit(): void {
     this.http.get('assets/BuildingFurniture.txt', { responseType: 'text' }).subscribe((data: any) => {
@@ -303,9 +304,10 @@ export class FurnitureSelectionMenuComponent implements OnInit{
     return localStorage.getItem('selectedFurnitureGroup') || 'Advertising';
   }
 
-  setSelectedFurniture(group: VisualFurniture) {
+  setSelectedFurniture(group: VisualFurniture, orient: string) {
     this.selectedFurniture = group;
-    this.store.dispatch(new SetSelectedFurniture(group));
+    this.selectedFurnitureOrient = orient;
+    this.store.dispatch(new SetSelectedFurniture(group, orient));
   }
 
   //Helper functions

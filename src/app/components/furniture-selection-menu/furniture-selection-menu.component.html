@@ -10,14 +10,15 @@
   <ng-container *ngFor="let furniture of furnitureTiles; let i = index">
     <div>
     <ng-container *ngFor="let entry of furniture.entries">
-    <div (click)="setSelectedFurniture(furniture)" style="display: flex; position: relative;" [style.height]="100 + (entry.xSize > entry.ySize ? (entry.xSize * 30) : (entry.ySize * 30)) + 'px'"
-         [ngClass]="selectedFurniture == furniture ? 'selected-layer' : ''">
+    <div (click)="setSelectedFurniture(furniture, entry.orient)" [ngClass]="(selectedFurniture == furniture && selectedFurnitureOrient == entry.orient) ? 'selected-layer' : ''" style="display: flex; position: relative;" [style.height]="100 + (entry.xSize > entry.ySize ? (entry.xSize * 30) : (entry.ySize * 30)) + 'px'">
       
         <p>{{entry.orient}}</p>
+        <div >
         <ng-container *ngFor="let fTile of entry.tiles">
           <img id="{{fTile.x + ', ' + fTile.y}}" class="furnitureTile" [src]="fTile.url" [style.left]="(fTile.x * 26) + (abs(fTile.y - entry.ySize) * 26) + 'px'" 
                 [style.bottom]="(abs(fTile.x - entry.xSize) * 13) + (abs(fTile.y - entry.ySize) * 13) + 'px'">
         </ng-container>
+        </div>
     </div>
   </ng-container>
 </div>

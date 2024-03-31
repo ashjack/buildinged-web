@@ -8,6 +8,7 @@ export interface State
     building: Building | undefined;
     currentTool: string;
     selectedfurniture: VisualFurniture | undefined;
+    selectedFurnitureOrient: string;
     redraw: boolean;
     loading: boolean;
     tileCount: number;
@@ -17,6 +18,7 @@ export interface State
 export const initialState: State = {
     building: undefined,
     selectedfurniture: undefined,
+    selectedFurnitureOrient: 'W',
     currentTool: 'tool-draw-room',
     redraw: false,
     loading: false,
@@ -51,6 +53,7 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
         if (!state.building) {
           return {
             ...state,
+            selectedFurnitureOrient: action.orient,
             selectedfurniture: action.furniture
           };
         }
@@ -94,6 +97,7 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
         return {
           ...state,
           selectedfurniture: action.furniture,
+          selectedFurnitureOrient: action.orient,
           building: updatedBuilding
         }
       }
@@ -297,6 +301,8 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
               console.log(tile)
             })
 
+            console.log(furn)
+
             // furn.push({
             //   entries: 
             // })
@@ -379,6 +385,7 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
 export const getRootState = createFeatureSelector<State>('root');
 export const getBuilding = createSelector(getRootState, (state: State) => state.building);
 export const getSelectedFurniture = createSelector(getRootState, (state: State) => state.selectedfurniture);
+export const getSelectedFurnitureOrient = createSelector(getRootState, (state: State) => state.selectedFurnitureOrient);
 export const getCurrentTool = createSelector(getRootState, (state: State) => state.currentTool);
 export const getRedrawSchedule = createSelector(getRootState, (state: State) => state.redraw);
 export const getTileCount = createSelector(getRootState, (state: State) => state.tileCount);
