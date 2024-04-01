@@ -1,6 +1,9 @@
 import { Component } from '@angular/core';
 import { PanZoomAPI, PanZoomConfig, PanZoomModel } from 'ngx-panzoom';
 import { Subscription } from 'rxjs/internal/Subscription';
+import * as fromRoot from './app.reducers';
+import { Store } from "@ngrx/store";
+import { Observable } from 'rxjs';
 
 @Component({
   selector: 'app-root',
@@ -12,10 +15,14 @@ export class AppComponent {
 
   panZoomConfig: PanZoomConfig = new PanZoomConfig();
   isPanning: boolean = false;
-  constructor() {
+  selectedTool$: Observable<string>;
+
+  constructor(private store: Store<fromRoot.State>) {
     this.panZoomConfig.dragMouseButton = 'middle';
     this.panZoomConfig.freeMouseWheel = false;
     this.panZoomConfig.invertMouseWheel = true;
+
+    this.selectedTool$ = store.select(fromRoot.getCurrentTool);
   }
 
   private panZoomAPI: PanZoomAPI;
