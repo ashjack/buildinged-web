@@ -8,9 +8,11 @@
 
 <div style="position: absolute; height: 60%; width: 20%; background-color: lightgray; top: 40%; right: 0px; overflow-y: auto;">
   <ng-container *ngFor="let furniture of furnitureTiles; let i = index">
-    <div>
+    <div style="display: flex;">
     <ng-container *ngFor="let entry of furniture.entries">
-    <div (click)="setSelectedFurniture(furniture, entry.orient)" [ngClass]="(selectedFurniture == furniture && selectedFurnitureOrient == entry.orient) ? 'selected-layer' : ''" style="display: flex; position: relative;" [style.height]="100 + (entry.xSize > entry.ySize ? (entry.xSize * 30) : (entry.ySize * 30)) + 'px'">
+    <div (click)="setSelectedFurniture(furniture, entry.orient)" [ngClass]="(selectedFurniture == furniture && selectedFurnitureOrient == entry.orient) ? 'selected-layer' : ''" style="display: flex; position: relative;" 
+    [style.height]="100 + (entry.xSize > entry.ySize ? (entry.xSize * 30) : (entry.ySize * 30)) + 'px'"
+    [style.width]="100 + (entry.xSize > entry.ySize ? (entry.xSize * 40) : (entry.ySize * 40)) + 'px'">
       
         <p>{{entry.orient}}</p>
         <div >

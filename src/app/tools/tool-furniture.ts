@@ -27,35 +27,57 @@ export default class ToolFurniture extends ToolDraw {
     
         if(this.isDragging)
         {
-        //   this.dragTiles = [];
-        //   this.tileGhosts = [];
-        //   const x1 = this.beginDragCoords[0];
-        //   const y1 = this.beginDragCoords[1];
-        //   const x2 = x;
-        //   const y2 = y;
-        //   const xMin = Math.min(x1, x2);
-        //   const xMax = Math.max(x1, x2);
-        //   const yMin = Math.min(y1, y2);
-        //   const yMax = Math.max(y1, y2);
-        //   for(let i = xMin; i <= xMax; i++)
-        //   {
-        //     for(let j = yMin; j <= yMax; j++)
-        //     {
-        //       const tile: SvgTile = {
-        //         name: this.selectedTile,
-        //         url: this.gridService.getIndividualTile(this.selectedTile),
-        //         x: i,
-        //         y: j,
-        //         layer: this.selectedLayer,
-        //         level: this.selectedLevel
-        //       };
-        //       this.dragTiles.push(tile);
-        //       if(this.key !== 'Control')
-        //       {
-        //         this.tileGhosts.push(tile);
-        //       }
-        //     }
-        //   }
+          this.dragTiles = [];
+          this.tileGhosts = [];
+          const x1 = this.beginDragCoords[0];
+          const y1 = this.beginDragCoords[1];
+          const x2 = x;
+          const y2 = y;
+          const xMin = Math.min(x1, x2);
+          const xMax = Math.max(x1, x2);
+          const yMin = Math.min(y1, y2);
+          const yMax = Math.max(y1, y2);
+       
+          combineLatest([
+            this.store.select(fromRoot.getSelectedFurniture),
+            this.store.select(fromRoot.getSelectedFurnitureOrient)
+        ]).pipe(take(1)).subscribe(([furn, orient]) => {
+            this.tileGhosts = [];
+
+            let newOrient = orient;
+                if(x2 < x1) { newOrient = 'W' }
+                if(x2 > x1) { newOrient = 'E' }
+                if(y2 < y1) { newOrient = 'N' }
+                if(y2 > y1) { newOrient = 'S' }
+
+            furn?.entries.find(x => x.orient == newOrient)?.tiles.forEach((fTile) => {
+
+                let newLayer = 'Furniture';
+                if(this.gridService.getTileAt(x1 + fTile.x, y + fTile.y, this.selectedLevel, 'Furniture'))
+                { newLayer = 'Furniture2' }
+                if(this.gridService.getTileAt(x1 + fTile.x, y + fTile.y, this.selectedLevel, 'Furniture2'))
+                { newLayer = 'Furniture3' }
+                if(this.gridService.getTileAt(x1 + fTile.x, y + fTile.y, this.selectedLevel, 'Furniture3'))
+                { newLayer = 'Furniture4' }
+                if(this.gridService.getTileAt(x1 + fTile.x, y + fTile.y, this.selectedLevel, 'Furniture4'))
+                { newLayer = 'Furniture' }
+
+                const tile: SvgTile = {
+                    name: fTile.name,
+                    url: fTile.url,
+                    x: x1 + fTile.x,
+                    y: y1 + fTile.y, 
+                    layer: newLayer,
+                    level: this.selectedLevel,
+                    object: true
+                };
+                this.dragTiles = [];
+                this.dragTiles.push({name: '', url: '', x: x1, y: y1, level: this.selectedLevel, layer: 'Walls'});
+                if(this.key !== 'Control') {
+                    this.tileGhosts.push(tile);
+                }
+            });
+        });
         }
     
         if(!this.isDragging)
@@ -63,17 +85,26 @@ export default class ToolFurniture extends ToolDraw {
             combineLatest([
                 this.store.select(fromRoot.getSelectedFurniture),
                 this.store.select(fromRoot.getSelectedFurnitureOrient)
-            ]).pipe(
-                take(1) // Take only the first emitted value and then unsubscribe
-            ).subscribe(([furn, orient]) => {
+            ]).pipe(take(1)).subscribe(([furn, orient]) => {
                 this.tileGhosts = [];
                 furn?.entries.find(x => x.orient == orient)?.tiles.forEach((fTile) => {
+
+                    let newLayer = 'Furniture';
+                    if(this.gridService.getTileAt(x + fTile.x, y + fTile.y, this.selectedLevel, 'Furniture'))
+                    { newLayer = 'Furniture2' }
+                    if(this.gridService.getTileAt(x + fTile.x, y + fTile.y, this.selectedLevel, 'Furniture2'))
+                    { newLayer = 'Furniture3' }
+                    if(this.gridService.getTileAt(x + fTile.x, y + fTile.y, this.selectedLevel, 'Furniture3'))
+                    { newLayer = 'Furniture4' }
+                    if(this.gridService.getTileAt(x + fTile.x, y + fTile.y, this.selectedLevel, 'Furniture4'))
+                    { newLayer = 'Furniture' }
+
                     const tile: SvgTile = {
                         name: fTile.name,
                         url: fTile.url,
                         x: x + fTile.x,
                         y: y + fTile.y, 
-                        layer: 'Furniture',
+                        layer: newLayer,
                         level: this.selectedLevel,
                         object: true
                     };
@@ -106,11 +137,15 @@ export default class ToolFurniture extends ToolDraw {
         combineLatest([
             this.store.select(fromRoot.getSelectedFurniture),
             this.store.select(fromRoot.getSelectedFurnitureOrient)
-        ]).pipe(
-            take(1) // Take only the first emitted value and then unsubscribe
-        ).subscribe(([furn, orient]) => {
+        ]).pipe(take(1)).subscribe(([furn, orient]) => {
             if (furn) {
-                this.furnitureService.placeFurniture(x1, y1, this.selectedLevel, orient, furn);
+                let newOrient = orient;
+                if(x2 < x1) { newOrient = 'W' }
+                if(x2 > x1) { newOrient = 'E' }
+                if(y2 < y1) { newOrient = 'N' }
+                if(y2 > y1) { newOrient = 'S' }
+
+                this.furnitureService.placeFurniture(x1, y1, this.selectedLevel, newOrient, furn);
             }
         });
 
@@ -162,15 +197,6 @@ export default class ToolFurniture extends ToolDraw {
       }
 
     override clickTile(x: number, y: number): void {
-        // const tile: SvgTile = {
-        //     name: this.selectedTile,
-        //     url: this.selectedTile,
-        //     x: x,
-        //     y: y,
-        //     layer: this.selectedLayer,
-        //     level: this.selectedLevel
-        // };
-        // this.gridService.placeTile2(tile, false);
         combineLatest([
             this.store.select(fromRoot.getSelectedFurniture),
             this.store.select(fromRoot.getSelectedFurnitureOrient)
