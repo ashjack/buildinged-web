@@ -448,6 +448,35 @@ export class BuildingService {
         })
     }
 
+    async createNewBuilding() {
+        const newBuilding: Building = {
+            version: 0,
+            width: 20,
+            height: 20,
+            ExteriorWall: 0,
+            ExteriorWallTrim: 0,
+            Door: 0,
+            DoorFrame: 0,
+            Window: 0,
+            Curtains: 0,
+            Shutters: 0,
+            Stairs: 0,
+            RoofCap: 0,
+            RoofSlope: 0,
+            RoofTop: 0,
+            GrimeWall: 0,
+            rooms: [],
+            entries: [],
+            furniture: [],
+            user_tiles: [],
+            used_furniture: '',
+            used_tiles: '',
+            floors: []
+        }
+        this.store.dispatch(new SetBuilding(newBuilding))
+        this.building = newBuilding;
+    }
+
     async drawBuilding()
     {
         const drawRoomTool = new ToolDrawRoom(this.roomService, this.gridService, this, this.store);
@@ -933,8 +962,8 @@ export class BuildingService {
                     const furnitureObjectTiles: SvgTile[] = [];
                     const furnitureObject = {
                         tiles: furnitureObjectTiles,
-                        x: x + (orient == 'E' ? 1 : 0),
-                        y: y + (orient == 'S' ? 1 : 0),
+                        x: x + (orient == 'E' ? 0 : 0),
+                        y: y + (orient == 'S' ? 0 : 0),
                         level: level,
                         width: 0,
                         length: 0,

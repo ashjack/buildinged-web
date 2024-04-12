@@ -1,0 +1,26 @@
+<div class="window" *ngIf="showWindow">
+    <div class="col">
+        <h2>Project Zomboid Building Editor</h2>
+        <span>
+            <button class="square" (click)="openFileUpload()"><img src="assets/icons/document-new.png"></button>
+            <span>New Building</span>
+        </span>
+        <span>
+            <button class="square" (click)="openFileUpload()"><img src="assets/icons/document-open.png"></button>
+            <span>Upload Building</span>
+        </span>
+        <span>
+            <button class="square" (click)="closeWindow()"><img src="assets/icons/document-open.png"></button>
+            <span>Close Menu</span>
+        </span>
+    </div>
+
+    <div class="col" *ngIf="!listBuildings">
+        <h2>Projects</h2>
+        <button class="project-button" (click)="openBuildingList()">Thames Valley</button>
+    </div>
+    <div class="col" *ngIf="listBuildings">
+        <h2>Thames Valley - Buildings</h2>
+        <button (click)="loadBuilding(building.Contents)" class="project-button" id="{{building.id}}" *ngFor="let building of buildings">{{building.Name}}</button>
+    </div>   
+</div>
