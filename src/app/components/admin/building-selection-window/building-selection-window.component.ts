@@ -6,6 +6,9 @@ import * as fromRoot from '../../../app.reducers';
 import { Store } from "@ngrx/store";
 import { BuildingService } from 'src/app/services/building.service';
 import { ApiService } from 'src/app/services/api.service';
+import { Observable } from 'rxjs';
+import { Building } from 'src/app/models/app.models';
+import { TogglePopup } from 'src/app/app.actions';
 
 @Component({
     selector: 'app-building-selection-window',
@@ -14,15 +17,27 @@ import { ApiService } from 'src/app/services/api.service';
   })
   export class BuildingSelectionWindowComponent implements OnInit{
 
+    openBuilding$: Observable<Building | undefined>;
+
     buildings: any[] = [];
     listBuildings: boolean;
     showWindow: boolean = true;
+    forceShowWindow$: Observable<boolean>;
 
     constructor(private sanitizer: DomSanitizer, private buildingService: BuildingService, private store: Store<fromRoot.State>,
-                private apiService: ApiService) { } 
+                private apiService: ApiService) { 
+                  this.forceShowWindow$ = this.store.select(fromRoot.isPopupOpen('main-menu'));
+                } 
 
     ngOnInit(): void {
       this.getBuildingsByProjectName('ThamesValley');
+      this.openBuilding$ = this.store.select(fromRoot.getBuilding);
+
+      this.openBuilding$.subscribe((building) => {
+        if(building) {
+          this.closeWindow();
+        }
+      });
     }
 
     async getBuildingsByProjectName(projectName: string) {
@@ -81,5 +96,6 @@ import { ApiService } from 'src/app/services/api.service';
 
       closeWindow(): void {
         this.showWindow = false;
+        this.store.dispatch(new TogglePopup('main-menu', false));
       }
   }

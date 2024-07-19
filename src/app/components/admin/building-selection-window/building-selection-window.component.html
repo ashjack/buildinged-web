@@ -1,4 +1,4 @@
-<div class="window" *ngIf="showWindow">
+<div class="window" *ngIf="showWindow || (forceShowWindow$ | async)">
     <div class="col">
         <h2>Project Zomboid Building Editor</h2>
         <span>

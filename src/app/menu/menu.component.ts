@@ -100,5 +100,8 @@ export class MenuComponent {
     }
   }
 
+  openMainMenu(): void {
+    this.store.dispatch(new TogglePopup('main-menu', true));
+  }
 
 }
