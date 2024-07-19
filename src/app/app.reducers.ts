@@ -357,11 +357,16 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
           ...state.building,
           floors: state.building.floors.map((floor, index) => {
             if (index === action.level) {
+              const updatedObjects = [...floor.objects];
+              const indexToRemove = updatedObjects.findIndex(object => {
+          return object.x === action.obj.x && object.y === action.obj.y && object.type === action.obj.type && object.orient === action.obj.orient;
+              });
+              if (indexToRemove !== -1) {
+          updatedObjects.splice(indexToRemove, 1);
+              }
               return {
-                ...floor,
-                objects: floor.objects.filter(object => {
-                  return object.x !== action.obj.x || object.y !== action.obj.y || object.type !== action.obj.type || object.orient !== action.obj.orient;
-                })
+          ...floor,
+          objects: updatedObjects
               };
             }
             return floor;

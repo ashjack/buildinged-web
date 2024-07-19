@@ -21,6 +21,8 @@ import { DoorService } from "../services/door.service";
 import ToolWindow from "../tools/tool-window";
 import { WindowService } from "../services/window.service";
 import ToolFurniture from "../tools/tool-furniture";
+import ToolRoof from "../tools/tool-roof";
+import { RoofService } from "../services/roof.service";
 
 @Component({
     selector: 'app-viewport-canvas',
@@ -74,7 +76,8 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     private roomService: RoomService,
     private cacheService: CacheService,
     private doorService: DoorService,
-    private windowService: WindowService) 
+    private windowService: WindowService,
+    private roofService: RoofService) 
   { 
     this.selectedTool$ = store.select(fromRoot.getCurrentTool);
     this.scheduleRedraw$ = store.select(fromRoot.getRedrawSchedule);
@@ -124,6 +127,9 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
           break;
         case 'tool-furniture':
           this.selectedTool = new ToolFurniture(this.gridService, this.store, this.furnitureService);
+          break;
+        case 'tool-roof':
+          this.selectedTool = new ToolRoof(this.roofService, this.gridService);
           break;
         default:
           this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService, this.store);
@@ -891,7 +897,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
       if(this.currentHoverObject)
       {
         this.store.dispatch(new RemoveObject(this.currentHoverObject, this.gridService.getSelectedLevel()));
-        this.gridService.removeObject(this.currentHoverObject, this.gridService.getSelectedLevel());
+        //this.gridService.removeObject(this.currentHoverObject, this.gridService.getSelectedLevel());
         //this.buildingService.placeTiles();
         this.buildingService.removeTile(this.currentHoverObject, this.gridService.getSelectedLevel())
         this.gridService.redrawTiles();

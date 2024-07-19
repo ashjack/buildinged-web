@@ -198,13 +198,16 @@ export class GridService {
   }
 
   removeObject(obj: any, level: number) {
-    this.objects = this.objects.filter(x => 
-        x.x !== obj.x || 
-        x.y !== obj.y || 
-        x.type !== obj.type || 
-        x.orient !== obj.orient || 
-        x.level !== level
+    const index = this.objects.findIndex(x => 
+        x.x === obj.x && 
+        x.y === obj.y && 
+        x.type === obj.type && 
+        x.orient === obj.orient && 
+        x.level === level
     );
+    if (index !== -1) {
+        this.objects.splice(index, 1);
+    }
 }
 
   layers: string[] = [
