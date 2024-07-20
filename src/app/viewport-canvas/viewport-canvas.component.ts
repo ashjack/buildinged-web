@@ -360,7 +360,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
 
   drawTiles() {
 
-    if (this.selectedTool instanceof ToolTile || this.selectedTool instanceof ToolDoor || this.selectedTool instanceof ToolWindow || this.selectedTool instanceof ToolFurniture) {
+    if (this.selectedTool instanceof ToolTile || this.selectedTool instanceof ToolDoor || this.selectedTool instanceof ToolWindow || this.selectedTool instanceof ToolFurniture || this.selectedTool instanceof ToolRoof) {
       this.selectedTool.tileGhosts.forEach((tile: SvgTile) => {
           // Filter out tiles with the same position and layer on the same level as the hovering tile
           this.gridService.tiles = this.gridService.tiles.filter((t: SvgTile) => {
@@ -743,6 +743,66 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     if(obj) { this.gridService.objectOverlays.push(objOverlay); }
 
     return;
+    }
+    else if(type == 'Roof' || type == 'roof')
+    {
+      this.ctx.beginPath();
+      this.ctx.setLineDash([]);
+      this.ctx.moveTo(x, y); //Bottom Corner
+      this.ctx.lineTo(x + size + xsize, y - (xsize / 2) - size / 2); //Right Corner
+      this.ctx.lineTo(x - ysize + xsize, y - (ysize / 2) - (xsize / 2) - size); //Top Corner
+      this.ctx.lineTo(x - size - ysize, y - (ysize / 2) - size / 2); //Left Corner
+      this.ctx.closePath();
+      this.ctx.strokeStyle = lineColor; // Set the stroke color
+      this.ctx.lineWidth = 1 * this.zoom;
+      this.ctx.stroke();
+
+      this.ctx.fillStyle = fillColor; // Set the fill color
+      this.ctx.fill(); // Fill the shape with the specified color
+
+      const objOverlay: SvgObjectOverlay = {
+        points: [
+            {x: x, y: y}, // Bottom Corner
+            {x: x + size + xsize, y: y - (xsize / 2) - size / 2}, // Right Corner
+            {x: x - ysize + xsize, y: y - (ysize / 2) - (xsize / 2) - size}, // Top Corner
+            {x: x - size - ysize, y: y - (ysize / 2) - size / 2} // Left Corner
+        ],
+        object: obj
+      };
+    
+      if(obj) { this.gridService.objectOverlays.push(objOverlay); }
+
+      //Toggle Cap Buttons
+      const bottomX = x;
+      const bottomY = y - (10 * this.zoom);
+      const rightX = x + size + xsize - (1 * this.zoom);
+      const rightY = y - (xsize / 2) - size / 2;
+      const topX = x - ysize + xsize;
+      const topY = y - (ysize / 2) - (xsize / 2) - size + (1 * this.zoom);
+      const leftX = x - size - ysize + (20 * this.zoom);
+      const leftY = y - (ysize / 2) - size / 2;
+
+      if(orient?.includes('W'))
+      {
+        const middleX = 50 * this.zoom;
+        const middleY = 25 * this.zoom;
+
+        this.ctx.beginPath();
+        this.ctx.setLineDash([]);
+        this.ctx.moveTo(x + middleX, y - middleY); //Bottom Corner
+        this.ctx.lineTo(x - middleX + size + xsize, y + middleY - (xsize / 2) - size / 2); //Right Corner
+        this.ctx.lineTo(x - middleX + size + xsize - middleX, y - (xsize / 2) - size / 2); //Top Corner
+        this.ctx.lineTo(x, y - middleX); //Left Corner
+        this.ctx.closePath();
+        this.ctx.strokeStyle = "#000000"; // Set the stroke color
+        this.ctx.lineWidth = 2 * this.zoom;
+        this.ctx.stroke();
+
+        this.ctx.fillStyle = '#97979760'; // Set the fill color 
+        this.ctx.fill(); // Fill the shape with the specified color
+      }
+
+      return;
     }
     else
     {

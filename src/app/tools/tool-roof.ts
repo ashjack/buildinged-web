@@ -1,31 +1,35 @@
-import { SvgTile } from "../models/app.models";
+import { Building, SvgTile } from "../models/app.models";
 import { FurnitureService } from "../services/furniture.service";
-import { ViewportComponent } from "../viewport/viewport.component";
+import { GridService } from "../services/grid.service";
+import { RoofService } from "../services/roof.service";
 import ToolDraw from "./tool-draw";
 
 export default class ToolRoof extends ToolDraw {
     
-    constructor(grid: ViewportComponent, private furnitureService: FurnitureService) {
-        super(grid);
+    constructor(private roofService: RoofService, private gridService: GridService,) {
+        super();
     }
 
-    setRoof(x: number, y: number): void {
-        this.furnitureService.objects.push({
-            type: "roof",
-            width: 1 ,
-            height: 1,
-            RoofType: "PeakNS",
-            Depth: "Point5",
-            cappedW: "true",
-            cappedN: "true",
-            cappedE: "true",
-            cappedS: "true",
-            CapTiles: "47",
-            SlopeTiles: "49",
-            TopTiles: "50",
-            x: 1,
-            y: 0
-        })
+    tileGhosts: SvgTile[] = [];
+    building: Building;
+
+    setRoof(x: number, y: number, level: number): void {
+        // this.furnitureService.objects.push({
+        //     type: "roof",
+        //     width: 1 ,
+        //     height: 1,
+        //     RoofType: "PeakNS",
+        //     Depth: "Point5",
+        //     cappedW: "true",
+        //     cappedN: "true",
+        //     cappedE: "true",
+        //     cappedS: "true",
+        //     CapTiles: "47",
+        //     SlopeTiles: "49",
+        //     TopTiles: "50",
+        //     x: 1,
+        //     y: 0
+        // })
     }
 
     override hoverTile(x: number, y: number): void {
@@ -49,16 +53,22 @@ export default class ToolRoof extends ToolDraw {
                 url: '',
                 x: i,
                 y: j, 
+                level: this.gridService.getSelectedLevel(),
                 layer: 'Walls'
               };
               this.dragTiles.push(tile);
+
             }
           }
+
+          this.tileGhosts = this.roofService.calculateRoofTiles(xMin, yMin, this.gridService.getSelectedLevel(), xMax-xMin + 1, yMax-yMin + 1, 'PeakNS', 47, 49, 50);
+
         }
         else
         {
+            this.tileGhosts = [];
             this.dragTiles = [];
-            this.dragTiles.push({name: '', url: '', x: x, y: y, layer: 'Walls'});
+            this.dragTiles.push({name: '', url: '', x: x, y: y, layer: 'Walls', level: this.gridService.getSelectedLevel()});
         }
     }
 
@@ -84,8 +94,12 @@ export default class ToolRoof extends ToolDraw {
             {
                 //Set roof
                 //this.setRoom(i,j);
+                
             }
         }
+
+        this.roofService.placeRoof(xMin, yMin, this.gridService.getSelectedLevel(), xMax-xMin, yMax-yMin, 'PeakNS', 47, 49, 50);
+        this.tileGhosts = [];
 
         //Draw roof
         //this.drawRoom(this.grid.rooms[this.grid.rooms.length - 1]);

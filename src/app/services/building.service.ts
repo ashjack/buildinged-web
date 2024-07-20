@@ -594,6 +594,18 @@ export class BuildingService {
             const slopeTiles = building.entries[slopeTilesIndex - 1].tiles;
             const topTiles = building.entries[topTilesIndex - 1].tiles;
 
+            const roofObjectTiles: SvgTile[] = [];
+            const roofObject = {
+                tiles: roofObjectTiles,
+                x: x,
+                y: y,
+                level: level,
+                width: height - 1,
+                length: width - 1,
+                orient: roofType,
+                type: 'roof'
+            }
+
             //Placement functions
             function placeSlopeTile(gridService: GridService, slopeTile: any, x: number, y: number, height: number, direction: number) {
                 if (slopeTile) {
@@ -611,7 +623,7 @@ export class BuildingService {
                                 // alert("Caught an already existing roof tile")
                             }
 
-                            gridService.placeTile2({
+                            const tileToPlace = {
                                 name: slopeTile.tile + '.png',
                                 url: slopeTile.tile + '.png',
                                 x: x,
@@ -620,7 +632,10 @@ export class BuildingService {
                                 offsetY: slopeTile.offset ? Number.parseInt(slopeTile.offset) : 0,
                                 layer: roofTileExists && !manualRoofTile ? 'Roof2' : "Roof",
                                 level: level,
-                            }, true);
+                            }
+
+                            gridService.placeTile2(tileToPlace, true);
+                            roofObjectTiles.push(tileToPlace);
                         }
                         else
                         {
@@ -635,7 +650,7 @@ export class BuildingService {
                                 //alert("Caught an already existing roof tile")
                             }
 
-                            gridService.placeTile2({
+                            const tileToPlace = {
                                 name: slopeTile.tile + '.png',
                                 url: slopeTile.tile + '.png',
                                 x: x + i,
@@ -644,7 +659,10 @@ export class BuildingService {
                                 offsetY: slopeTile.offset ? Number.parseInt(slopeTile.offset) : 0,
                                 layer: roofTileExists && !manualRoofTile ? 'Roof2' : "Roof",
                                 level: level
-                            }, true);
+                            }
+
+                            gridService.placeTile2(tileToPlace, true);
+                            roofObjectTiles.push(tileToPlace);
                         }
                     }
                 }
@@ -658,25 +676,30 @@ export class BuildingService {
                         {
                             if(direction === 0)
                             {
-                                gridService.placeTile2({
+                                const tileToPlace = {
                                     name: capTile.tile + '.png',
                                     url: capTile.tile + '.png',
                                     x: x,
                                     y: y + i,
                                     layer: 'RoofCap',
                                     level: level
-                                }, false);
+                                };
+
+                                gridService.placeTile2(tileToPlace, false);
+                                roofObjectTiles.push(tileToPlace);
                             }
                             else
                             {
-                                gridService.placeTile2({
+                                const tileToPlace = {
                                     name: capTile.tile + '.png',
                                     url: capTile.tile + '.png',
                                     x: x + i,
                                     y: y,
                                     layer: 'RoofCap',
                                     level: level
-                                }, false);
+                                }
+                                gridService.placeTile2(tileToPlace, false);
+                                roofObjectTiles.push(tileToPlace);
                             }
                         }
                     }
@@ -947,6 +970,8 @@ export class BuildingService {
                     }
                 }
             }
+
+            this.gridService.addObject(roofObject);
         }
 
         if(obj.type == 'furniture')
