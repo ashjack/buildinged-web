@@ -23,48 +23,53 @@ export class TileService {
 
     }
 
-    async processTilepacks(tilepacks: Tilepack[], index: number) {
-      if (index >= tilepacks.length) {
+    async processTilepacks(tilepacks: Tilepack[], tilepackIndex: number) {
+      if (tilepackIndex >= tilepacks.length) {
         console.log(this.failedDecodes);
         return;
       }
     
-      const tilepack = tilepacks[index];
+      const tilepack = tilepacks[tilepackIndex];
       const existingTilepack = localStorage.getItem(tilepack.name)
       if(existingTilepack)
       {
         tilepack.enabled = true;
       }
     
-      if(tilepack.enabled || index == 0)
+      if(tilepack.enabled || tilepackIndex == 0)
       {
         const headers = new HttpHeaders().set('Cache-Control', 'no-cache');
         this.http.get(tilepack.url, {headers}).subscribe((data2: any) => {
-          this.processTilesheets(data2, tilepack.name, index);
+          this.processTilesheets(data2, tilepack.name, tilepackIndex, 0);
+        }, (error) => {
+          console.error('Error loading tilepack:', error);
+          this.processTilepacks(this.tilepacks, tilepackIndex + 1);
         });
+      } else {
+        this.processTilepacks(this.tilepacks, tilepackIndex + 1);
       }
     }
     
-    processTilesheets(tilesheets: any[], packName: string, index: number) {
-      if (index >= tilesheets.length) {
+    processTilesheets(tilesheets: any[], packName: string, tilepackIndex: number, tilesheetIndex: number) {
+      if (tilesheetIndex >= tilesheets.length) {
         // Proceed to the next tilepack
-        this.processTilepacks(this.tilepacks, index + 1);
+        this.processTilepacks(this.tilepacks, tilepackIndex + 1);
         return;
       }
     
-      const tilesheet = tilesheets[index];
+      const tilesheet = tilesheets[tilesheetIndex];
       const tilesheetName = tilesheet.name;
       const tilesheetUrl = tilesheet.url;
     
       this.saveTilesToCache(tilesheetName, tilesheetUrl, packName)
         .then(() => {
           // Process the next tilesheet
-          this.processTilesheets(tilesheets, packName, index + 1);
+          this.processTilesheets(tilesheets, packName, tilepackIndex, tilesheetIndex + 1);
         })
         .catch((error) => {
           console.error('Error processing tilesheet:', error);
           // Proceed to the next tilesheet
-          this.processTilesheets(tilesheets, packName, index + 1);
+          this.processTilesheets(tilesheets, packName, tilepackIndex, tilesheetIndex + 1);
         });
     }
 

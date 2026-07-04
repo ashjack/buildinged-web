@@ -143,7 +143,7 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
           ...state.building,
           floors: state.building.floors.map((floor, index) => {
             if (index === action.level) {
-              const updatedRooms = floor.rooms.split('\n').map((col, colIndex) => {
+              const updatedRooms = floor.rooms.split(/\r?\n/).map((col, colIndex) => {
                 return col.split(',').map((row, rowIndex) => {
                   if (colIndex === action.y + 1 && rowIndex === action.x) {
                     console.log('Found match at ', colIndex, rowIndex)
@@ -172,13 +172,15 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
           return state;
         }
 
+        const building = state.building;
+
         //Get/Create user_tile listing
-        let userTileIndex = state.building.user_tiles.findIndex(x => x.tile == action.url.replace(".png", ""))
-        let updatedUserTiles = state.building.user_tiles;
+        let userTileIndex = building.user_tiles.findIndex(x => x.tile == action.url.replace(".png", ""))
+        let updatedUserTiles = building.user_tiles;
         console.log(userTileIndex)
         if(userTileIndex == -1)
         {
-          updatedUserTiles = [...state.building.user_tiles, { tile: action.url.replace(".png", "") }];
+          updatedUserTiles = [...building.user_tiles, { tile: action.url.replace(".png", "") }];
           userTileIndex = updatedUserTiles.length;
         }
         else
@@ -187,27 +189,38 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
         }
 
         const updatedBuilding: Building = {
-          ...state.building,
+          ...building,
           user_tiles: updatedUserTiles,
-          floors: state.building.floors.map((floor, index) => {
+          floors: building.floors.map((floor, index) => {
             if (index === action.level) {
               // Found existing layer to modify
               const existingLayerIndex = floor.tileLayers?.findIndex(layer => layer.layer === action.layer) ?? -1;
               if (existingLayerIndex !== -1) {
                 const updatedTileLayers = [...floor.tileLayers!];
                 const layer = updatedTileLayers[existingLayerIndex];
-        
-                const tilesArray = layer.tiles.split('\n').map(row => row.split(','));
-        
+
+                const tilesArray = layer.tiles
+                  .split(/\r?\n/)
+                  .filter(row => row.trim() !== '')
+                  .map(row => row.split(','));
+
+                const expectedWidth = building.width + 1;
+                while (tilesArray.length <= action.y) {
+                  tilesArray.push(Array(expectedWidth).fill('0'));
+                }
+                while (tilesArray[action.y].length <= action.x) {
+                  tilesArray[action.y].push('0');
+                }
+
                 tilesArray[action.y][action.x] = userTileIndex.toString();
-        
+
                 const updatedTiles = tilesArray.map(row => row.join(',')).join('\n');
-        
+
                 updatedTileLayers[existingLayerIndex] = {
                   ...layer,
                   tiles: updatedTiles
                 };
-        
+
                 return {
                   ...floor,
                   tileLayers: updatedTileLayers
@@ -216,7 +229,7 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
                 // Create new layer
                 const newLayer = {
                   layer: action.layer,
-                  tiles: createEmptyMatrix(state.building!.width + 1, state.building!.height + 1, action.x, action.y, userTileIndex)
+                  tiles: createEmptyMatrix(building.width + 1, building.height + 1, action.x, action.y, userTileIndex)
                 };
                 const updatedTileLayers = floor.tileLayers ? [...floor.tileLayers, newLayer] : [newLayer];
               
@@ -239,7 +252,7 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
                   }
                   matrix.push(row.join(','));
                 }
-                return '\n' + matrix.join(',\n') + '\n';
+                return matrix.join('\n');
               }
               
               
