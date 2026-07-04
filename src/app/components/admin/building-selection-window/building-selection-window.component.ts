@@ -1,7 +1,5 @@
 
 import { Component, OnInit } from '@angular/core';
-import { DomSanitizer } from '@angular/platform-browser';
-import { TileService } from 'src/app/services/tile.service';
 import * as fromRoot from '../../../app.reducers';
 import { Store } from "@ngrx/store";
 import { BuildingService } from 'src/app/services/building.service';
@@ -23,15 +21,23 @@ import { TogglePopup } from 'src/app/app.actions';
     listBuildings: boolean;
     showWindow: boolean = true;
     forceShowWindow$: Observable<boolean>;
+    templateNames: string[] = [];
+    selectedTemplateName: string = '';
+    showTemplatePicker: boolean = false;
 
-    constructor(private sanitizer: DomSanitizer, private buildingService: BuildingService, private store: Store<fromRoot.State>,
+    constructor(private buildingService: BuildingService, private store: Store<fromRoot.State>,
                 private apiService: ApiService) { 
                   this.forceShowWindow$ = this.store.select(fromRoot.isPopupOpen('main-menu'));
                 } 
 
-    ngOnInit(): void {
+    async ngOnInit(): Promise<void> {
       this.getBuildingsByProjectName('ThamesValley');
       this.openBuilding$ = this.store.select(fromRoot.getBuilding);
+
+      this.templateNames = await this.buildingService.getTemplateNames();
+      if (this.templateNames.length > 0) {
+        this.selectedTemplateName = this.templateNames[0];
+      }
 
       this.openBuilding$.subscribe((building) => {
         if(building) {
@@ -48,6 +54,20 @@ import { TogglePopup } from 'src/app/app.actions';
 
     createXml(): void {
         this.buildingService.saveBuildingToXml();
+      }
+
+      openTemplatePicker(): void {
+        this.showTemplatePicker = true;
+      }
+
+      cancelTemplatePicker(): void {
+        this.showTemplatePicker = false;
+      }
+
+      async createNewBuilding(): Promise<void> {
+        await this.buildingService.createNewBuilding(this.selectedTemplateName);
+        this.showTemplatePicker = false;
+        this.closeWindow();
       }
     
       openFileUpload(): void {

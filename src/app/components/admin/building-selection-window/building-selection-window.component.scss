@@ -29,3 +29,24 @@
     padding-left: 10px;
     padding-right: 10px;
 }
+
+.template-picker {
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 280px;
+}
+
+.template-picker select {
+    padding: 6px;
+}
+
+.template-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.template-actions button {
+    padding: 6px 10px;
+}

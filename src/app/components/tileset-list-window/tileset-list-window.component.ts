@@ -51,8 +51,10 @@ import { TogglePopup } from "src/app/app.actions";
         {
             this.db.clearTiles(name).then(() => {
                 localStorage.setItem(name, '1');
-                const packIndex = this.tileService.tilepacks.findIndex(x => x.name == name);
-                this.tileService.processTilepacks(this.tileService.tilepacks, packIndex);
+                const selectedPack = this.tileService.tilepacks.find(x => x.name == name);
+                if (selectedPack) {
+                    this.tileService.processTilepacks([selectedPack], 0);
+                }
                 return;
             })
         }
@@ -70,8 +72,10 @@ import { TogglePopup } from "src/app/app.actions";
             }
 
             localStorage.setItem(name, '1');
-            const packIndex = this.tileService.tilepacks.findIndex(x => x.name == name);
-            this.tileService.processTilepacks(this.tileService.tilepacks, packIndex);
+            const selectedPack = this.tileService.tilepacks.find(x => x.name == name);
+            if (selectedPack) {
+                this.tileService.processTilepacks([selectedPack], 0);
+            }
         }
     }
   }

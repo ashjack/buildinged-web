@@ -8,37 +8,452 @@ import ToolDrawRoom from "../tools/tool-draw-room";
 import { RoomService } from "./room.service";
 import { Store } from "@ngrx/store";
 import * as fromRoot from '../app.reducers';
-import { SetBuilding } from "../app.actions";
+import { ScheduleRedraw, SetBuilding } from "../app.actions";
 import { GUID } from "../utils/guid";
+import { HttpClient } from "@angular/common/http";
+import { firstValueFrom } from "rxjs";
+
+interface BuildingTemplateRoom {
+    Name: string;
+    InternalName: string;
+    Color: string;
+    InteriorWall: number;
+    InteriorWallTrim: number;
+    Floor: number;
+    GrimeFloor: number;
+    GrimeWall: number;
+}
+
+interface BuildingTemplateDefinition {
+    Name: string;
+    ExteriorWall: number;
+    ExteriorWallTrim: number;
+    Door: number;
+    DoorFrame: number;
+    Window: number;
+    Curtains: number;
+    Shutters: number;
+    Stairs: number;
+    RoofCap: number;
+    RoofSlope: number;
+    RoofTop: number;
+    GrimeWall: number;
+    UsedTiles: string;
+    UsedFurniture: string;
+    Rooms: BuildingTemplateRoom[];
+}
+
+interface TemplateCatalog {
+    entries: TileEntry[];
+    furniture: Furniture[];
+    templates: BuildingTemplateDefinition[];
+}
 
 @Injectable({
     providedIn: 'root',
   })
 export class BuildingService {
     public building: Building;
+    private templateCatalog: TemplateCatalog | null = null;
+    private templateCatalogPromise: Promise<TemplateCatalog> | null = null;
+
     constructor(
         private db: DbService, 
         private tileService: TileService, 
         private gridService: GridService,
         private roomService: RoomService,
-        private store: Store<fromRoot.State>,) { }
+        private store: Store<fromRoot.State>,
+        private http: HttpClient,) { }
 
     getBuilding(): Building {
         return this.building;
     }
 
-    async createBuildingFromXml(xmlDoc: Document) {
+    async getTemplateNames(): Promise<string[]> {
+        const catalog = await this.ensureTemplateCatalogLoaded();
+        return catalog.templates.map(t => t.Name);
+    }
 
-        //Clear current data
+    private async ensureTemplateCatalogLoaded(): Promise<TemplateCatalog> {
+        if (this.templateCatalog) {
+            return this.templateCatalog;
+        }
+
+        if (this.templateCatalogPromise) {
+            return this.templateCatalogPromise;
+        }
+
+        this.templateCatalogPromise = (async () => {
+            const fileText = await firstValueFrom(this.http.get('assets/BuildingTemplates.txt', { responseType: 'text' }));
+            const parsed = this.parseTemplateCatalog(fileText);
+            this.templateCatalog = parsed;
+            this.templateCatalogPromise = null;
+            return parsed;
+        })();
+
+        return this.templateCatalogPromise;
+    }
+
+    private parseTemplateCatalog(fileText: string): TemplateCatalog {
+        const tileEntryBlocks = this.extractNamedBlocks(fileText, 'TileEntry');
+        const furnitureBlocks = this.extractNamedBlocks(fileText, 'furniture');
+        const templateBlocks = this.extractNamedBlocks(fileText, 'Template');
+
+        const entries = tileEntryBlocks.map(block => this.parseTileEntryBlock(block.content));
+        const furniture = furnitureBlocks.map(block => this.parseFurnitureBlock(block.content));
+        const templates = templateBlocks.map(block => this.parseTemplateBlock(block.content));
+
+        return { entries, furniture, templates };
+    }
+
+    private extractNamedBlocks(source: string, keyword: string): { start: number; end: number; content: string }[] {
+        const results: { start: number; end: number; content: string }[] = [];
+        const keywordRegex = new RegExp(`\\b${keyword}\\b`, 'g');
+
+        let match: RegExpExecArray | null;
+        while ((match = keywordRegex.exec(source)) !== null) {
+            const keywordIndex = match.index;
+            const openBraceIndex = source.indexOf('{', keywordIndex);
+            if (openBraceIndex === -1) {
+                continue;
+            }
+
+            let depth = 0;
+            let closeBraceIndex = -1;
+            for (let i = openBraceIndex; i < source.length; i++) {
+                const ch = source[i];
+                if (ch === '{') {
+                    depth++;
+                } else if (ch === '}') {
+                    depth--;
+                    if (depth === 0) {
+                        closeBraceIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (closeBraceIndex === -1) {
+                continue;
+            }
+
+            results.push({
+                start: keywordIndex,
+                end: closeBraceIndex + 1,
+                content: source.slice(openBraceIndex + 1, closeBraceIndex),
+            });
+
+            keywordRegex.lastIndex = closeBraceIndex + 1;
+        }
+
+        return results;
+    }
+
+    private parseKeyValue(line: string): { key: string; value: string } | null {
+        const eqIndex = line.indexOf('=');
+        if (eqIndex === -1) {
+            return null;
+        }
+
+        return {
+            key: line.slice(0, eqIndex).trim(),
+            value: line.slice(eqIndex + 1).trim(),
+        };
+    }
+
+    private parseTileEntryBlock(block: string): TileEntry {
+        const lines = block.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
+        let category = '';
+        const tiles: Tile[] = [];
+
+        lines.forEach(line => {
+            const parsed = this.parseKeyValue(line);
+            if (!parsed) {
+                return;
+            }
+
+            if (parsed.key === 'category') {
+                category = parsed.value;
+                return;
+            }
+
+            if (parsed.key === 'offset') {
+                return;
+            }
+
+            tiles.push({
+                enum: parsed.key,
+                tile: parsed.value,
+            });
+        });
+
+        return {
+            category,
+            tiles,
+        };
+    }
+
+    private parseFurnitureEntryBlock(block: string): FurnitureTileEntry {
+        const lines = block.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
+        let orient = 'W';
+        const tiles: { x: number; y: number; name: string }[] = [];
+
+        lines.forEach(line => {
+            const parsed = this.parseKeyValue(line);
+            if (!parsed) {
+                return;
+            }
+
+            if (parsed.key === 'orient') {
+                orient = parsed.value;
+                return;
+            }
+
+            const coords = parsed.key.split(',').map(x => Number.parseInt(x.trim(), 10));
+            if (coords.length !== 2 || Number.isNaN(coords[0]) || Number.isNaN(coords[1])) {
+                return;
+            }
+
+            if (!parsed.value) {
+                return;
+            }
+
+            tiles.push({
+                x: coords[0],
+                y: coords[1],
+                name: parsed.value,
+            });
+        });
+
+        return {
+            orient,
+            tiles,
+        };
+    }
+
+    private parseFurnitureBlock(block: string): Furniture {
+        const entries = this.extractNamedBlocks(block, 'entry').map(entry => this.parseFurnitureEntryBlock(entry.content));
+
+        const topLevelLines = block.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
+        let layer: string | undefined = undefined;
+        let depth = 0;
+
+        for (const line of topLevelLines) {
+            if (line.includes('{')) {
+                depth++;
+                continue;
+            }
+            if (line.includes('}')) {
+                depth = Math.max(0, depth - 1);
+                continue;
+            }
+            if (depth > 0) {
+                continue;
+            }
+
+            const parsed = this.parseKeyValue(line);
+            if (!parsed) {
+                continue;
+            }
+
+            if (parsed.key === 'layer' && parsed.value) {
+                layer = parsed.value;
+            }
+        }
+
+        return {
+            layer,
+            entries,
+        };
+    }
+
+    private parseTemplateRoomBlock(block: string): BuildingTemplateRoom {
+        const room: BuildingTemplateRoom = {
+            Name: '',
+            InternalName: '',
+            Color: '255 255 255',
+            InteriorWall: 0,
+            InteriorWallTrim: 0,
+            Floor: 0,
+            GrimeFloor: 0,
+            GrimeWall: 0,
+        };
+
+        block.split(/\r?\n/).map(line => line.trim()).forEach(line => {
+            const parsed = this.parseKeyValue(line);
+            if (!parsed) {
+                return;
+            }
+
+            switch (parsed.key) {
+                case 'Name':
+                    room.Name = parsed.value;
+                    break;
+                case 'InternalName':
+                    room.InternalName = parsed.value;
+                    break;
+                case 'Color':
+                    room.Color = parsed.value;
+                    break;
+                case 'InteriorWall':
+                    room.InteriorWall = Number.parseInt(parsed.value, 10) || 0;
+                    break;
+                case 'InteriorWallTrim':
+                    room.InteriorWallTrim = Number.parseInt(parsed.value, 10) || 0;
+                    break;
+                case 'Floor':
+                    room.Floor = Number.parseInt(parsed.value, 10) || 0;
+                    break;
+                case 'GrimeFloor':
+                    room.GrimeFloor = Number.parseInt(parsed.value, 10) || 0;
+                    break;
+                case 'GrimeWall':
+                    room.GrimeWall = Number.parseInt(parsed.value, 10) || 0;
+                    break;
+            }
+        });
+
+        return room;
+    }
+
+    private parseTemplateBlock(block: string): BuildingTemplateDefinition {
+        const roomBlocks = this.extractNamedBlocks(block, 'Room');
+        const rooms = roomBlocks.map(roomBlock => this.parseTemplateRoomBlock(roomBlock.content));
+
+        const template: BuildingTemplateDefinition = {
+            Name: 'New Building',
+            ExteriorWall: 0,
+            ExteriorWallTrim: 0,
+            Door: 0,
+            DoorFrame: 0,
+            Window: 0,
+            Curtains: 0,
+            Shutters: 0,
+            Stairs: 0,
+            RoofCap: 0,
+            RoofSlope: 0,
+            RoofTop: 0,
+            GrimeWall: 0,
+            UsedTiles: '',
+            UsedFurniture: '',
+            Rooms: rooms,
+        };
+
+        let depth = 0;
+        block.split(/\r?\n/).map(line => line.trim()).forEach(line => {
+            if (line.includes('{')) {
+                depth++;
+                return;
+            }
+            if (line.includes('}')) {
+                depth = Math.max(0, depth - 1);
+                return;
+            }
+
+            if (depth > 0) {
+                return;
+            }
+
+            const parsed = this.parseKeyValue(line);
+            if (!parsed) {
+                return;
+            }
+
+            switch (parsed.key) {
+                case 'Name':
+                    template.Name = parsed.value;
+                    break;
+                case 'ExteriorWall':
+                    template.ExteriorWall = Number.parseInt(parsed.value, 10) || 0;
+                    break;
+                case 'ExteriorWallTrim':
+                    template.ExteriorWallTrim = Number.parseInt(parsed.value, 10) || 0;
+                    break;
+                case 'Door':
+                    template.Door = Number.parseInt(parsed.value, 10) || 0;
+                    break;
+                case 'DoorFrame':
+                    template.DoorFrame = Number.parseInt(parsed.value, 10) || 0;
+                    break;
+                case 'Window':
+                    template.Window = Number.parseInt(parsed.value, 10) || 0;
+                    break;
+                case 'Curtains':
+                    template.Curtains = Number.parseInt(parsed.value, 10) || 0;
+                    break;
+                case 'Shutters':
+                    template.Shutters = Number.parseInt(parsed.value, 10) || 0;
+                    break;
+                case 'Stairs':
+                    template.Stairs = Number.parseInt(parsed.value, 10) || 0;
+                    break;
+                case 'RoofCap':
+                    template.RoofCap = Number.parseInt(parsed.value, 10) || 0;
+                    break;
+                case 'RoofSlope':
+                    template.RoofSlope = Number.parseInt(parsed.value, 10) || 0;
+                    break;
+                case 'RoofTop':
+                    template.RoofTop = Number.parseInt(parsed.value, 10) || 0;
+                    break;
+                case 'GrimeWall':
+                    template.GrimeWall = Number.parseInt(parsed.value, 10) || 0;
+                    break;
+                case 'UsedTiles':
+                    template.UsedTiles = parsed.value;
+                    break;
+                case 'UsedFurniture':
+                    template.UsedFurniture = parsed.value;
+                    break;
+            }
+        });
+
+        return template;
+    }
+
+    private cloneRoom(room: BuildingTemplateRoom) {
+        return {
+            Name: room.Name,
+            InternalName: room.InternalName,
+            Color: room.Color,
+            InteriorWall: room.InteriorWall,
+            InteriorWallTrim: room.InteriorWallTrim,
+            Floor: room.Floor,
+            GrimeFloor: room.GrimeFloor,
+            GrimeWall: room.GrimeWall,
+        };
+    }
+
+    private createEmptyRoomsMatrix(width: number, height: number): string {
+        const rows: string[] = [];
+
+        for (let y = 0; y <= height; y++) {
+            rows.push(Array(width + 1).fill('0').join(','));
+        }
+
+        return '\n' + rows.join('\n') + '\n';
+    }
+
+    private clearCurrentRuntimeState(): void {
         this.roomService.rooms = [];
+        this.roomService.selectedRoom = null;
+
         this.gridService.roomTiles = [];
         this.gridService.userTiles = [];
         this.gridService.tiles = [];
         this.gridService.hiddenTiles = [];
+        this.gridService.excludedTiles = [];
+        this.gridService.objects = [];
+        this.gridService.objectOverlays = [];
         this.gridService.fetchedTiles = [];
         this.gridService.fetchingTiles = [];
-        this.gridService.objects = [];
         this.gridService.setSelectedLevel(0);
+    }
+
+    async createBuildingFromXml(xmlDoc: Document) {
+
+        //Clear current data
+        this.clearCurrentRuntimeState();
 
         const bEl = xmlDoc.getElementsByTagName('building')[0];
 
@@ -451,33 +866,85 @@ export class BuildingService {
         })
     }
 
-    async createNewBuilding() {
+    async createNewBuilding(templateName?: string) {
+        this.clearCurrentRuntimeState();
+
+        let template: BuildingTemplateDefinition | undefined = undefined;
+        let catalog: TemplateCatalog | undefined = undefined;
+
+        try {
+            catalog = await this.ensureTemplateCatalogLoaded();
+            if (templateName) {
+                template = catalog.templates.find(t => t.Name === templateName);
+            }
+        } catch (error) {
+            console.error('Failed to load template catalog.', error);
+        }
+
+        const rooms = template ? template.Rooms.map(room => this.cloneRoom(room)) : [];
+        const width = 20;
+        const height = 20;
+        const floors = [{
+            objects: [],
+            rooms: this.createEmptyRoomsMatrix(width, height),
+            tileLayers: [],
+        }];
+
         const newBuilding: Building = {
             version: 0,
-            width: 20,
-            height: 20,
-            ExteriorWall: 0,
-            ExteriorWallTrim: 0,
-            Door: 0,
-            DoorFrame: 0,
-            Window: 0,
-            Curtains: 0,
-            Shutters: 0,
-            Stairs: 0,
-            RoofCap: 0,
-            RoofSlope: 0,
-            RoofTop: 0,
-            GrimeWall: 0,
-            rooms: [],
-            entries: [],
-            furniture: [],
+            width,
+            height,
+            ExteriorWall: template?.ExteriorWall ?? 0,
+            ExteriorWallTrim: template?.ExteriorWallTrim ?? 0,
+            Door: template?.Door ?? 0,
+            DoorFrame: template?.DoorFrame ?? 0,
+            Window: template?.Window ?? 0,
+            Curtains: template?.Curtains ?? 0,
+            Shutters: template?.Shutters ?? 0,
+            Stairs: template?.Stairs ?? 0,
+            RoofCap: template?.RoofCap ?? 0,
+            RoofSlope: template?.RoofSlope ?? 0,
+            RoofTop: template?.RoofTop ?? 0,
+            GrimeWall: template?.GrimeWall ?? 0,
+            rooms,
+            entries: catalog ? catalog.entries.map(entry => ({
+                category: entry.category,
+                tiles: entry.tiles.map(tile => ({
+                    enum: tile.enum,
+                    tile: tile.tile,
+                    offset: tile.offset,
+                }))
+            })) : [],
+            furniture: catalog ? catalog.furniture.map(item => ({
+                layer: item.layer,
+                entries: item.entries.map(entry => ({
+                    orient: entry.orient,
+                    tiles: entry.tiles.map(tile => ({
+                        x: tile.x,
+                        y: tile.y,
+                        name: tile.name,
+                    }))
+                }))
+            })) : [],
             user_tiles: [],
-            used_furniture: '',
-            used_tiles: '',
-            floors: []
+            used_furniture: template?.UsedFurniture ?? '',
+            used_tiles: template?.UsedTiles ?? '',
+            floors
         }
-        this.store.dispatch(new SetBuilding(newBuilding))
+
+        this.roomService.rooms = rooms.map(room => ({
+            name: room.Name,
+            room,
+            tiles: [],
+            placedTiles: [],
+            placedInteriorTiles: [],
+        }));
+
+        this.roomService.selectedRoom = this.roomService.rooms.length ? this.roomService.rooms[0].room : null;
         this.building = newBuilding;
+        this.store.dispatch(new SetBuilding(newBuilding));
+        this.gridService.redrawTiles();
+        this.store.dispatch(new ScheduleRedraw(true));
     }
 
     async drawBuilding()

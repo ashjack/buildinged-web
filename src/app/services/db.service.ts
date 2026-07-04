@@ -134,6 +134,14 @@ export class DbService extends Dexie {
     });
   }
 
+  async bulkUpsertTiles(tiles: PngTile[]) {
+    if (!tiles.length) {
+      return;
+    }
+
+    await this.pngTiles.bulkPut(tiles);
+  }
+
   async getTile(name: string) {
     const tile =  await this.pngTiles
     .where({

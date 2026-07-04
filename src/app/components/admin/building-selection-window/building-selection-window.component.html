@@ -2,7 +2,7 @@
     <div class="col">
         <h2>Project Zomboid Building Editor</h2>
         <span>
-            <button class="square" (click)="openFileUpload()"><img src="assets/icons/document-new.png"></button>
+            <button class="square" (click)="openTemplatePicker()"><img src="assets/icons/document-new.png"></button>
             <span>New Building</span>
         </span>
         <span>
@@ -13,6 +13,19 @@
             <button class="square" (click)="closeWindow()"><img src="assets/icons/document-open.png"></button>
             <span>Close Menu</span>
         </span>
+
+        <div class="template-picker" *ngIf="showTemplatePicker">
+            <h3>Select Template</h3>
+            <select [(ngModel)]="selectedTemplateName" [disabled]="templateNames.length === 0">
+                <option *ngFor="let name of templateNames" [value]="name">{{name}}</option>
+            </select>
+
+            <div class="template-actions">
+                <button (click)="createNewBuilding()" [disabled]="templateNames.length === 0">Create</button>
+                <button (click)="cancelTemplatePicker()">Cancel</button>
+            </div>
+            <p *ngIf="templateNames.length === 0">No templates found.</p>
+        </div>
     </div>
 
     <div class="col" *ngIf="!listBuildings">

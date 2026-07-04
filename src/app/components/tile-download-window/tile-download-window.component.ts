@@ -1,9 +1,6 @@
 import { Component, OnInit } from "@angular/core";
-import { DomSanitizer } from "@angular/platform-browser";
-import { Observable, interval } from "rxjs";
-import { TileService } from "src/app/services/tile.service";
-import * as fromRoot from '../../app.reducers';
-import { Store } from "@ngrx/store";
+import { Observable } from "rxjs";
+import { TileDownloadProgress, TileService } from "src/app/services/tile.service";
 
 @Component({
     selector: 'app-tile-download-window',
@@ -11,42 +8,25 @@ import { Store } from "@ngrx/store";
     styleUrls: ['./tile-download-window.component.scss']
   })
   export class TileDownloadWindowComponent implements OnInit{
-    constructor(private sanitizer: DomSanitizer, private tileService: TileService, private store: Store<fromRoot.State>,) { } 
+      constructor(private tileService: TileService) { } 
 
-    tileCount$: Observable<number>;
+    progress$: Observable<TileDownloadProgress>;
 
     totalTiles: number;
     processedTiles: number;
-    loading: boolean = true;
+    currentPackName: string = '';
+    currentSheetName: string = '';
+    loading: boolean = false;
 
   ngOnInit(): void {
-    this.tileCount$ = this.store.select(fromRoot.getTileCount);
+    this.progress$ = this.tileService.progress$;
 
-    this.tileCount$.subscribe((tc) => {
-      if(tc < 0)
-      {
-        this.loading = false;
-      }
-    })
-
-    let finishCount = 0;
-
-    interval(1000).subscribe(() => {
-      if(this.totalTiles == this.processedTiles)
-      {
-        finishCount++;
-      }
-      else
-      {
-        this.totalTiles = this.tileService.totalTiles;
-        this.processedTiles = this.tileService.processedTiles;
-        finishCount = 0;
-      }
-
-      if(finishCount > 7)
-      {
-        this.loading = false;
-      }
-  });
+    this.progress$.subscribe((progress) => {
+      this.loading = progress.active;
+      this.totalTiles = progress.totalTiles;
+      this.processedTiles = progress.processedTiles;
+      this.currentPackName = progress.currentPackName ?? '';
+      this.currentSheetName = progress.currentSheetName ?? '';
+    });
   }
 }
