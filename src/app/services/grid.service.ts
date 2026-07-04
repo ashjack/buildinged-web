@@ -4,6 +4,7 @@ import ToolDrawRoom from "../tools/tool-draw-room";
 import { DbService, PngTile } from "./db.service";
 import { SafeResourceUrl } from "@angular/platform-browser";
 import { CacheService } from "./cache.service";
+import { GUID } from "../utils/guid";
 
 @Injectable({
     providedIn: 'root',
@@ -194,6 +195,7 @@ export class GridService {
 
   addObject(obj: SvgObject)
   {
+    //obj.uid = GUID.generateGUID();
     this.objects.push(obj);
   }
 

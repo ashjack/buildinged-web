@@ -1,4 +1,5 @@
 import { SafeResourceUrl } from "@angular/platform-browser";
+import { GUID } from "../utils/guid";
 
 //Web App Only
 export interface SvgTile {
@@ -15,9 +16,11 @@ export interface SvgTile {
     orient?: string;
     auto?: boolean;
     object?: boolean;
+    tag?: string;
 }
 
 export interface SvgObject {
+    uid: GUID;
     tiles: SvgTile[];
     x: number;
     y: number;
@@ -34,6 +37,7 @@ export interface SvgObject {
 export interface SvgObjectOverlay {
     points: Point[];
     object: SvgObject | undefined;
+    func?: string;
 }
 
 export interface GridTile {

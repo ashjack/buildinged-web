@@ -9,6 +9,7 @@ import { RoomService } from "./room.service";
 import { Store } from "@ngrx/store";
 import * as fromRoot from '../app.reducers';
 import { SetBuilding } from "../app.actions";
+import { GUID } from "../utils/guid";
 
 @Injectable({
     providedIn: 'root',
@@ -229,6 +230,8 @@ export class BuildingService {
 
                     objJson[attrName] = attrValue;
                 }
+
+                objJson['uid'] = GUID.generateGUID();
 
                 objArray.push(objJson);
             }
@@ -577,6 +580,8 @@ export class BuildingService {
 
         if(obj.type == 'roof')
         {
+            console.log('ROOFUIDTYPE', obj.uid);
+            const uid = obj.uid;
             const width = Number.parseInt(obj.width);
             const height = Number.parseInt(obj.height);
             const x = Number.parseInt(obj.x);
@@ -584,9 +589,9 @@ export class BuildingService {
             const roofType = obj.RoofType;
             const depth = obj.Depth;
             const cappedN = obj.cappedN === 'true';
-            const cappedS = obj.cappedW === 'true';
+            const cappedS = obj.cappedS === 'true';
             const cappedE = obj.cappedE === 'true';
-            const cappedW = obj.cappedS === 'true';
+            const cappedW = obj.cappedW === 'true';
             const capTilesIndex = obj.CapTiles;
             const slopeTilesIndex = obj.SlopeTiles;
             const topTilesIndex = obj.TopTiles;
@@ -596,6 +601,7 @@ export class BuildingService {
 
             const roofObjectTiles: SvgTile[] = [];
             const roofObject = {
+                uid: uid,
                 tiles: roofObjectTiles,
                 x: x,
                 y: y,
@@ -668,7 +674,7 @@ export class BuildingService {
                 }
             }
 
-            function placeCapTile(gridService: GridService, capTile: any, x: number, y: number, height: number, direction: number) {
+            function placeCapTile(gridService: GridService, capTile: any, x: number, y: number, height: number, direction: number, tag: string) {
                 if (capTile) {
                     for (let i = 0; i < height + 1; i++) {
                         console.log("placing cap at " + x + ", " + y + ", level: " + level)
@@ -682,7 +688,8 @@ export class BuildingService {
                                     x: x,
                                     y: y + i,
                                     layer: 'RoofCap',
-                                    level: level
+                                    level: level,
+                                    tag: tag
                                 };
 
                                 gridService.placeTile2(tileToPlace, false);
@@ -696,7 +703,8 @@ export class BuildingService {
                                     x: x + i,
                                     y: y,
                                     layer: 'RoofCap',
-                                    level: level
+                                    level: level,
+                                    tag: tag
                                 }
                                 gridService.placeTile2(tileToPlace, false);
                                 roofObjectTiles.push(tileToPlace);
@@ -713,7 +721,7 @@ export class BuildingService {
                 {
                     if (depth === 'Point5') {
                         const capTile = capTiles.find(tile => tile.enum === 'PeakPt5S');
-                        placeCapTile(this.gridService, capTile, x, y, height, 0);
+                        placeCapTile(this.gridService, capTile, x, y, height, 0, "cappedN");
                     }
 
                     if(depth === 'One')
@@ -721,8 +729,8 @@ export class BuildingService {
                         const leftCap = capTiles.find(tile => tile.enum === 'CapRiseS1');
                         const rightCap = capTiles.find(tile => tile.enum === 'CapFallS1');
                 
-                        placeCapTile(this.gridService, leftCap, x, y, height, 0);
-                        placeCapTile(this.gridService, rightCap, x + 1, y, height, 0);
+                        placeCapTile(this.gridService, leftCap, x, y, height, 0, "cappedN");
+                        placeCapTile(this.gridService, rightCap, x + 1, y, height, 0, "cappedN");
                     }
                 
                     if (depth === 'OnePoint5') {
@@ -730,9 +738,9 @@ export class BuildingService {
                         const middleCap = capTiles.find(tile => tile.enum === 'PeakOnePt5S');
                         const rightCap = capTiles.find(tile => tile.enum === 'CapFallS1');
                 
-                        placeCapTile(this.gridService, leftCap, x, y, height, 0);
-                        placeCapTile(this.gridService, middleCap, x + 1, y, height, 0);
-                        placeCapTile(this.gridService, rightCap, x + 2, y, height, 0);
+                        placeCapTile(this.gridService, leftCap, x, y, height, 0, "cappedN");
+                        placeCapTile(this.gridService, middleCap, x + 1, y, height, 0, "cappedN");
+                        placeCapTile(this.gridService, rightCap, x + 2, y, height, 0, "cappedN");
                     }
                 
                     if (depth === 'Two') {
@@ -741,10 +749,10 @@ export class BuildingService {
                         const rightCap1 = capTiles.find(tile => tile.enum === 'CapFallS2');
                         const rightCap2 = capTiles.find(tile => tile.enum === 'CapFallS1');
                 
-                        placeCapTile(this.gridService, leftCap1, x, y, height, 0);
-                        placeCapTile(this.gridService, leftCap2, x + 1, y, height, 0);
-                        placeCapTile(this.gridService, rightCap1, x + 2, y, height, 0);
-                        placeCapTile(this.gridService, rightCap2, x + 3, y, height, 0);
+                        placeCapTile(this.gridService, leftCap1, x, y, height, 0, "cappedN");
+                        placeCapTile(this.gridService, leftCap2, x + 1, y, height, 0, "cappedN");
+                        placeCapTile(this.gridService, rightCap1, x + 2, y, height, 0, "cappedN");
+                        placeCapTile(this.gridService, rightCap2, x + 3, y, height, 0, "cappedN");
                     }
 
                     if (depth === 'TwoPoint5') {
@@ -754,26 +762,26 @@ export class BuildingService {
                         const rightCap1 = capTiles.find(tile => tile.enum === 'CapFallS2');
                         const rightCap2 = capTiles.find(tile => tile.enum === 'CapFallS1');
 
-                        placeCapTile(this.gridService, leftCap1, x, y, height, 0);
-                        placeCapTile(this.gridService, leftCap2, x + 1, y, height, 0);
-                        placeCapTile(this.gridService, middleCap, x + 2, y, height, 0);
-                        placeCapTile(this.gridService, rightCap1, x + 3, y, height, 0);
-                        placeCapTile(this.gridService, rightCap2, x + 4, y, height, 0);
+                        placeCapTile(this.gridService, leftCap1, x, y, height, 0, "cappedN");
+                        placeCapTile(this.gridService, leftCap2, x + 1, y, height, 0, "cappedN");
+                        placeCapTile(this.gridService, middleCap, x + 2, y, height, 0, "cappedN");
+                        placeCapTile(this.gridService, rightCap1, x + 3, y, height, 0, "cappedN");
+                        placeCapTile(this.gridService, rightCap2, x + 4, y, height, 0, "cappedN");
                     }
                 
                     if (depth === 'Three') {
                         for (let i = 1; i <= 3; i++) {
                             const rightCap = capTiles.find(tile => tile.enum === `CapFallS${i}`);
                             const leftCap = capTiles.find(tile => tile.enum === `CapRiseS${i}`);
-                            placeCapTile(this.gridService, leftCap, x + i - 1, y, height, 0);
-                            placeCapTile(this.gridService, rightCap, x + width - i, y, height, 0);
+                            placeCapTile(this.gridService, leftCap, x + i - 1, y, height, 0, "cappedN");
+                            placeCapTile(this.gridService, rightCap, x + width - i, y, height, 0, "cappedN");
 
                             if(width > 6)
                             {
                                 const middleCap = capTiles.find(tile => tile.enum === 'CapGapS3');
                                 for(let j = 3; j < width - 3; j++)
                                 {
-                                    placeCapTile(this.gridService, middleCap, x + j, y, height, 0);
+                                    placeCapTile(this.gridService, middleCap, x + j, y, height, 0, "cappedN");
                                 }
                             }
                         }
@@ -824,7 +832,7 @@ export class BuildingService {
                     if(depth === 'Point5')
                     {
                         const capTile = capTiles.find(tile => tile.enum === 'PeakPt5E');
-                        placeCapTile(this.gridService, capTile, x, y, width, 1);
+                        placeCapTile(this.gridService, capTile, x, y, width, 1, "cappedW");
                     }
 
                     if(depth === 'One')
@@ -832,8 +840,8 @@ export class BuildingService {
                         const leftCap = capTiles.find(tile => tile.enum === 'CapFallE1');
                         const rightCap = capTiles.find(tile => tile.enum === 'CapRiseE1');
                 
-                        placeCapTile(this.gridService, leftCap, x, y, width, 1);
-                        placeCapTile(this.gridService, rightCap, x, y + 1, width, 1);
+                        placeCapTile(this.gridService, leftCap, x, y, width, 1, "cappedW");
+                        placeCapTile(this.gridService, rightCap, x, y + 1, width, 1, "cappedW");
                     }
 
                     if (depth === 'OnePoint5') {
@@ -841,9 +849,9 @@ export class BuildingService {
                         const middleCap = capTiles.find(tile => tile.enum === 'PeakOnePt5E');
                         const rightCap = capTiles.find(tile => tile.enum === 'CapRiseE1');
                 
-                        placeCapTile(this.gridService, leftCap, x, y, width, 1);
-                        placeCapTile(this.gridService, middleCap, x, y + 1, width, 1);
-                        placeCapTile(this.gridService, rightCap, x, y + 2, width, 1);
+                        placeCapTile(this.gridService, leftCap, x, y, width, 1, "cappedW");
+                        placeCapTile(this.gridService, middleCap, x, y + 1, width, 1, "cappedW");
+                        placeCapTile(this.gridService, rightCap, x, y + 2, width, 1, "cappedW");
                     }
 
                     if (depth === 'Two') {
@@ -852,10 +860,10 @@ export class BuildingService {
                         const rightCap1 = capTiles.find(tile => tile.enum === 'CapRiseE2');
                         const rightCap2 = capTiles.find(tile => tile.enum === 'CapRiseE1');
                 
-                        placeCapTile(this.gridService, leftCap1, x, y, width, 1);
-                        placeCapTile(this.gridService, leftCap2, x, y + 1, width, 1);
-                        placeCapTile(this.gridService, rightCap1, x, y + 2, width, 1);
-                        placeCapTile(this.gridService, rightCap2, x, y + 3, width, 1);
+                        placeCapTile(this.gridService, leftCap1, x, y, width, 1, "cappedW");
+                        placeCapTile(this.gridService, leftCap2, x, y + 1, width, 1, "cappedW");
+                        placeCapTile(this.gridService, rightCap1, x, y + 2, width, 1, "cappedW");
+                        placeCapTile(this.gridService, rightCap2, x, y + 3, width, 1, "cappedW");
                     }
 
                     if (depth === 'TwoPoint5') {
@@ -865,26 +873,26 @@ export class BuildingService {
                         const rightCap1 = capTiles.find(tile => tile.enum === 'CapRiseE2');
                         const rightCap2 = capTiles.find(tile => tile.enum === 'CapRiseE1');
 
-                        placeCapTile(this.gridService, leftCap1, x, y, width, 1);
-                        placeCapTile(this.gridService, leftCap2, x, y + 1, width, 1);
-                        placeCapTile(this.gridService, middleCap, x, y + 2, width, 1);
-                        placeCapTile(this.gridService, rightCap1, x, y + 3, width, 1);
-                        placeCapTile(this.gridService, rightCap2, x, y + 4, width, 1);
+                        placeCapTile(this.gridService, leftCap1, x, y, width, 1, "cappedW");
+                        placeCapTile(this.gridService, leftCap2, x, y + 1, width, 1, "cappedW");
+                        placeCapTile(this.gridService, middleCap, x, y + 2, width, 1, "cappedW");
+                        placeCapTile(this.gridService, rightCap1, x, y + 3, width, 1, "cappedW");
+                        placeCapTile(this.gridService, rightCap2, x, y + 4, width, 1, "cappedW");
                     }
 
                     if (depth === 'Three') {
                         for (let i = 1; i <= 3; i++) {
                             const rightCap = capTiles.find(tile => tile.enum === `CapRiseE${i}`);
                             const leftCap = capTiles.find(tile => tile.enum === `CapFallE${i}`);
-                            placeCapTile(this.gridService, leftCap, x, y + i - 1, width, 1);
-                            placeCapTile(this.gridService, rightCap, x, y + height - i, width, 1);
+                            placeCapTile(this.gridService, leftCap, x, y + i - 1, width, 1, "cappedW");
+                            placeCapTile(this.gridService, rightCap, x, y + height - i, width, 1, "cappedW");
 
                             if(height > 6)
                             {
                                 const middleCap = capTiles.find(tile => tile.enum === 'CapGapE3');
                                 for(let j = 3; j < height - 3; j++)
                                 {
-                                    placeCapTile(this.gridService, middleCap, x, y + j, width, 1);
+                                    placeCapTile(this.gridService, middleCap, x, y + j, width, 1, "cappedW");
                                 }
                             }
                         }
@@ -986,6 +994,7 @@ export class BuildingService {
 
                     const furnitureObjectTiles: SvgTile[] = [];
                     const furnitureObject = {
+                        uid: obj.uid,
                         tiles: furnitureObjectTiles,
                         x: x + (orient == 'E' ? 0 : 0),
                         y: y + (orient == 'S' ? 0 : 0),
@@ -1178,6 +1187,7 @@ export class BuildingService {
 
             const wallObjectTiles: SvgTile[] = [];
             const wallObject = {
+                uid: obj.uid,
                 tiles: wallObjectTiles,
                 x: x,
                 y: y,
@@ -1280,6 +1290,7 @@ export class BuildingService {
 
             const doorObjectTiles: SvgTile[] = [];
             const doorObject = {
+                uid: obj.uid,
                 tiles: doorObjectTiles,
                 x: x,
                 y: y,
@@ -1391,6 +1402,7 @@ export class BuildingService {
 
             const windowObjectTiles: SvgTile[] = [];
             const windowObject = {
+                uid: obj.uid,
                 tiles: windowObjectTiles,
                 x: x,
                 y: y,
@@ -1520,6 +1532,7 @@ export class BuildingService {
 
             const stairObjectTiles: SvgTile[] = [];
             const stairObject = {
+                uid: obj.uid,
                 tiles: stairObjectTiles,
                 x: x,
                 y: y,
@@ -1591,6 +1604,7 @@ export class BuildingService {
         building.floors.forEach(floor => {
             floorCount++;
             floor.objects.forEach(obj => {
+                //const objWithUID = { ...obj, uid: GUID.generateGUID() };
                 this.placeTile(obj, floorCount);
             });
         });

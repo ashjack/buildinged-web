@@ -6,6 +6,7 @@ import { Store } from "@ngrx/store";
 import { BuildingService } from "./building.service";
 import { GridService } from "./grid.service";
 import { AddObject, RemoveObject } from "../app.actions";
+import { GUID } from "../utils/guid";
 
 @Injectable({
     providedIn: 'root',
@@ -21,6 +22,7 @@ export class WindowService {
         const building = this.buildingService.building;
 
         const newWindow = {
+            uid: GUID.generateGUID(),
             type: 'window',
             CurtainsTile: building.Curtains,
             ShuttersTile: building.Shutters,

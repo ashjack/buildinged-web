@@ -6,6 +6,7 @@ import { Store } from "@ngrx/store";
 import { BuildingService } from "./building.service";
 import { GridService } from "./grid.service";
 import { AddObject } from "../app.actions";
+import { GUID } from "../utils/guid";
 
 @Injectable({
     providedIn: 'root',
@@ -23,6 +24,7 @@ export class DoorService {
         const building = this.buildingService.building;
 
         const newDoor = {
+            uid: GUID.generateGUID(),
             type: 'door',
             FrameTile: building.DoorFrame,
             x: x,

@@ -262,6 +262,7 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
         if(action.obj.type == 'furniture')
         {
           const furnitureObj = {
+            uid: action.obj.uid,
             type: 'furniture',
             FurnitureTiles: 0,
             orient: action.obj.orient,
@@ -346,6 +347,47 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
           building: updatedBuilding
         };
       }
+      case Actions.ActionTypes.UpdateObject: {
+        if (!state.building) {
+          return state;
+        }
+      
+        if (!Array.isArray(state.building.floors)) {
+          return state;
+        }
+      
+        const updatedBuilding: Building = {
+          ...state.building,
+          floors: state.building.floors.map((floor) => {
+            if (!Array.isArray(floor.objects)) {
+              return floor;
+            }
+      
+            const updatedObjects = floor.objects.map(object => {
+              if (object.uid === action.obj.uid) {
+                return {
+                  ...object,
+                  ...action.obj
+                };
+              }
+              return object;
+            });
+      
+            return {
+              ...floor,
+              objects: updatedObjects
+            };
+          })
+        };
+      
+        console.log(updatedBuilding);
+
+        return {
+          ...state,
+          building: updatedBuilding
+        };
+      }
+      
       case Actions.ActionTypes.RemoveObject: {
         if (!state.building) {
           return state;

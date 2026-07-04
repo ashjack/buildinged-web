@@ -7,6 +7,7 @@ import { Store } from "@ngrx/store";
 import { AddObject } from "../app.actions";
 import { VisualFurniture } from "../models/furniture-window.models";
 import { take } from "rxjs";
+import { GUID } from "../utils/guid";
 
 @Injectable({
     providedIn: 'root',
@@ -19,7 +20,9 @@ export class FurnitureService {
             if (!b)
                 return;
         
+            const uid = GUID.generateGUID();
             const newFurniture = {
+                uid: uid,
                 type: 'furniture',
                 x: x,
                 y: y,
@@ -30,6 +33,7 @@ export class FurnitureService {
             this.store.dispatch(new AddObject(newFurniture, level));
     
             const newFurnitureToPlace = {
+                uid: uid,
                 type: 'furniture',
                 x: x,
                 y: y,

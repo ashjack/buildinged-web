@@ -15,7 +15,7 @@ import ToolTile from "../tools/tool-tile";
 import { GridTile, Point, SvgObject, SvgObjectOverlay, SvgTile, Tilepack } from "../models/app.models";
 import { CacheService } from "../services/cache.service";
 import { BuildingService } from "../services/building.service";
-import { RemoveObject, ScheduleRedraw } from "../app.actions";
+import { RemoveObject, ScheduleRedraw, UpdateObject } from "../app.actions";
 import ToolDoor from "../tools/tool-door";
 import { DoorService } from "../services/door.service";
 import ToolWindow from "../tools/tool-window";
@@ -54,6 +54,8 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   currentHoverCoords: Point = {x: 0, y: 0};
   currentHoverCoordSegments = {edge: '', corner: ''}
   currentHoverObject: SvgObject | undefined = undefined;
+  currentHoverOverlay: SvgObjectOverlay | undefined = undefined;
+  currentHoverSubOverlay: SvgObjectOverlay | undefined = undefined;
 
   newPositions: Position[] = [];
 
@@ -305,6 +307,20 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
       return;
     }
 
+    if(this.selectedTool instanceof ToolRoof && this.currentHoverSubOverlay?.func)
+    {
+
+      if(this.currentHoverSubOverlay.func == 'cappedW')
+      {
+        this.store.dispatch(new UpdateObject({uid: this.currentHoverSubOverlay.object?.uid, cappedW: 'false', cappedE: 'false', cappedN: 'false', cappedS: 'false'}));
+        const obj = this.gridService.objects.find((o: SvgObject) => o.uid == this.currentHoverSubOverlay?.object?.uid);
+        obj?.tiles.forEach((tile: SvgTile) => {
+          if(tile.tag == "cappedW" || tile.tag == "cappedE" || tile.tag == "cappedN" || tile.tag == "cappedS")
+            this.gridService.excludeTile(tile.x, tile.y, tile.level, tile.layer);
+        });
+      }
+      return;
+    }
     this.selectedTool.beginDrag(x, y);
   }
 
@@ -454,6 +470,10 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     if(this.selectedTool instanceof ToolDraw && !(this.selectedTool instanceof ToolDoor) && !(this.selectedTool instanceof ToolWindow))
     {
       this.selectedTool.dragTiles.forEach((tile: SvgTile) => {
+        if(this.selectedTool instanceof ToolRoof && this.selectedTool.dragTiles.length === 1 && this.currentHoverSubOverlay?.func)
+        {
+          return;
+        }
         this.drawOverlaySquare(tile.x, tile.y, 'black', this.selectedTool.getTileFill(tile.x, tile.y));
       });
     }
@@ -522,11 +542,6 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     if(orient == 'W' && (type == 'Wall' || type == 'Door' || type == 'Window'))
     {
       x--;
-    }
-
-    if(this.currentHoverObject == obj)
-    {
-      console.log(fillColor + " " + lineColor)
     }
 
     const canvasX = 2500 + x * 100 - y * 100;
@@ -771,22 +786,19 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
       };
     
       if(obj) { this.gridService.objectOverlays.push(objOverlay); }
-
-      //Toggle Cap Buttons
-      const bottomX = x;
-      const bottomY = y - (10 * this.zoom);
-      const rightX = x + size + xsize - (1 * this.zoom);
-      const rightY = y - (xsize / 2) - size / 2;
-      const topX = x - ysize + xsize;
-      const topY = y - (ysize / 2) - (xsize / 2) - size + (1 * this.zoom);
-      const leftX = x - size - ysize + (20 * this.zoom);
-      const leftY = y - (ysize / 2) - size / 2;
+      
+  
+      if (this.arePointsEqual(objOverlay.points, this.currentHoverOverlay?.points)) {
+      } else {
+        return;
+      }
 
       if(orient?.includes('W'))
       {
         const middleX = 50 * this.zoom;
         const middleY = 25 * this.zoom;
 
+        //East Cap
         this.ctx.beginPath();
         this.ctx.setLineDash([]);
         this.ctx.moveTo(x + middleX, y - middleY); //Bottom Corner
@@ -797,9 +809,43 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
         this.ctx.strokeStyle = "#000000"; // Set the stroke color
         this.ctx.lineWidth = 2 * this.zoom;
         this.ctx.stroke();
+        
+        const eastCapOverlay: SvgObjectOverlay = {
+          points: [
+              {x: x + middleX, y: y - middleY}, // Bottom Corner
+              {x: x - middleX + size + xsize, y: y + middleY - (xsize / 2) - size / 2}, // Right Corner
+              {x: x - middleX + size + xsize - middleX, y: y - (xsize / 2) - size / 2}, // Top Corner
+              {x: x, y: y - middleX} // Left Corner
+          ],
+          object: obj,
+          func: 'cappedE'
+        };
 
-        this.ctx.fillStyle = '#97979760'; // Set the fill color 
-        this.ctx.fill(); // Fill the shape with the specified color
+        if(obj) { this.gridService.objectOverlays.push(eastCapOverlay); }
+
+        if(this.currentHoverSubOverlay && this.arePointsEqual(eastCapOverlay.points, this.currentHoverSubOverlay?.points))
+        {
+          this.ctx.fillStyle = '#ffffff99';
+        }
+        else{
+          this.ctx.fillStyle = '#97979760';
+        }
+
+        this.ctx.fill();
+
+
+        //West Cap
+        this.ctx.beginPath();
+        this.ctx.setLineDash([]);
+        this.ctx.moveTo(x, y); //Bottom Corner
+        this.ctx.lineTo(x - middleX + 50 - ysize + xsize, y + 25 + middleY - (ysize / 2) - (xsize / 2) - size); //Right Corner
+        this.ctx.lineTo(x - middleX - ysize + xsize, y + middleY - (ysize / 2) - (xsize / 2) - size); //Top Corner
+        this.ctx.lineTo(x + middleY - size - ysize, y - (ysize / 2) - size / 2); //Left Corner
+        this.ctx.closePath();
+        this.ctx.strokeStyle = "#000000"; // Set the stroke color
+        this.ctx.lineWidth = 2 * this.zoom;
+        this.ctx.stroke();
+
       }
 
       return;
@@ -1061,8 +1107,30 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
             const foundOverlayInCurrentIteration = this.pointInPolygon(pointToCheck, obj.points);
             if (foundOverlayInCurrentIteration) {
                 foundOverlay = true;
-                if (this.currentHoverObject !== obj.object) {
+                if(this.currentHoverSubOverlay)
+                  {
+                    const foundSubOverlay = this.pointInPolygon(pointToCheck, this.currentHoverSubOverlay?.points);
+                    if(!foundSubOverlay)
+                    {
+                      this.currentHoverSubOverlay = undefined;
+                      this.drawCanvas();
+                    }
+                  }
+                if(obj.func)
+                {
+                  if(obj.func.includes('capped') && !(this.selectedTool instanceof ToolRoof))
+                  {
+                    this.drawCanvas();
+                  }
+                  else if(this.currentHoverSubOverlay !== obj)
+                  {
+                    this.currentHoverSubOverlay = obj;
+                    this.drawCanvas();
+                  }
+                }
+                else if (this.currentHoverOverlay !== obj) {
                     this.currentHoverObject = obj.object;
+                    this.currentHoverOverlay = obj;
                     this.drawCanvas();
                 }
             }
@@ -1070,6 +1138,8 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
 
         if (!foundOverlay && this.currentHoverObject) {
             this.currentHoverObject = undefined;
+            this.currentHoverOverlay = undefined;
+            this.currentHoverSubOverlay = undefined;
             this.drawCanvas();
         }
 
@@ -1137,6 +1207,20 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     }
   
     return oddNodes;
+  }
+
+  arePointsEqual(objOverlayPoints: {x: number, y: number}[], currentHoverOverlayPoints: {x: number, y: number}[] | undefined): boolean {
+    if (!currentHoverOverlayPoints || objOverlayPoints.length !== currentHoverOverlayPoints.length) {
+      return false;
+    }
+  
+    for (let i = 0; i < objOverlayPoints.length; i++) {
+      if (objOverlayPoints[i].x !== currentHoverOverlayPoints[i].x || objOverlayPoints[i].y !== currentHoverOverlayPoints[i].y) {
+        return false;
+      }
+    }
+  
+    return true;
   }
 
   //Keyboard functions

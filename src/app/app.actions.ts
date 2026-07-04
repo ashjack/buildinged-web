@@ -5,6 +5,7 @@ import { VisualFurniture } from "./models/furniture-window.models";
 export enum ActionTypes {
     SetBuilding = '[Building] Set Building',
     AddObject = '[Building] Add Object',
+    UpdateObject = '[Building] Update Object',
     RemoveObject = '[Building] Remove Object',
     AddRoom = '[Building] Add Room',
     RemoveRoom = '[Building] Remove Room',
@@ -31,6 +32,12 @@ export class AddObject implements Action {
     readonly type = ActionTypes.AddObject;
 
     constructor(public obj: any, public level: number) { }
+}
+
+export class UpdateObject implements Action {
+    readonly type = ActionTypes.UpdateObject;
+
+    constructor(public obj: any) { }
 }
 
 export class RemoveObject implements Action {
@@ -103,6 +110,7 @@ export type ActionsUnion =
     ScheduleRedraw |
     SetBuilding |
     AddObject |
+    UpdateObject |
     RemoveObject |
     AddRoom |
     RemoveRoom |

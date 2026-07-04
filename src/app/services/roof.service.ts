@@ -8,6 +8,7 @@ import { AddObject } from "../app.actions";
 import { VisualFurniture } from "../models/furniture-window.models";
 import { take } from "rxjs";
 import { GridService } from "./grid.service";
+import { GUID } from "../utils/guid";
 
 @Injectable({
     providedIn: 'root',
@@ -27,6 +28,7 @@ export class RoofService {
 
             console.log('placing roof at', x, y, width, height);
             const newRoof = {
+                uid: GUID.generateGUID(),
                 type: 'roof',
                 width: width,
                 height: height,
