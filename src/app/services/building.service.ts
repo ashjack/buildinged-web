@@ -12,6 +12,7 @@ import { ScheduleRedraw, SetBuilding } from "../app.actions";
 import { GUID } from "../utils/guid";
 import { HttpClient } from "@angular/common/http";
 import { firstValueFrom } from "rxjs";
+import { buildRoofPlacements } from "./roof-patterns";
 
 interface BuildingTemplateRoom {
     Name: string;
@@ -1036,7 +1037,7 @@ export class BuildingService {
         });
     }
 
-    placeTile(obj: any, level: number)
+    placeTile(obj: any, level: number): SvgTile[] | void
     {
         let building = this.building;
         this.store.select(fromRoot.getBuilding).subscribe(b => {
@@ -1045,408 +1046,71 @@ export class BuildingService {
             }
         });
 
-        if(obj.type == 'roof')
-        {
-            console.log('ROOFUIDTYPE', obj.uid);
-            const uid = obj.uid;
-            const width = Number.parseInt(obj.width);
-            const height = Number.parseInt(obj.height);
-            const x = Number.parseInt(obj.x);
-            const y = Number.parseInt(obj.y);
-            const roofType = obj.RoofType;
-            const depth = obj.Depth;
-            const cappedN = obj.cappedN === 'true';
-            const cappedS = obj.cappedS === 'true';
-            const cappedE = obj.cappedE === 'true';
-            const cappedW = obj.cappedW === 'true';
-            const capTilesIndex = obj.CapTiles;
-            const slopeTilesIndex = obj.SlopeTiles;
-            const topTilesIndex = obj.TopTiles;
-            const capTiles = building.entries[capTilesIndex - 1].tiles;
-            const slopeTiles = building.entries[slopeTilesIndex - 1].tiles;
-            const topTiles = building.entries[topTilesIndex - 1].tiles;
+        if (obj.type == 'roof') {
+            const resolveRoofEntry = (value: unknown, configured: number, category: string): number => {
+                const saved = Number.parseInt(String(value));
+                if (building.entries[saved - 1]?.category === category) return saved;
+                if (building.entries[configured - 1]?.category === category) return configured;
+                return building.entries.findIndex(entry => entry.category === category) + 1;
+            };
+            const capEntry = resolveRoofEntry(obj.CapTiles, building.RoofCap, 'roof_caps');
+            const slopeEntry = resolveRoofEntry(obj.SlopeTiles, building.RoofSlope, 'roof_slopes');
+            const topEntry = resolveRoofEntry(obj.TopTiles, building.RoofTop, 'roof_tops');
+            const roofObjectTiles = buildRoofPlacements({
+                x: Number.parseInt(obj.x),
+                y: Number.parseInt(obj.y),
+                level,
+                width: Number.parseInt(obj.width),
+                height: Number.parseInt(obj.height),
+                roofType: obj.RoofType,
+                tileset: {
+                    capTiles: building.entries[capEntry - 1]?.tiles || [],
+                    slopeTiles: building.entries[slopeEntry - 1]?.tiles || [],
+                    topTiles: building.entries[topEntry - 1]?.tiles || [],
+                },
+                hasRoofTile: (roofX, roofY, roofLevel) => this.gridService.tileExists(roofX, roofY, roofLevel, 'Roof'),
+                isManualRoofTile: (roofX, roofY, roofLevel) => this.gridService.isUserTile(roofX, roofY, roofLevel, 'Roof'),
+                hasRoofCapTile: (roofX, roofY, roofLevel) => this.gridService.tileExists(roofX, roofY, roofLevel, 'RoofCap'),
+                isManualRoofCapTile: (roofX, roofY, roofLevel) => this.gridService.isUserTile(roofX, roofY, roofLevel, 'RoofCap'),
+                cappedW: obj.cappedW !== 'false',
+                cappedN: obj.cappedN !== 'false',
+                cappedE: obj.cappedE !== 'false',
+                cappedS: obj.cappedS !== 'false',
+                hasFloorTile: (floorX, floorY, floorLevel) => this.gridService.tileExists(floorX, floorY, floorLevel, 'Floor'),
+                isManualFloorTile: (floorX, floorY, floorLevel) => this.gridService.isUserTile(floorX, floorY, floorLevel, 'Floor'),
+            });
 
-            const roofObjectTiles: SvgTile[] = [];
             const roofObject = {
-                uid: uid,
+                uid: obj.uid,
                 tiles: roofObjectTiles,
-                x: x,
-                y: y,
-                level: level,
-                width: height - 1,
-                length: width - 1,
-                orient: roofType,
-                type: 'roof'
-            }
+                x: Number.parseInt(obj.x),
+                y: Number.parseInt(obj.y),
+                level,
+                width: Number.parseInt(obj.height) - 1,
+                length: Number.parseInt(obj.width) - 1,
+                orient: obj.RoofType,
+                type: 'roof',
+                cappedW: obj.cappedW !== 'false',
+                cappedN: obj.cappedN !== 'false',
+                cappedE: obj.cappedE !== 'false',
+                cappedS: obj.cappedS !== 'false',
+            };
 
-            //Placement functions
-            function placeSlopeTile(gridService: GridService, slopeTile: any, x: number, y: number, height: number, direction: number) {
-                if (slopeTile) {
-                    for (let i = 0; i < height; i++) {
-                        if(direction === 0)
-                        {
-                            const roofTileExists = gridService.tileExists(x, y + i, level, "Roof");
-                            const manualRoofTile = gridService.isUserTile(x, y + i, level, "Roof");
-
-                            console.log("ROOFTILEEXISTS1: " + roofTileExists);
-                            console.log("MANUALROOFTILE1: " + manualRoofTile);
-
-                            if(roofTileExists && !manualRoofTile)
-                            {
-                                // alert("Caught an already existing roof tile")
-                            }
-
-                            const tileToPlace = {
-                                name: slopeTile.tile + '.png',
-                                url: slopeTile.tile + '.png',
-                                x: x,
-                                y: y + i,
-                                offsetX: slopeTile.offset ? Number.parseInt(slopeTile.offset) : 0,
-                                offsetY: slopeTile.offset ? Number.parseInt(slopeTile.offset) : 0,
-                                layer: roofTileExists && !manualRoofTile ? 'Roof2' : "Roof",
-                                level: level,
-                            }
-
-                            gridService.placeTile2(tileToPlace, true);
-                            roofObjectTiles.push(tileToPlace);
-                        }
-                        else
-                        {
-                            const roofTileExists = gridService.tileExists(x + i, y, level, "Roof");
-                            const manualRoofTile = gridService.isUserTile(x + i, y, level, "Roof");
-
-                            console.log("ROOFTILEEXISTS2: " + roofTileExists);
-                            console.log("MANUALROOFTILE2: " + manualRoofTile);
-
-                            if(roofTileExists && !manualRoofTile)
-                            {
-                                //alert("Caught an already existing roof tile")
-                            }
-
-                            const tileToPlace = {
-                                name: slopeTile.tile + '.png',
-                                url: slopeTile.tile + '.png',
-                                x: x + i,
-                                y: y ,
-                                offsetX: slopeTile.offset ? Number.parseInt(slopeTile.offset) : 0,
-                                offsetY: slopeTile.offset ? Number.parseInt(slopeTile.offset) : 0,
-                                layer: roofTileExists && !manualRoofTile ? 'Roof2' : "Roof",
-                                level: level
-                            }
-
-                            gridService.placeTile2(tileToPlace, true);
-                            roofObjectTiles.push(tileToPlace);
-                        }
-                    }
+            const roofObjectId = String(obj.uid);
+            roofObjectTiles.forEach(tile => {
+                tile.object = roofObjectId;
+                const existing = this.gridService.roomTiles.find(current =>
+                    current.x === tile.x && current.y === tile.y &&
+                    current.level === tile.level && current.layer === tile.layer && current.object === roofObjectId);
+                if (existing) {
+                    Object.assign(existing, tile);
+                } else {
+                    this.gridService.roomTiles.push(tile);
                 }
-            }
-
-            function placeCapTile(gridService: GridService, capTile: any, x: number, y: number, height: number, direction: number, tag: string) {
-                if (capTile) {
-                    for (let i = 0; i < height + 1; i++) {
-                        console.log("placing cap at " + x + ", " + y + ", level: " + level)
-                        if(i === 0 || i === height) 
-                        {
-                            if(direction === 0)
-                            {
-                                const tileToPlace = {
-                                    name: capTile.tile + '.png',
-                                    url: capTile.tile + '.png',
-                                    x: x,
-                                    y: y + i,
-                                    layer: 'RoofCap',
-                                    level: level,
-                                    tag: tag
-                                };
-
-                                gridService.placeTile2(tileToPlace, false);
-                                roofObjectTiles.push(tileToPlace);
-                            }
-                            else
-                            {
-                                const tileToPlace = {
-                                    name: capTile.tile + '.png',
-                                    url: capTile.tile + '.png',
-                                    x: x + i,
-                                    y: y,
-                                    layer: 'RoofCap',
-                                    level: level,
-                                    tag: tag
-                                }
-                                gridService.placeTile2(tileToPlace, false);
-                                roofObjectTiles.push(tileToPlace);
-                            }
-                        }
-                    }
-                }
-            }
-
-            if(roofType == 'PeakNS')
-            {
-                //Place cap tiles
-                if(cappedN)
-                {
-                    if (depth === 'Point5') {
-                        const capTile = capTiles.find(tile => tile.enum === 'PeakPt5S');
-                        placeCapTile(this.gridService, capTile, x, y, height, 0, "cappedN");
-                    }
-
-                    if(depth === 'One')
-                    {
-                        const leftCap = capTiles.find(tile => tile.enum === 'CapRiseS1');
-                        const rightCap = capTiles.find(tile => tile.enum === 'CapFallS1');
-                
-                        placeCapTile(this.gridService, leftCap, x, y, height, 0, "cappedN");
-                        placeCapTile(this.gridService, rightCap, x + 1, y, height, 0, "cappedN");
-                    }
-                
-                    if (depth === 'OnePoint5') {
-                        const leftCap = capTiles.find(tile => tile.enum === 'CapRiseS1');
-                        const middleCap = capTiles.find(tile => tile.enum === 'PeakOnePt5S');
-                        const rightCap = capTiles.find(tile => tile.enum === 'CapFallS1');
-                
-                        placeCapTile(this.gridService, leftCap, x, y, height, 0, "cappedN");
-                        placeCapTile(this.gridService, middleCap, x + 1, y, height, 0, "cappedN");
-                        placeCapTile(this.gridService, rightCap, x + 2, y, height, 0, "cappedN");
-                    }
-                
-                    if (depth === 'Two') {
-                        const leftCap1 = capTiles.find(tile => tile.enum === 'CapRiseS1');
-                        const leftCap2 = capTiles.find(tile => tile.enum === 'CapRiseS2');
-                        const rightCap1 = capTiles.find(tile => tile.enum === 'CapFallS2');
-                        const rightCap2 = capTiles.find(tile => tile.enum === 'CapFallS1');
-                
-                        placeCapTile(this.gridService, leftCap1, x, y, height, 0, "cappedN");
-                        placeCapTile(this.gridService, leftCap2, x + 1, y, height, 0, "cappedN");
-                        placeCapTile(this.gridService, rightCap1, x + 2, y, height, 0, "cappedN");
-                        placeCapTile(this.gridService, rightCap2, x + 3, y, height, 0, "cappedN");
-                    }
-
-                    if (depth === 'TwoPoint5') {
-                        const leftCap1 = capTiles.find(tile => tile.enum === 'CapRiseS1');
-                        const leftCap2 = capTiles.find(tile => tile.enum === 'CapRiseS2');
-                        const middleCap = capTiles.find(tile => tile.enum === 'PeakTwoPt5S');
-                        const rightCap1 = capTiles.find(tile => tile.enum === 'CapFallS2');
-                        const rightCap2 = capTiles.find(tile => tile.enum === 'CapFallS1');
-
-                        placeCapTile(this.gridService, leftCap1, x, y, height, 0, "cappedN");
-                        placeCapTile(this.gridService, leftCap2, x + 1, y, height, 0, "cappedN");
-                        placeCapTile(this.gridService, middleCap, x + 2, y, height, 0, "cappedN");
-                        placeCapTile(this.gridService, rightCap1, x + 3, y, height, 0, "cappedN");
-                        placeCapTile(this.gridService, rightCap2, x + 4, y, height, 0, "cappedN");
-                    }
-                
-                    if (depth === 'Three') {
-                        for (let i = 1; i <= 3; i++) {
-                            const rightCap = capTiles.find(tile => tile.enum === `CapFallS${i}`);
-                            const leftCap = capTiles.find(tile => tile.enum === `CapRiseS${i}`);
-                            placeCapTile(this.gridService, leftCap, x + i - 1, y, height, 0, "cappedN");
-                            placeCapTile(this.gridService, rightCap, x + width - i, y, height, 0, "cappedN");
-
-                            if(width > 6)
-                            {
-                                const middleCap = capTiles.find(tile => tile.enum === 'CapGapS3');
-                                for(let j = 3; j < width - 3; j++)
-                                {
-                                    placeCapTile(this.gridService, middleCap, x + j, y, height, 0, "cappedN");
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Place slope tiles
-                if (depth === 'Point5') {
-                    const slopeTile = slopeTiles.find(tile => tile.enum === 'SlopePt5E');
-                    placeSlopeTile(this.gridService, slopeTile, x, y, height, 0);
-                }
-
-                if (depth === 'One' || depth === 'OnePoint5') {
-                    const slopeTile1 = slopeTiles.find(tile => tile.enum === 'SlopeE1');
-                    placeSlopeTile(this.gridService, slopeTile1, x + width - 1, y, height, 0);
-
-                    if (depth === 'OnePoint5') {
-                        const halfSlopeTile = slopeTiles.find(tile => tile.enum === 'SlopeOnePt5E');
-                        placeSlopeTile(this.gridService, halfSlopeTile, x + 1, y, height, 0);
-                    }
-                }
-
-                if (depth === 'Two' || depth === 'TwoPoint5') {
-                    const slopeTile1 = slopeTiles.find(tile => tile.enum === 'SlopeE1');
-                    const slopeTile2 = slopeTiles.find(tile => tile.enum === 'SlopeE2');
-                    placeSlopeTile(this.gridService, slopeTile1, x + width - 1, y, height, 0);
-                    placeSlopeTile(this.gridService, slopeTile2, x + width - 2, y, height, 0);
-
-                    if (depth === 'TwoPoint5') {
-                        const halfSlopeTile = slopeTiles.find(tile => tile.enum === 'SlopeTwoPt5E');
-                        placeSlopeTile(this.gridService, halfSlopeTile, x + width - 3, y, height, 0);
-                    }
-                }
-
-                if (depth === 'Three') {
-                    for (let i = 1; i <= 3; i++) {
-                        const slopeTile = slopeTiles.find(tile => tile.enum === `SlopeE${i}`);
-                        placeSlopeTile(this.gridService, slopeTile, x + width - i, y, height, 0);
-                    }
-                }
-            }
-
-            else if(roofType == 'PeakWE')
-            {
-                //Place cap tiles
-                if(cappedW)
-                {
-                    if(depth === 'Point5')
-                    {
-                        const capTile = capTiles.find(tile => tile.enum === 'PeakPt5E');
-                        placeCapTile(this.gridService, capTile, x, y, width, 1, "cappedW");
-                    }
-
-                    if(depth === 'One')
-                    {
-                        const leftCap = capTiles.find(tile => tile.enum === 'CapFallE1');
-                        const rightCap = capTiles.find(tile => tile.enum === 'CapRiseE1');
-                
-                        placeCapTile(this.gridService, leftCap, x, y, width, 1, "cappedW");
-                        placeCapTile(this.gridService, rightCap, x, y + 1, width, 1, "cappedW");
-                    }
-
-                    if (depth === 'OnePoint5') {
-                        const leftCap = capTiles.find(tile => tile.enum === 'CapFallE1');
-                        const middleCap = capTiles.find(tile => tile.enum === 'PeakOnePt5E');
-                        const rightCap = capTiles.find(tile => tile.enum === 'CapRiseE1');
-                
-                        placeCapTile(this.gridService, leftCap, x, y, width, 1, "cappedW");
-                        placeCapTile(this.gridService, middleCap, x, y + 1, width, 1, "cappedW");
-                        placeCapTile(this.gridService, rightCap, x, y + 2, width, 1, "cappedW");
-                    }
-
-                    if (depth === 'Two') {
-                        const leftCap1 = capTiles.find(tile => tile.enum === 'CapFallE1');
-                        const leftCap2 = capTiles.find(tile => tile.enum === 'CapFallE2');
-                        const rightCap1 = capTiles.find(tile => tile.enum === 'CapRiseE2');
-                        const rightCap2 = capTiles.find(tile => tile.enum === 'CapRiseE1');
-                
-                        placeCapTile(this.gridService, leftCap1, x, y, width, 1, "cappedW");
-                        placeCapTile(this.gridService, leftCap2, x, y + 1, width, 1, "cappedW");
-                        placeCapTile(this.gridService, rightCap1, x, y + 2, width, 1, "cappedW");
-                        placeCapTile(this.gridService, rightCap2, x, y + 3, width, 1, "cappedW");
-                    }
-
-                    if (depth === 'TwoPoint5') {
-                        const leftCap1 = capTiles.find(tile => tile.enum === 'CapFallE1');
-                        const leftCap2 = capTiles.find(tile => tile.enum === 'CapFallE2');
-                        const middleCap = capTiles.find(tile => tile.enum === 'PeakTwoPt5E');
-                        const rightCap1 = capTiles.find(tile => tile.enum === 'CapRiseE2');
-                        const rightCap2 = capTiles.find(tile => tile.enum === 'CapRiseE1');
-
-                        placeCapTile(this.gridService, leftCap1, x, y, width, 1, "cappedW");
-                        placeCapTile(this.gridService, leftCap2, x, y + 1, width, 1, "cappedW");
-                        placeCapTile(this.gridService, middleCap, x, y + 2, width, 1, "cappedW");
-                        placeCapTile(this.gridService, rightCap1, x, y + 3, width, 1, "cappedW");
-                        placeCapTile(this.gridService, rightCap2, x, y + 4, width, 1, "cappedW");
-                    }
-
-                    if (depth === 'Three') {
-                        for (let i = 1; i <= 3; i++) {
-                            const rightCap = capTiles.find(tile => tile.enum === `CapRiseE${i}`);
-                            const leftCap = capTiles.find(tile => tile.enum === `CapFallE${i}`);
-                            placeCapTile(this.gridService, leftCap, x, y + i - 1, width, 1, "cappedW");
-                            placeCapTile(this.gridService, rightCap, x, y + height - i, width, 1, "cappedW");
-
-                            if(height > 6)
-                            {
-                                const middleCap = capTiles.find(tile => tile.enum === 'CapGapE3');
-                                for(let j = 3; j < height - 3; j++)
-                                {
-                                    placeCapTile(this.gridService, middleCap, x, y + j, width, 1, "cappedW");
-                                }
-                            }
-                        }
-                    }
-                }
-
-                //Place Slope Tiles
-                if (depth === 'Point5') {
-                    const slopeTile = slopeTiles.find(tile => tile.enum === 'SlopePt5S');
-                    placeSlopeTile(this.gridService, slopeTile, x, y, width, 1);
-                }
-
-                if (depth === 'One' || depth === 'OnePoint5') {
-                    const slopeTile1 = slopeTiles.find(tile => tile.enum === 'SlopeS1');
-                    placeSlopeTile(this.gridService, slopeTile1, x, y + height - 1, width, 1);
-
-                    if (depth === 'OnePoint5') {
-                        const halfSlopeTile = slopeTiles.find(tile => tile.enum === 'SlopeOnePt5S');
-                        placeSlopeTile(this.gridService, halfSlopeTile, x, y + 1, width, 1);
-                    }
-                }
-
-                if(depth === 'Two' || depth === 'TwoPoint5') {
-                    const slopeTile1 = slopeTiles.find(tile => tile.enum === 'SlopeS1');
-                    const slopeTile2 = slopeTiles.find(tile => tile.enum === 'SlopeS2');
-                    placeSlopeTile(this.gridService, slopeTile1, x, y + height - 1, width, 1);
-                    placeSlopeTile(this.gridService, slopeTile2, x, y + height - 2, width, 1);
-
-                    if (depth === 'TwoPoint5') {
-                        const halfSlopeTile = slopeTiles.find(tile => tile.enum === 'SlopeTwoPt5S');
-                        placeSlopeTile(this.gridService, halfSlopeTile, x, y + height - 3, width, 1);
-                    }
-                }
-
-                if(depth === 'Three') {
-                    for(let i = 1; i <= 3; i++)
-                    {
-                        const slopeTile = slopeTiles.find(tile => tile.enum === `SlopeS${i}`);
-                        placeSlopeTile(this.gridService, slopeTile, x, y + height - i, width, 1);
-                    }
-                }
-
-                // if (depth === 'Two') {
-                //     const slopeTile1 = slopeTiles.find(tile => tile.enum === 'SlopeE1');
-                //     const slopeTile2 = slopeTiles.find(tile => tile.enum === 'SlopeE2');
-                //     placeSlopeTile(this.gridService, slopeTile1, x + width - 1, y, height, 1);
-                //     placeSlopeTile(this.gridService, slopeTile2, x + width - 2, y, height, 1);
-                // }
-
-                // if (depth === 'Three') {
-                //     for (let i = 1; i <= 3; i++) {
-                //         const slopeTile = slopeTiles.find(tile => tile.enum === `SlopeE${i}`);
-                //         placeSlopeTile(this.gridService, slopeTile, x + width - i, y, height, 1);
-                //     }
-                // }
-            }
-
-            else if(roofType == 'FlatTop')
-            {
-                console.log(topTiles)
-                const flatRoofTile = topTiles.find(tile => tile.enum === 'West3');
-
-                if(flatRoofTile)
-                {
-                    for(let i = 0; i < height; i++)
-                    {
-                        for(let j = 0; j < width; j++)
-                        {
-                            const roofTileExists = this.gridService.tileExists(x + j, y + i, level, "Floor");
-                            const manualRoofTile = this.gridService.isUserTile(x + j, y + i, level, "Floor");
-
-                            this.gridService.placeTile2({
-                                name: flatRoofTile.tile + '.png',
-                                url: flatRoofTile.tile + '.png',
-                                x: x + j,
-                                y: y + i,
-                                offsetX: flatRoofTile.offset ? Number.parseInt(flatRoofTile.offset) : 0,
-                                offsetY: flatRoofTile.offset ? Number.parseInt(flatRoofTile.offset) : 0,
-                                layer: roofTileExists && !manualRoofTile ? 'FloorOverlay' : "Floor",
-                                level: level
-                            }, true);
-                        }
-                    }
-                }
-            }
-
+            });
+            this.gridService.redrawTiles();
             this.gridService.addObject(roofObject);
+            return roofObjectTiles;
         }
 
         if(obj.type == 'furniture')

@@ -14,7 +14,8 @@
     <app-viewport-canvas></app-viewport-canvas>
 
     <app-tile-selection-menu *ngIf="(selectedTool$|async) == 'tool-tile'"></app-tile-selection-menu>
-    <app-furniture-selection-menu *ngIf="(selectedTool$|async) != 'tool-tile'"></app-furniture-selection-menu>
+    <app-roof-selection-menu *ngIf="(selectedTool$|async) == 'tool-roof'"></app-roof-selection-menu>
+    <app-furniture-selection-menu *ngIf="(selectedTool$|async) != 'tool-tile' && (selectedTool$|async) != 'tool-roof'"></app-furniture-selection-menu>
 
     <router-outlet></router-outlet>
 </div>

@@ -1,0 +1,13 @@
+<div class="roof-selection-panel">
+  <div class="roof-selection-title">Roof Type</div>
+
+  <button
+    *ngFor="let option of roofOptions"
+    type="button"
+    class="roof-option"
+    [ngClass]="isSelected(option.id) ? 'selected' : ''"
+    (click)="selectRoofOption(option.id)">
+    <span class="roof-icon" [ngClass]="option.id"></span>
+    <span class="roof-label">{{ option.label }}</span>
+  </button>
+</div>

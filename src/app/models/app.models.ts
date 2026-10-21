@@ -15,7 +15,7 @@ export interface SvgTile {
     excluded?: boolean;
     orient?: string;
     auto?: boolean;
-    object?: boolean;
+    object?: boolean | string;
     tag?: string;
 }
 
@@ -31,6 +31,10 @@ export interface SvgObject {
     gridLength?: number; //How long one grid worth of the white overlay is
     orient?: string;
     type?: string;
+    cappedW?: boolean;
+    cappedN?: boolean;
+    cappedE?: boolean;
+    cappedS?: boolean;
     overlayCorners?: {x: number, y: number}[]
 }
 

@@ -310,15 +310,16 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     if(this.selectedTool instanceof ToolRoof && this.currentHoverSubOverlay?.func)
     {
 
-      if(this.currentHoverSubOverlay.func == 'cappedW')
-      {
-        this.store.dispatch(new UpdateObject({uid: this.currentHoverSubOverlay.object?.uid, cappedW: 'false', cappedE: 'false', cappedN: 'false', cappedS: 'false'}));
-        const obj = this.gridService.objects.find((o: SvgObject) => o.uid == this.currentHoverSubOverlay?.object?.uid);
-        obj?.tiles.forEach((tile: SvgTile) => {
-          if(tile.tag == "cappedW" || tile.tag == "cappedE" || tile.tag == "cappedN" || tile.tag == "cappedS")
-            this.gridService.excludeTile(tile.x, tile.y, tile.level, tile.layer);
-        });
+      const capProperty = this.currentHoverSubOverlay.func as 'cappedW' | 'cappedN' | 'cappedE' | 'cappedS';
+      const objectUid = this.currentHoverSubOverlay.object?.uid;
+      this.store.dispatch(new UpdateObject({ uid: objectUid, [capProperty]: 'false' }));
+      const obj = this.gridService.objects.find((candidate: SvgObject) => candidate.uid == objectUid);
+      if (obj) {
+        obj[capProperty] = false;
+        obj.tiles.filter((tile: SvgTile) => tile.tag === capProperty).forEach((tile: SvgTile) => tile.excluded = true);
       }
+      this.currentHoverSubOverlay = undefined;
+      this.gridService.redrawTiles();
       return;
     }
     this.selectedTool.beginDrag(x, y);
@@ -460,8 +461,12 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     this.gridService.objectOverlays = [];
     this.gridService.objects.forEach((obj: SvgObject) => {   
       if(obj.level === this.gridService.getSelectedLevel())
-      {   
-        this.drawOverlayBlock(obj.x, obj.y, obj.length ?? 0, obj.width ?? 0, '#1d1aeb60', '#ffffff30', obj.orient, obj.type, obj);
+      {
+        const isRoof = obj.type === 'roof';
+        const isHoveredRoof = isRoof && obj.uid === this.currentHoverObject?.uid;
+        const isHoveredPeak = isHoveredRoof && obj.orient?.includes('Peak');
+        this.drawOverlayBlock(obj.x, obj.y, obj.length ?? 0, obj.width ?? 0,
+          '#1d1aeb60', isHoveredPeak ? '#00000000' : isHoveredRoof ? '#ffffff60' : '#ffffff30', obj.orient, obj.type, obj);
       }
     });
   }
@@ -786,68 +791,61 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
       };
     
       if(obj) { this.gridService.objectOverlays.push(objOverlay); }
-      
-  
-      if (this.arePointsEqual(objOverlay.points, this.currentHoverOverlay?.points)) {
-      } else {
-        return;
+
+      // The roof footprint is only a hit target for selection/deletion. The
+      // side controls below are separate, compact hit targets.
+      const hovered = obj?.uid === this.currentHoverObject?.uid;
+      if (hovered && orient?.includes('Peak')) {
+        const midpoint = (a: Point, b: Point): Point => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+        const [bottom, right, top, left] = objOverlay.points;
+        const halves = orient.includes('NS')
+          ? [[bottom, midpoint(bottom, right), midpoint(left, top), left], [midpoint(bottom, right), right, top, midpoint(left, top)]]
+          : [[bottom, right, midpoint(right, top), midpoint(bottom, left)], [midpoint(bottom, left), midpoint(right, top), top, left]];
+        halves.forEach((points, index) => {
+          this.ctx!.beginPath();
+          this.ctx!.moveTo(points[0].x, points[0].y);
+          points.slice(1).forEach(point => this.ctx!.lineTo(point.x, point.y));
+          this.ctx!.closePath();
+          this.ctx!.fillStyle = index === 0 ? '#ffffff60' : '#ffffff30';
+          this.ctx!.fill();
+        });
       }
 
-      if(orient?.includes('W'))
-      {
-        const middleX = 50 * this.zoom;
-        const middleY = 25 * this.zoom;
-
-        //East Cap
-        this.ctx.beginPath();
-        this.ctx.setLineDash([]);
-        this.ctx.moveTo(x + middleX, y - middleY); //Bottom Corner
-        this.ctx.lineTo(x - middleX + size + xsize, y + middleY - (xsize / 2) - size / 2); //Right Corner
-        this.ctx.lineTo(x - middleX + size + xsize - middleX, y - (xsize / 2) - size / 2); //Top Corner
-        this.ctx.lineTo(x, y - middleX); //Left Corner
-        this.ctx.closePath();
-        this.ctx.strokeStyle = "#000000"; // Set the stroke color
-        this.ctx.lineWidth = 2 * this.zoom;
-        this.ctx.stroke();
-        
-        const eastCapOverlay: SvgObjectOverlay = {
-          points: [
-              {x: x + middleX, y: y - middleY}, // Bottom Corner
-              {x: x - middleX + size + xsize, y: y + middleY - (xsize / 2) - size / 2}, // Right Corner
-              {x: x - middleX + size + xsize - middleX, y: y - (xsize / 2) - size / 2}, // Top Corner
-              {x: x, y: y - middleX} // Left Corner
-          ],
-          object: obj,
-          func: 'cappedE'
+      if (hovered && obj) {
+        const exposedSides: Record<string, Array<'W' | 'N' | 'E' | 'S'>> = {
+          PeakNS: ['N', 'S'], PeakWE: ['W', 'E'],
+          SlopeW: ['W', 'N', 'S'], SlopeE: ['E', 'N', 'S'],
+          SlopeN: ['N', 'W', 'E'], SlopeS: ['S', 'W', 'E'],
+          ShallowPeakNS: ['N', 'S'], ShallowPeakWE: ['W', 'E'],
+          ShallowSlopeW: ['W', 'N', 'S'], ShallowSlopeE: ['E', 'N', 'S'],
+          ShallowSlopeN: ['N', 'W', 'E'], ShallowSlopeS: ['S', 'W', 'E'],
         };
-
-        if(obj) { this.gridService.objectOverlays.push(eastCapOverlay); }
-
-        if(this.currentHoverSubOverlay && this.arePointsEqual(eastCapOverlay.points, this.currentHoverSubOverlay?.points))
-        {
-          this.ctx.fillStyle = '#ffffff99';
+        const [bottom, right, top, left] = objOverlay.points;
+        const edges = { N: [bottom, right], E: [right, top], S: [top, left], W: [left, bottom] } as const;
+        const center = { x: (bottom.x + top.x) / 2, y: (bottom.y + top.y) / 2 };
+        const interpolate = (a: Point, b: Point, amount: number): Point =>
+          ({ x: a.x + (b.x - a.x) * amount, y: a.y + (b.y - a.y) * amount });
+        for (const side of exposedSides[orient || ''] || []) {
+          if ((obj as any)[`capped${side}`] === false) continue;
+          const [edgeStart, edgeEnd] = edges[side];
+          const outerA = interpolate(edgeStart, edgeEnd, 0.3);
+          const outerB = interpolate(edgeStart, edgeEnd, 0.7);
+          const innerA = interpolate(outerA, center, 0.18);
+          const innerB = interpolate(outerB, center, 0.18);
+          const points = [outerA, outerB, innerB, innerA];
+          const handle: SvgObjectOverlay = { points, object: obj, func: `capped${side}` };
+          this.gridService.objectOverlays.push(handle);
+          this.ctx!.beginPath();
+          this.ctx!.moveTo(points[0].x, points[0].y);
+          points.slice(1).forEach(point => this.ctx!.lineTo(point.x, point.y));
+          this.ctx!.closePath();
+          this.ctx!.strokeStyle = '#000000';
+          this.ctx!.lineWidth = 1 * this.zoom;
+          this.ctx!.stroke();
+          this.ctx!.fillStyle = this.currentHoverSubOverlay?.func === handle.func ? '#ffffff99' : '#97979760';
+          this.ctx!.fill();
         }
-        else{
-          this.ctx.fillStyle = '#97979760';
-        }
-
-        this.ctx.fill();
-
-
-        //West Cap
-        this.ctx.beginPath();
-        this.ctx.setLineDash([]);
-        this.ctx.moveTo(x, y); //Bottom Corner
-        this.ctx.lineTo(x - middleX + 50 - ysize + xsize, y + 25 + middleY - (ysize / 2) - (xsize / 2) - size); //Right Corner
-        this.ctx.lineTo(x - middleX - ysize + xsize, y + middleY - (ysize / 2) - (xsize / 2) - size); //Top Corner
-        this.ctx.lineTo(x + middleY - size - ysize, y - (ysize / 2) - size / 2); //Left Corner
-        this.ctx.closePath();
-        this.ctx.strokeStyle = "#000000"; // Set the stroke color
-        this.ctx.lineWidth = 2 * this.zoom;
-        this.ctx.stroke();
-
       }
-
       return;
     }
     else

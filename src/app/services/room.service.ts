@@ -272,6 +272,8 @@ export class RoomService {
                     {
                         smallCornerTiles.push(tile);
                         this.placeTile(room, tile.x, tile.y + 1, tile.level, interiorWallTiles[3], true);
+                        if(interiorWallTrim)
+                            this.placeTile(room, tile.x, tile.y + 1, tile.level, interiorWallTrim[3], true, "WallTrim");
                     }
                 }
             }

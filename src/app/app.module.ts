@@ -18,6 +18,7 @@ import { TileDownloadWindowComponent } from './components/tile-download-window/t
 import { FormsModule } from '@angular/forms';
 import { TilesetListWindowComponent } from './components/tileset-list-window/tileset-list-window.component';
 import { BuildingSelectionWindowComponent } from './components/admin/building-selection-window/building-selection-window.component';
+import { RoofSelectionMenuComponent } from './components/roof-selection-menu/roof-selection-menu.component';
 
 @NgModule({
   declarations: [
@@ -28,7 +29,8 @@ import { BuildingSelectionWindowComponent } from './components/admin/building-se
     FurnitureSelectionMenuComponent,
     TileDownloadWindowComponent,
     TilesetListWindowComponent,
-    BuildingSelectionWindowComponent
+    BuildingSelectionWindowComponent,
+    RoofSelectionMenuComponent
   ],
   imports: [
     BrowserModule,

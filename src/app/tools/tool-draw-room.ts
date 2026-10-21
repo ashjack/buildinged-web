@@ -393,6 +393,8 @@ export default class ToolDrawRoom extends ToolDraw {
                     {
                         smallCornerTiles.push(tile);
                         placeTile(tile.x, tile.y + 1, tile.level, this.interiorWallTiles[3], true);
+                        if(this.interiorWallTrim)
+                            placeTile(tile.x, tile.y + 1, tile.level, this.interiorWallTrim[3], true, "WallTrim");
                     }
                 }
             }

@@ -25,6 +25,7 @@ export class TileService {
     totalTiles = 0;
     processedTiles = 0;
     isDownloading = false;
+    private progressStarted = false;
 
     private progressSubject = new BehaviorSubject<TileDownloadProgress>({
       active: false,
@@ -40,15 +41,32 @@ export class TileService {
 
     }
 
-    private beginProgress(): void {
+    private resetProgress(): void {
       this.failedDecodes = [];
       this.totalTiles = 0;
       this.processedTiles = 0;
+      this.progressStarted = false;
       this.progressSubject.next({
-        active: true,
+        active: false,
         totalTiles: 0,
         processedTiles: 0,
         failedSheets: 0,
+      });
+    }
+
+    private ensureProgressStarted(currentPackName?: string, currentSheetName?: string): void {
+      if (this.progressStarted) {
+        return;
+      }
+
+      this.progressStarted = true;
+      this.progressSubject.next({
+        active: true,
+        totalTiles: this.totalTiles,
+        processedTiles: this.processedTiles,
+        failedSheets: this.failedDecodes.length,
+        currentPackName,
+        currentSheetName,
       });
     }
 
@@ -78,7 +96,7 @@ export class TileService {
       }
 
       this.isDownloading = true;
-      this.beginProgress();
+      this.resetProgress();
 
       try {
         for (let index = tilepackIndex; index < tilepacks.length; index++) {
@@ -90,7 +108,9 @@ export class TileService {
             continue;
           }
 
-          this.updateProgress({ currentPackName: tilepack.name, currentSheetName: undefined });
+          if (this.progressStarted) {
+            this.updateProgress({ currentPackName: tilepack.name, currentSheetName: undefined });
+          }
 
           const headers = new HttpHeaders().set('Cache-Control', 'no-cache');
 
@@ -134,7 +154,9 @@ export class TileService {
 
       for (const entry of tilesheetEntries) {
         const sheetName = this.getTilesheetName(entry.name);
-        this.updateProgress({ currentPackName: packName, currentSheetName: sheetName });
+        if (this.progressStarted) {
+          this.updateProgress({ currentPackName: packName, currentSheetName: sheetName });
+        }
 
         try {
           await this.saveZipTilesheetToCache(sheetName, entry, packName);
@@ -165,6 +187,9 @@ export class TileService {
         return;
       }
 
+      this.ensureProgressStarted(packName, sheetName);
+      this.updateProgress({ currentPackName: packName, currentSheetName: sheetName });
+
       const sheetBlob = await file.async('blob');
       await this.db.addTileset(sheetName, file.name, packName);
       await this.splitTilesheetBlob(sheetBlob, sheetName);
@@ -175,7 +200,9 @@ export class TileService {
         const tilesheetName = tilesheet.name;
         const tilesheetUrl = tilesheet.url;
 
-        this.updateProgress({ currentPackName: packName, currentSheetName: tilesheetName });
+        if (this.progressStarted) {
+          this.updateProgress({ currentPackName: packName, currentSheetName: tilesheetName });
+        }
 
         try {
           await this.saveTilesToCache(tilesheetName, tilesheetUrl, packName);
@@ -285,6 +312,9 @@ export class TileService {
           console.log(`Tileset ${sheetName} already exists in cache`);
           return;
         }
+
+        this.ensureProgressStarted(packName, sheetName);
+        this.updateProgress({ currentPackName: packName, currentSheetName: sheetName });
 
         console.log(`Getting tileset ${sheetName}`)
         await this.db.addTileset(sheetName, sheetPath, packName);

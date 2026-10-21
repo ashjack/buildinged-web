@@ -1,5 +1,4 @@
 import { Building, SvgTile } from "../models/app.models";
-import { FurnitureService } from "../services/furniture.service";
 import { GridService } from "../services/grid.service";
 import { RoofService } from "../services/roof.service";
 import ToolDraw from "./tool-draw";
@@ -33,6 +32,8 @@ export default class ToolRoof extends ToolDraw {
     }
 
     override hoverTile(x: number, y: number): void {
+      const roofType = this.roofService.getSelectedRoofType();
+
         if(this.isDragging)
         {
           this.dragTiles = [];
@@ -61,7 +62,7 @@ export default class ToolRoof extends ToolDraw {
             }
           }
 
-          this.tileGhosts = this.roofService.calculateRoofTiles(xMin, yMin, this.gridService.getSelectedLevel(), xMax-xMin + 1, yMax-yMin + 1, 'PeakNS', 47, 49, 50);
+          this.tileGhosts = this.roofService.calculateRoofTiles(xMin, yMin, this.gridService.getSelectedLevel(), xMax-xMin + 1, yMax-yMin + 1, roofType);
 
         }
         else
@@ -78,6 +79,11 @@ export default class ToolRoof extends ToolDraw {
     }
 
     override endDrag(x: number, y: number): void {
+      if (!this.isDragging) {
+        return;
+      }
+      const roofType = this.roofService.getSelectedRoofType();
+
         this.isDragging = false;
         this.dragTiles = [];
         const x1 = this.beginDragCoords[0];
@@ -98,7 +104,7 @@ export default class ToolRoof extends ToolDraw {
             }
         }
 
-        this.roofService.placeRoof(xMin, yMin, this.gridService.getSelectedLevel(), xMax-xMin, yMax-yMin, 'PeakNS', 47, 49, 50);
+        this.roofService.placeRoof(xMin, yMin, this.gridService.getSelectedLevel(), xMax-xMin, yMax-yMin, roofType);
         this.tileGhosts = [];
 
         //Draw roof
