@@ -20,6 +20,7 @@ export enum ActionTypes {
     EditTiles = '[Building] Edit Tiles',
     PaintTileCells = '[Building] Paint Tile Cells',
     TransformSelection = '[Building] Transform Selection',
+    EditFloor = '[Building] Edit Floor',
 
     SetTileCount = '[Loading] Set Tile Count',
 
@@ -78,6 +79,11 @@ export class RemoveObjects implements Action {
 
 export class Undo implements Action { readonly type = ActionTypes.Undo; }
 export class Redo implements Action { readonly type = ActionTypes.Redo; }
+
+export class EditFloor implements Action {
+    readonly type = ActionTypes.EditFloor;
+    constructor(public operation: 'add' | 'duplicate' | 'remove' | 'up' | 'down', public level: number) { }
+}
 
 export class PaintTileCells implements Action {
     readonly type = ActionTypes.PaintTileCells;
@@ -176,6 +182,7 @@ export type ActionsUnion =
     EditTiles |
     PaintTileCells |
     TransformSelection |
+    EditFloor |
     SetTileCount |
     TogglePopup
     ;

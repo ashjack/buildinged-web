@@ -6,6 +6,7 @@ import { VisualFurniture } from './models/furniture-window.models';
 import { editRooms, editTiles } from './utils/document-edits';
 import { registerFurniture } from './utils/furniture-definition';
 import { paintTileCells, transformSelection } from './utils/selection-edits';
+import { editFloor } from './utils/floor-edits';
 
 export interface State
 {
@@ -43,12 +44,14 @@ export interface EditCommand {
     before: Building;
     after: Building;
     level: number;
+    afterLevel?: number;
 }
 
 export const HISTORY_LIMIT = 100;
 
 function commandLabel(action: Actions.ActionsUnion): string {
     switch (action.type) {
+      case Actions.ActionTypes.EditFloor: return ({ add: 'Add floor', duplicate: 'Duplicate floor', remove: 'Remove floor', up: 'Raise floor', down: 'Lower floor' })[action.operation];
       case Actions.ActionTypes.EditRooms: return action.room === 0 ? 'Erase rooms' : 'Draw rooms';
       case Actions.ActionTypes.RemoveRoom: return 'Erase rooms';
       case Actions.ActionTypes.AddRoom: return action.room === 0 ? 'Erase rooms' : 'Draw rooms';
@@ -72,7 +75,7 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
         const command = list[list.length - 1];
         if (!command) return state;
         return {
-            ...state, building: undo ? command.before : command.after, historyFloor: command.level,
+            ...state, building: undo ? command.before : command.after, historyFloor: undo ? command.level : command.afterLevel ?? command.level,
             past: undo ? state.past.slice(0, -1) : [...state.past, command],
             future: undo ? [...state.future, command] : state.future.slice(0, -1),
         };
@@ -81,8 +84,10 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
     if (action.type === Actions.ActionTypes.SetBuilding) return { ...next, past: [], future: [], historyFloor: undefined };
     if (!state.building || next.building === state.building) return next;
     const level = 'level' in action ? action.level : state.building.floors.findIndex((floor, index) => floor !== next.building!.floors[index]);
-    const command = { label: commandLabel(action), before: state.building, after: next.building!, level: Math.max(0, level) };
-    return { ...next, past: [...state.past, command].slice(-HISTORY_LIMIT), future: [], historyFloor: undefined };
+    const floorEdit = action.type === Actions.ActionTypes.EditFloor;
+    const command = { label: commandLabel(action), before: state.building, after: next.building!, level: Math.max(0, level),
+        ...(floorEdit ? { afterLevel: next.historyFloor } : {}) };
+    return { ...next, past: [...state.past, command].slice(-HISTORY_LIMIT), future: [], historyFloor: floorEdit ? next.historyFloor : undefined };
 }
 
 function reduceState(state: State, action: Actions.ActionsUnion): State {
@@ -139,6 +144,11 @@ function reduceState(state: State, action: Actions.ActionsUnion): State {
       }
 
       //Building
+      case Actions.ActionTypes.EditFloor: {
+        if (!state.building) return state;
+        const result = editFloor(state.building, action);
+        return result ? { ...state, building: result.building, historyFloor: result.level } : state;
+      }
       case Actions.ActionTypes.PaintTileCells:
       case Actions.ActionTypes.TransformSelection: {
         if (!state.building) return state;

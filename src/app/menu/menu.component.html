@@ -1,36 +1,70 @@
-<div class="toolbar">
-    <button type="button" class="history-button" title="Select and move objects" (click)="setTool('tool-select-objects')" [class.active]="(currentTool$ | async) === 'tool-select-objects'" aria-label="Select and move objects">Move objects</button>
-    <button type="button" class="history-button" title="Select and move room areas" (click)="setTool('tool-select-rooms')" [class.active]="(currentTool$ | async) === 'tool-select-rooms'" aria-label="Select and move rooms">Move rooms</button>
-    <button type="button" class="history-button" title="Select and move manual tiles on the selected layer" (click)="setTool('tool-select-tiles')" [class.active]="(currentTool$ | async) === 'tool-select-tiles'" aria-label="Select and move tiles">Move tiles</button>
-    <button type="button" class="history-button" title="Draw and resize wall objects" (click)="setTool('tool-wall')" [class.active]="(currentTool$ | async) === 'tool-wall'" aria-label="Wall tool">Wall</button>
-    <button type="button" class="history-button" title="Place stairs" (click)="setTool('tool-stairs')" [class.active]="(currentTool$ | async) === 'tool-stairs'" aria-label="Stairs tool">Stairs</button>
-    <button class="toolbar-button" (click)="openMainMenu()"><img src="assets/icons/system-run.png"></button>
-    <button class="toolbar-button" (click)="setTool('tool-tile')" [class.active]="(currentTool$ | async) === 'tool-tile'" aria-label="Manual tile tools"><img src="assets/icons/icon_clone.png"></button>
-    <button class="toolbar-button" (click)="setTool('tool-draw-room')" [class.active]="(currentTool$ | async) === 'tool-draw-room'" aria-label="Draw rooms"><img src="assets/icons/icon_pencil.png"></button>
-    <button class="toolbar-button" (click)="setTool('tool-door')" [class.active]="(currentTool$ | async) === 'tool-door'" aria-label="Place doors"><img src="assets/icons/icon_door.png"></button>
-    <button class="toolbar-button" (click)="setTool('tool-window')" [class.active]="(currentTool$ | async) === 'tool-window'" aria-label="Place windows"><img src="assets/icons/icon_window.png"></button>
-    <button class="toolbar-button" (click)="setTool('tool-furniture')" [class.active]="(currentTool$ | async) === 'tool-furniture'" aria-label="Place furniture"><img src="assets/icons/icon_furniture.png" alt="Furniture Tool"></button>
-    <button class="toolbar-button" (click)="setTool('tool-roof')" [class.active]="(currentTool$ | async) === 'tool-roof'" aria-label="Place roofs"><img src="assets/icons/icon_roof_peakNS.png"></button>
-    <button class="toolbar-button" (click)="openFileUpload()"><img src="assets/icons/icon_harddisk.png"></button>
-    <button class="toolbar-button" (click)="createXml()"><img src="assets/icons/icon_harddisk.png"></button>
-    <button type="button" class="history-button" (click)="undo()" [disabled]="!(undoLabel$ | async)"
-            [title]="'Undo ' + ((undoLabel$ | async) || '')" aria-label="Undo">Undo</button>
-    <button type="button" class="history-button" (click)="redo()" [disabled]="!(redoLabel$ | async)"
-            [title]="'Redo ' + ((redoLabel$ | async) || '')" aria-label="Redo">Redo</button>
-    <div class="btn-group" dropdown>
-        <button id="button-custom-html" dropdownToggle type="button" class="btn btn-secondary dropdown-toggle"
-                aria-controls="dropdown-custom-html">
-                <div style="width: 16px; height: 16px;display: inline-flex; margin-right: 5px;" [ngStyle]="{'background':'rgb(' + getSelectedRoom()?.Color + ')'}"></div>
-          {{getSelectedRoom()?.Name}} <span class="caret"></span>
-        </button>
-        <ul id="dropdown-custom-html" *dropdownMenu class="dropdown-menu"
-            role="menu" aria-labelledby="button-custom-html">
-          <li role="menuitem" *ngFor="let room of getRooms()"><a (click)="setRoom(room)" class="dropdown-item" [routerLink]=""><span>
-            <div style="width: 16px; height: 16px;display: inline-flex; margin-right: 5px;" [ngStyle]="{'background':'rgb(' + room.Color + ')'}"></div>{{room.Name}}</span></a></li>
-        </ul>
+﻿<div class="toolbar" role="toolbar" aria-label="Building editor">
+  <div class="toolbar-group" aria-label="File and history">
+    <button class="toolbar-button" title="New building / main menu" aria-label="New building / main menu" (click)="openMainMenu()"><img src="assets/icons/document-new.png" alt=""></button>
+    <button class="toolbar-button" title="Open building" aria-label="Open building" (click)="openFileUpload()"><img src="assets/icons/document-open.png" alt=""></button>
+    <button class="toolbar-button" title="Save building" aria-label="Save building" (click)="createXml()"><img src="assets/icons/document-save.png" alt=""></button>
+    <span class="separator"></span>
+    <button class="toolbar-button" (click)="undo()" [disabled]="!(undoLabel$ | async)" [title]="'Undo ' + ((undoLabel$ | async) || '')" aria-label="Undo"><img src="assets/icons/edit-undo.png" alt=""></button>
+    <button class="toolbar-button" (click)="redo()" [disabled]="!(redoLabel$ | async)" [title]="'Redo ' + ((redoLabel$ | async) || '')" aria-label="Redo"><img src="assets/icons/edit-redo.png" alt=""></button>
+  </div>
+  <span class="separator"></span>
+  <div class="toolbar-group" aria-label="Room tools">
+    <button class="toolbar-button" title="Draw rooms" aria-label="Draw rooms" (click)="setTool('tool-draw-room')" [class.active]="(currentTool$ | async) === 'tool-draw-room'"><img src="assets/icons/icon_pencil.png" alt=""></button>
+    <button class="toolbar-button" title="Draw walls" aria-label="Wall tool" (click)="setTool('tool-wall')" [class.active]="(currentTool$ | async) === 'tool-wall'"><img src="assets/icons/icon_wall.png" alt=""></button>
+    <button class="toolbar-button" title="Select and move rooms" aria-label="Select and move rooms" (click)="setTool('tool-select-rooms')" [class.active]="(currentTool$ | async) === 'tool-select-rooms'"><img src="assets/icons/stock-tool-rect-select.png" alt=""></button>
+  </div>
+  <span class="separator"></span>
+  <div class="toolbar-group" aria-label="Object tools">
+    <button class="toolbar-button" title="Place doors" aria-label="Place doors" (click)="setTool('tool-door')" [class.active]="(currentTool$ | async) === 'tool-door'"><img src="assets/icons/icon_door.png" alt=""></button>
+    <button class="toolbar-button" title="Place windows" aria-label="Place windows" (click)="setTool('tool-window')" [class.active]="(currentTool$ | async) === 'tool-window'"><img src="assets/icons/icon_window.png" alt=""></button>
+    <button class="toolbar-button" title="Place stairs" aria-label="Stairs tool" (click)="setTool('tool-stairs')" [class.active]="(currentTool$ | async) === 'tool-stairs'"><img src="assets/icons/icon_stair.png" alt=""></button>
+    <div class="roof-split" *ngFor="let group of roofGroups" (click)="$event.stopPropagation()" (keydown)="roofMenuKey($event, group.id)" (keyup)="$event.stopPropagation()" [class.active]="(currentTool$ | async) === 'tool-roof' && selectedRoofGroup === group.id">
+      <button class="toolbar-button" [title]="group.label + ': ' + roofs.getGroupOption(group.id).label" [attr.aria-label]="group.id === 'standard' ? 'Place roofs' : group.label" (click)="activateRoof(group.id)"><img [src]="roofIcon(roofs.getGroupOption(group.id))" alt=""></button>
+      <button class="dropdown-arrow" [attr.aria-label]="group.label + ' types'" aria-haspopup="menu" [attr.aria-expanded]="openRoofMenu === group.id" (click)="openRoofMenu = openRoofMenu === group.id ? undefined : group.id">▾</button>
+      <div *ngIf="openRoofMenu === group.id" class="roof-menu" role="menu" [attr.aria-label]="group.label + ' types'">
+        <button *ngFor="let option of group.options" role="menuitemradio" [attr.aria-checked]="roofs.getGroupOption(group.id).id === option.id" (click)="chooseRoof(option)"><img [src]="roofIcon(option)" alt=""><span>{{option.label}}</span><span class="check" *ngIf="roofs.getGroupOption(group.id).id === option.id">✓</span></button>
+      </div>
     </div>
-    <button class="toolbar-button" (click)="upFloor()"><img src="assets/icons/icon_floorup.png"></button>
-    <button class="toolbar-button" (click)="downFloor()"><img src="assets/icons/icon_floordn.png"></button>
-
-    <button class="toolbar-button" (click)="toggleWindow()"><img src="assets/icons/icon_tile.png"></button>
+    <button class="toolbar-button" title="Place furniture" aria-label="Place furniture" (click)="setTool('tool-furniture')" [class.active]="(currentTool$ | async) === 'tool-furniture'"><img src="assets/icons/icon_furniture.png" alt=""></button>
+    <button class="toolbar-button" title="Select and move objects" aria-label="Select and move objects" (click)="setTool('tool-select-objects')" [class.active]="(currentTool$ | async) === 'tool-select-objects'"><img src="assets/icons/tool-select-objects.png" alt=""></button>
+  </div>
+  <span class="separator"></span>
+  <div class="toolbar-group" aria-label="Tile tools">
+    <button class="toolbar-button" title="Manual tile tools" aria-label="Manual tile tools" (click)="setTool('tool-tile')" [class.active]="(currentTool$ | async) === 'tool-tile'"><img src="assets/icons/mode_tile.png" alt=""></button>
+    <button class="toolbar-button" title="Select and move tiles" aria-label="Select and move tiles" (click)="setTool('tool-select-tiles')" [class.active]="(currentTool$ | async) === 'tool-select-tiles'"><img src="assets/icons/icon_select.png" alt=""></button>
+  </div>
+  <span class="separator"></span>
+  <div class="room-picker" dropdown>
+    <button dropdownToggle type="button" class="room-button" aria-label="Current room" aria-controls="room-menu"><span class="room-color" [style.background]="'rgb(' + getSelectedRoom()?.Color + ')'"></span>{{getSelectedRoom()?.Name || 'Room'}} ▾</button>
+    <ul id="room-menu" *dropdownMenu class="dropdown-menu" role="menu">
+      <li *ngFor="let room of getRooms()" role="none"><button class="dropdown-item" role="menuitem" (click)="setRoom(room)"><span class="room-color" [style.background]="'rgb(' + room.Color + ')'"></span>{{room.Name}}</button></li>
+    </ul>
+  </div>
+  <span class="separator"></span>
+  <div class="toolbar-group" aria-label="Floors">
+    <button class="floor-button" title="Click to edit floors" aria-label="Edit floors" (click)="openFloors()" [disabled]="!floorCount">Floor {{selectedLevel + 1}}/{{floorCount}}</button>
+    <button class="toolbar-button" title="Go up one floor" aria-label="Go up one floor" (click)="upFloor()" [disabled]="selectedLevel >= floorCount - 1"><img src="assets/icons/icon_floorup.png" alt=""></button>
+    <button class="toolbar-button" title="Go down one floor" aria-label="Go down one floor" (click)="downFloor()" [disabled]="selectedLevel <= 0"><img src="assets/icons/icon_floordn.png" alt=""></button>
+  </div>
+  <span class="separator"></span>
+  <button class="toolbar-button" title="Tilesets" aria-label="Tilesets" (click)="toggleWindow()"><img src="assets/icons/icon_tile.png" alt=""></button>
 </div>
+<dialog #floorsDialog class="floors-dialog" aria-labelledby="floors-title" (keydown)="floorDialogKey($event)" (keyup)="$event.stopPropagation()">
+  <h2 id="floors-title">Floors</h2>
+  <div class="floor-list" role="listbox" aria-label="Floors, highest first" tabindex="0" (keydown)="floorListKey($event)" [attr.aria-activedescendant]="'floor-option-' + selectedLevel">
+    <div *ngFor="let level of floorLevels" role="option" [id]="'floor-option-' + level" [attr.aria-selected]="selectedLevel === level" [class.selected]="selectedLevel === level" (click)="selectFloor(level)">Floor {{level + 1}}</div>
+  </div>
+  <div class="floor-actions" role="toolbar" aria-label="Edit floor">
+    <button title="Add a new floor above the selected floor" aria-label="Add floor" (click)="editFloor('add')" [disabled]="floorCount >= maxFloors"><img src="assets/icons/add.png" alt=""></button>
+    <button title="Remove the selected floor" aria-label="Remove floor" (click)="editFloor('remove')" [disabled]="floorCount <= 1"><img src="assets/icons/edit-delete.png" alt=""></button>
+    <button title="Duplicate the selected floor" aria-label="Duplicate floor" (click)="editFloor('duplicate')" [disabled]="floorCount >= maxFloors"><img src="assets/icons/stock-duplicate-16.png" alt=""></button>
+    <span class="separator"></span>
+    <button title="Raise the selected floor" aria-label="Raise floor" (click)="editFloor('up')" [disabled]="selectedLevel >= floorCount - 1"><img src="assets/icons/go-up.png" alt=""></button>
+    <button title="Lower the selected floor" aria-label="Lower floor" (click)="editFloor('down')" [disabled]="selectedLevel <= 0"><img src="assets/icons/go-down.png" alt=""></button>
+  </div>
+  <div class="dialog-footer">
+    <button [disabled]="!(undoLabel$ | async)" (click)="undo()" [title]="'Undo ' + ((undoLabel$ | async) || '')">Undo</button>
+    <button [disabled]="!(redoLabel$ | async)" (click)="redo()" [title]="'Redo ' + ((redoLabel$ | async) || '')">Redo</button>
+    <button class="dialog-ok" (click)="floorsDialog.close()">OK</button>
+  </div>
+</dialog>

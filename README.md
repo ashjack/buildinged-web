@@ -135,6 +135,17 @@ against a running desktop editor. Special grime variants that depend on native
 `.tiles`/`.tiledef` sprite properties remain unavailable because the web tile
 catalog currently contains images without those properties.
 
+The toolbar follows the native object toolbar and uses the original TileZed
+icons. Standard roofs (including dormers and flat tops), shallow roofs and roof
+corners each have a split button: click the icon to reuse that group's last roof,
+or open its arrow menu to select a type. Roof type selection lives in the toolbar.
+
+Click the `Floor n/count` label to open Floors. Floors are listed highest first;
+add and duplicate insert above the selected floor, and the arrows reorder whole
+floors with their rooms, objects and manual tiles. Add, duplicate, remove and
+reorder support undo/redo and TBX save/reopen. Duplicate objects receive fresh
+UIDs. The native limit of eight floors and a minimum of one floor are enforced.
+
 ## Running end-to-end tests
 
 Run `ng e2e` to execute the end-to-end tests via a platform of your choice. To use this command, you need to first add a package that implements end-to-end testing capabilities.

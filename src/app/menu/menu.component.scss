@@ -1,26 +1,32 @@
-.toolbar {
-    width: 100%;
-    min-height: 40px;
-    display: flex;
-    flex-wrap: wrap;
-    background-color: lightgray;
-}
-
-.toolbar-button {
-    width: 40px;
-    height: 40px;
-    background-color: lightgray;
-    border: solid 1px gray;
-    cursor: pointer;
-}
-
-.history-button {
-    height: 40px;
-    padding: 0 10px;
-    border: 1px solid gray;
-    background: lightgray;
-    cursor: pointer;
-}
-
-.history-button:disabled { cursor: default; opacity: 0.5; }
-.toolbar-button.active, .history-button.active { background: #9cc5ee; box-shadow: inset 0 -3px #225d97; }
+﻿:host { display: block; position: relative; z-index: 20; }
+.toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; min-height: 36px; padding: 3px 5px; background: #eee; border-bottom: 1px solid #a0a0a0; color: #222; font: 13px Arial, sans-serif; }
+.toolbar-group { display: flex; align-items: center; }
+button { color: inherit; font: inherit; cursor: pointer; }
+.toolbar-button, .dropdown-arrow, .room-button, .floor-button { height: 30px; border: 1px solid transparent; border-radius: 2px; background: transparent; display: inline-flex; align-items: center; justify-content: center; padding: 3px; }
+.toolbar-button { width: 32px; }
+img { width: 24px; height: 24px; object-fit: contain; image-rendering: pixelated; }
+button:hover:not(:disabled) { background: #dceafa; border-color: #8aa9c9; }
+button:focus-visible { outline: 2px solid #2677c8; outline-offset: -2px; }
+button:disabled { opacity: .4; cursor: default; }
+.toolbar-button.active, .roof-split.active { background: #c4ddf5; border-radius: 2px; box-shadow: inset 0 0 0 1px #7ba7d0; }
+.separator { display: inline-block; flex: 0 0 1px; align-self: stretch; background: #c4c4c4; margin: 3px 5px; }
+.roof-split { position: relative; display: inline-flex; }
+.dropdown-arrow { width: 14px; font-size: 11px; border-left: 1px solid #ccc; padding: 0; }
+.roof-menu { position: absolute; z-index: 30; top: 100%; left: 0; min-width: 210px; padding: 3px; background: #f5f5f5; border: 1px solid #999; box-shadow: 2px 3px 7px #0003; }
+.roof-menu button { width: 100%; display: flex; align-items: center; text-align: left; gap: 8px; border: 1px solid transparent; background: transparent; padding: 3px 7px; white-space: nowrap; }
+.roof-menu .check { margin-left: auto; }
+.room-button { gap: 6px; padding: 3px 7px; min-width: 105px; border-color: #bbb; background: #fafafa; }
+.room-color { width: 16px; height: 16px; display: inline-block; margin-right: 5px; border: 1px solid #0003; vertical-align: middle; }
+.floor-button { padding: 3px 8px; min-width: 90px; }
+.floors-dialog { color: #222; width: 300px; max-width: calc(100vw - 32px); padding: 12px; border: 1px solid #888; border-radius: 3px; background: #eee; box-shadow: 0 8px 30px #0006; font: 13px Arial, sans-serif; }
+.floors-dialog::backdrop { background: #0004; }
+h2 { font: 16px Arial, sans-serif; margin: 0 0 10px; }
+.floor-list { background: white; border: 1px solid #aaa; height: 215px; overflow-y: auto; padding: 2px; }
+.floor-list [role=option] { padding: 5px 7px; cursor: pointer; }
+.floor-list .selected { background: #3086cf; color: white; }
+.floor-actions { display: flex; margin: 7px 0 12px; }
+.floor-actions button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 30px; border: 1px solid transparent; background: transparent; }
+.floor-actions img { width: 20px; height: 20px; }
+.dialog-footer { display: flex; gap: 5px; border-top: 1px solid #bbb; padding-top: 10px; }
+.dialog-footer button { padding: 4px 10px; border: 1px solid #aaa; border-radius: 2px; background: #fafafa; }
+.dialog-ok { margin-left: auto; min-width: 65px; }

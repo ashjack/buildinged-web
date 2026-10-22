@@ -12,6 +12,7 @@ import { ROOF_OPTIONS, buildRoofPlacements, calculateRoofDepth, defaultRoofCaps,
 import { generateBuildingSquares } from './native-squares';
 import { resizeNativeRoof } from '../utils/native-roof';
 import { validObject } from '../utils/selection-edits';
+import { RoofToolGroup, ROOF_TOOL_GROUPS, roofToolGroup } from '../utils/roof-toolbar';
 
 @Injectable({
     providedIn: 'root',
@@ -44,7 +45,18 @@ export class RoofService {
     }
 
     setSelectedRoofOptionId(optionId: string): void {
+        const option = ROOF_OPTIONS.find(o => o.id === optionId);
+        if (!option) return;
         localStorage.setItem('selectedRoofOptionId', optionId);
+        localStorage.setItem('roofTool-' + roofToolGroup(option), optionId);
+    }
+
+    getGroupOption(group: RoofToolGroup) {
+        const options = ROOF_TOOL_GROUPS.find(g => g.id === group)!.options;
+        const current = this.getSelectedRoofOption();
+        return roofToolGroup(current) === group ? current
+            : options.find(o => o.id === localStorage.getItem('roofTool-' + group))
+                || options.find(o => o.id === ({ standard: 'peak-vertical', shallow: 'shallow-peak-vertical', corners: 'corner-inner-nw' })[group])!;
     }
 
     getSelectedRoofOption() {
