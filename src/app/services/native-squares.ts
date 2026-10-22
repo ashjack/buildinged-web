@@ -1,6 +1,7 @@
 import { Building, FurnitureTileEntry, SvgObject, SvgTile, Tile } from '../models/app.models';
 import { readIndexGrid } from '../utils/tbx-grid';
 import { buildRoofPlacements } from './roof-patterns';
+import { FurnishingEdge } from '../models/auto-furnishing.models';
 
 // Pass order and section semantics follow BuildingFloor::LayoutToSquares and Square.
 // Coordinates here are document coordinates; viewport floor offsets are applied later.
@@ -18,7 +19,7 @@ interface Square {
     orient: string; sections: Record<string, Piece | undefined>; tiles: Record<string, Piece | undefined>;
 }
 interface ResolvedFurniture { definition: FurnitureTileEntry; layer: string; width: number; height: number; }
-export interface GeneratedBuilding { tiles: SvgTile[]; objects: SvgObject[]; }
+export interface GeneratedBuilding { tiles: SvgTile[]; objects: SvgObject[]; edges?: FurnishingEdge[]; }
 
 export function resolveFurniture(building: Building, object: any): ResolvedFurniture | undefined {
     const furniture = building.furniture[Number(object.FurnitureTiles)];
@@ -35,8 +36,8 @@ export function resolveFurniture(building: Building, object: any): ResolvedFurni
 }
 
 /** Pure projection: never consults or mutates the scene cache or the document. */
-export function generateBuildingSquares(building: Building): GeneratedBuilding {
-    const result: GeneratedBuilding = { tiles: [], objects: [] };
+export function generateBuildingSquares(building: Building, includeStructure = false): GeneratedBuilding {
+    const result: GeneratedBuilding = { tiles: [], objects: [], ...(includeStructure ? { edges: [] } : {}) };
     const { width, height } = building;
     const validEntry = (entry: number) => !!building.entries[entry - 1];
     // Native import interns matching definitions, so duplicate table rows must
@@ -55,6 +56,7 @@ export function generateBuildingSquares(building: Building): GeneratedBuilding {
     const raw = (name: string | undefined, uid: string): Piece => ({ entry: 0, enum: '', raw: name, uid });
 
     building.floors.forEach((floor, level) => {
+        const openings = new Map<string, FurnishingEdge['opening']>();
         const indices = readIndexGrid(floor.rooms, width, height);
         const roomAt = (x: number, y: number) => {
             const index = indices[y]?.[x] || 0;
@@ -159,6 +161,7 @@ export function generateBuildingSquares(building: Building): GeneratedBuilding {
             s.sections[layer] = { ...raw(tile.name?.replace(/\.png$/, ''), uid), tag: tile.tag };
         };
         const opening = (s: Square, o: any) => {
+            if (includeStructure) openings.set(`${s.x}:${s.y}:${o.dir === 'W' ? 'W' : 'N'}`, { kind: o.type, uid: o.uid });
             const side = o.dir === 'W' ? 'West' : 'North';
             const door = o.type === 'door', layer = door ? 'Doors' : 'Windows', other = door ? 'Windows' : 'Doors';
             s.sections[layer] = piece(o.Tile, side, o.uid); // None still punches an opening.
@@ -231,6 +234,15 @@ export function generateBuildingSquares(building: Building): GeneratedBuilding {
                 delete s.sections[layer];
                 const side = ['W', 'E'].includes(o.orient) ? 'W' : ['N', 'S'].includes(o.orient) ? 'N' : '';
                 if (side) s.orient = s.orient === (side === 'W' ? 'N' : 'W') ? 'NW' : side;
+            }
+        });
+        if (includeStructure) each(s => {
+            for (const axis of ['N', 'W'] as const) {
+                if (axis === 'N' ? s.x >= width : s.y >= height) continue;
+                const side = axis === 'N' ? s.n : s.w;
+                result.edges!.push({ level, x: s.x, y: s.y, axis,
+                    wall: !!material(side) || !!(side.furniture && side.raw && side.raw !== 'None'),
+                    ...(openings.get(`${s.x}:${s.y}:${axis}`) ? { opening: openings.get(`${s.x}:${s.y}:${axis}`) } : {}) });
             }
         });
         // Native floors overwrite zero-depth roof tops in occupied rooms.

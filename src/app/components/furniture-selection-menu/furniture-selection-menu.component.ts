@@ -9,6 +9,7 @@ import { HttpClient } from '@angular/common/http';
 import { BEntry, BEntryItem, BFurniture, BFurnitureGroup, VisualFurniture, VisualFurnitureEntry } from 'src/app/models/furniture-window.models';
 import { SetSelectedFurniture } from 'src/app/app.actions';
 import { ToolSettingsService } from '../../services/tool-settings.service';
+import { parseFurnitureGroups } from '../../utils/furniture-catalog-parser';
 import { NATIVE_ZOOM_FACTORS } from '../../utils/native-camera';
 
 
@@ -54,86 +55,7 @@ export class FurnitureSelectionMenuComponent implements OnInit, OnChanges {
     if (changes['group'] && this.group && this.furnitureGroups.length) this.setSelectedFurnitureGroup(this.group);
   }
 
-  parseCustomFile(content: string): any {
-    const lines = content.split('\n');
-    const data: BFurnitureGroup[] = [];
-    let currentGroup: BFurnitureGroup | undefined;
-    let currentFurniture: BFurniture | undefined;
-    let currentEntry: BEntry | undefined;
-    let prevLine = ""
-
-    for (let line of lines) {
-      line = line.trim();
-      if (line === '' || line.startsWith('//')) continue;
-  
-      if(line === '{')
-      {
-        if(prevLine === 'group') //Add new furniture group
-        {
-          currentGroup = { label: '', furniture: [] }
-        }
-        else if(prevLine === 'furniture') //Add new furniture item to group
-        {
-          currentFurniture = { entries: [] }
-        }
-        else if(prevLine === 'entry')
-        {
-          currentEntry = { orient: '', items: [] }
-        }
-      }
-
-      else if(line.includes('='))
-      {
-        const key = line.split('=')[0].trim();
-        const value = line.split('=')[1].trim();
-        if(key === 'label' && currentGroup)
-        {
-          currentGroup.label = value;
-        }
-        else if(key === 'orient' && currentEntry)
-        {
-          currentEntry.orient = value;
-        }
-        else if(key === 'grime' && currentEntry) {
-          currentEntry.grime = value !== 'false';
-        }
-        else if(key === 'corners' && currentFurniture) {
-          currentFurniture.corners = value === 'true';
-        }
-        else if(key === 'layer' && currentFurniture) {
-          currentFurniture.layer = value;
-        }
-        else if(key.includes(',') && currentEntry)
-        {
-          currentEntry.items.push({ pos: key, tile: value })
-        }
-      }
-
-      else if(line.includes('}'))
-      {
-        if (currentEntry) 
-        {
-          currentFurniture?.entries.push({ ...currentEntry }); // Pushing a clone of currentEntry
-          currentEntry = undefined;
-        } 
-        else if (currentFurniture) 
-        {
-          currentGroup?.furniture.push({ ...currentFurniture }); // Pushing a clone of currentFurniture
-          currentFurniture = undefined;
-        } 
-        else if (currentGroup) 
-        {
-          data.push({ ...currentGroup }); // Pushing a clone of currentGroup
-          currentGroup = undefined;
-        }
-      }
-
-      prevLine = line;
-    }
-    
-    console.log(data)
-    return data;
-  }
+  parseCustomFile(content: string): BFurnitureGroup[] { return parseFurnitureGroups(content); }
 
   retTiles: SvgTile[] = [];
   

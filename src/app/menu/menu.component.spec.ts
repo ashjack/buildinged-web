@@ -18,18 +18,29 @@ import { By } from '@angular/platform-browser';
 import { Undo } from '../app.actions';
 import { RoomTilePickerComponent } from '../components/room-tile-picker/room-tile-picker.component';
 import { DbService } from '../services/db.service';
+import { AutoFurnishingDialogComponent } from '../components/auto-furnishing-dialog/auto-furnishing-dialog.component';
+import { AutoFurnishingService } from '../services/auto-furnishing.service';
 
 describe('Native toolbar controls', () => {
     let h: ReturnType<typeof documentHarness>;
     beforeEach(() => {
         localStorage.clear();
         h = documentHarness(readBuildingFile(new DOMParser().parseFromString(nativeBuildingXml, 'text/xml')));
-        TestBed.configureTestingModule({ declarations: [MenuComponent, RoomsDialogComponent, RoomTilePickerComponent], imports: [CommonModule, FormsModule, NoopAnimationsModule, BsDropdownModule.forRoot()],
+        TestBed.configureTestingModule({ declarations: [MenuComponent, RoomsDialogComponent, RoomTilePickerComponent, AutoFurnishingDialogComponent], imports: [CommonModule, FormsModule, NoopAnimationsModule, BsDropdownModule.forRoot()],
             providers: [{ provide: Store, useValue: h.store }, { provide: BuildingService, useValue: h.buildings },
+                { provide: AutoFurnishingService, useValue: {} },
                 { provide: DbService, useValue: { getTile: async () => null, getTilesets: async () => [], getTiles: async () => [] } },
                 { provide: GridService, useValue: h.grid }, { provide: RoomService, useValue: h.rooms }, RoofService] });
     });
     afterEach(() => h.destroy());
+
+    it('opens auto furnishing from its toolbar control', () => {
+        const fixture = TestBed.createComponent(MenuComponent); fixture.detectChanges();
+        const dialog = fixture.debugElement.query(By.directive(AutoFurnishingDialogComponent)).componentInstance as AutoFurnishingDialogComponent;
+        const open = spyOn(dialog, 'open').and.resolveTo();
+        (fixture.nativeElement.querySelector('[aria-label="Auto furnish rooms"]') as HTMLButtonElement).click();
+        expect(open).toHaveBeenCalled();
+    });
 
     it('opens Rooms from the toolbar and commits a newly created room on OK in one undoable edit', () => {
         const fixture = TestBed.createComponent(MenuComponent); fixture.detectChanges();

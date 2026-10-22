@@ -6,8 +6,10 @@ import { cloneRoomEntry } from './utils/room-tile-entries';
 import { GUID } from './utils/guid';
 import { VisualFurniture } from "./models/furniture-window.models";
 import { SelectionEdit, TileCellEdit } from './utils/selection-edits';
+import { FurnishingAddition } from './utils/furnishing-edits';
 
 export enum ActionTypes {
+    ApplyFurnishing = '[Building] Auto furnish rooms',
     SetBuilding = '[Building] Set Building',
     AddObject = '[Building] Add Object',
     UpdateObject = '[Building] Update Object',
@@ -84,6 +86,10 @@ export class RemoveObjects implements Action {
 }
 
 export class Undo implements Action { readonly type = ActionTypes.Undo; }
+export class ApplyFurnishing implements Action {
+    readonly type = ActionTypes.ApplyFurnishing;
+    constructor(public expectedBuilding: Building, public additions: FurnishingAddition[]) { }
+}
 export class SetBuildingMaterial implements Action {
     readonly type = ActionTypes.SetBuildingMaterial;
     constructor(public field: BuildingMaterialField, public entry: TileEntry | null, public level: number) { }
@@ -182,6 +188,7 @@ export class ScheduleRedraw implements Action {
 }
 
 export type ActionsUnion = 
+    ApplyFurnishing |
     SetBuildingMaterial |
     SetCurrentTool |
     SetSelectedFurniture |

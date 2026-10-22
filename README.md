@@ -208,6 +208,14 @@ shutter choices update the corresponding defaults with undo support. Existing
 objects retain their materials. The sidebar stays visible for every tool except
 Tile Mode, which displays its own Layers and Tilesets/Furniture panels.
 
+The **Auto furnish rooms** toolbar button furnishes empty bedrooms, bathrooms and
+dining rooms, kitchens and living rooms, including irregular shapes. Choose a coordinated
+furniture set across selected rooms, inspect a floor-plan preview, regenerate
+with another seed, then Apply. The entire operation supports one-step Undo/Redo.
+Occupied rooms are excluded; incomplete layouts require acknowledgement. Planning
+checks clearances and connectivity, and Apply rechecks the document and tile availability. See
+[the implementation notes](docs/auto-furnishing.md) for APIs, metadata and limits.
+
 ## Running end-to-end tests
 
 Run `ng e2e` to execute the end-to-end tests via a platform of your choice. To use this command, you need to first add a package that implements end-to-end testing capabilities.

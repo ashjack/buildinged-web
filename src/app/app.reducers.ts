@@ -9,6 +9,7 @@ import { paintTileCells, transformSelection } from './utils/selection-edits';
 import { editFloor } from './utils/floor-edits';
 import { editRoomDefinitions } from './utils/room-definitions';
 import { resolveObjectMaterials, setBuildingMaterial } from './utils/object-materials';
+import { addFurnishingObjects } from './utils/furnishing-edits';
 
 export interface State
 {
@@ -53,6 +54,7 @@ export const HISTORY_LIMIT = 100;
 
 function commandLabel(action: Actions.ActionsUnion): string {
     switch (action.type) {
+      case Actions.ActionTypes.ApplyFurnishing: return 'Auto furnish rooms';
       case Actions.ActionTypes.SetBuildingMaterial: return 'Change ' + action.field + ' tiles';
       case Actions.ActionTypes.EditRoomDefinitions: return 'Edit rooms';
       case Actions.ActionTypes.EditFloor: return ({ add: 'Add floor', duplicate: 'Duplicate floor', remove: 'Remove floor', up: 'Raise floor', down: 'Lower floor' })[action.operation];
@@ -96,6 +98,11 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
 
 function reduceState(state: State, action: Actions.ActionsUnion): State {
     switch (action.type) {
+      case Actions.ActionTypes.ApplyFurnishing: {
+        if (!state.building || state.building !== action.expectedBuilding) return state;
+        const building = addFurnishingObjects(state.building, action.additions);
+        return building === state.building ? state : { ...state, building };
+      }
       case Actions.ActionTypes.SetCurrentTool: {
         return {
           ...state,

@@ -26,6 +26,7 @@
       </div>
     </div>
     <button class="toolbar-button" title="Place furniture" aria-label="Place furniture" (click)="setTool('tool-furniture')" [class.active]="(currentTool$ | async) === 'tool-furniture'"><img src="assets/icons/icon_furniture.png" alt=""></button>
+    <button class="toolbar-button" title="Auto furnish empty rooms" aria-label="Auto furnish rooms" (click)="autoFurnishing.open()" [disabled]="!floorCount"><span aria-hidden="true">✦</span></button>
     <button class="toolbar-button" title="Select and move objects" aria-label="Select and move objects" (click)="setTool('tool-select-objects')" [class.active]="(currentTool$ | async) === 'tool-select-objects'"><img src="assets/icons/tool-select-objects.png" alt=""></button>
   </div>
   <span class="separator"></span>
@@ -51,6 +52,7 @@
   <button class="toolbar-button" title="Tilesets" aria-label="Tilesets" (click)="toggleWindow()"><img src="assets/icons/icon_tile.png" alt=""></button>
 </div>
 <app-rooms-dialog #roomsEditor></app-rooms-dialog>
+<app-auto-furnishing-dialog #autoFurnishing></app-auto-furnishing-dialog>
 <dialog #floorsDialog class="floors-dialog" aria-labelledby="floors-title" (keydown)="floorDialogKey($event)" (keyup)="$event.stopPropagation()">
   <h2 id="floors-title">Floors</h2>
   <div class="floor-list" role="listbox" aria-label="Floors, highest first" tabindex="0" (keydown)="floorListKey($event)" [attr.aria-activedescendant]="'floor-option-' + selectedLevel">

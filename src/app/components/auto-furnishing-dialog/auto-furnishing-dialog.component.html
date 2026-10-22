@@ -1,0 +1,45 @@
+<dialog #dialog aria-labelledby="auto-furnish-title" (cancel)="$event.preventDefault(); close()" (keydown)="$event.stopPropagation()" (keyup)="$event.stopPropagation()">
+  <h2 id="auto-furnish-title">Auto furnish rooms</h2>
+  <p>Furnish empty bedrooms, bathrooms, dining rooms, kitchens and living rooms. Select rooms, preview a layout, then apply it. Undo removes the entire operation in one step.</p>
+  <p class="tile-note">The chosen style applies to all selected rooms. Furniture tiles must be downloaded through Tilesets. Rooms with existing furniture are left as they are.</p>
+  <div class="layout">
+    <section class="room-list" aria-label="Choose rooms">
+      <div class="list-heading"><strong>Rooms on all floors</strong><button (click)="refresh()" [disabled]="busy">Refresh rooms</button></div>
+      <p *ngIf="session && !rooms.length">No rooms found. Draw rooms and add entrances first.</p>
+      <div *ngFor="let room of rooms" class="room-row" [class.active]="activeRoomId === room.id">
+        <input type="checkbox" [attr.aria-label]="'Furnish ' + room.name + ', floor ' + (room.level + 1) + ', ' + room.bounds.x + ',' + room.bounds.y" [checked]="selected.has(room.id)" [disabled]="busy || !!reason(room)" (change)="toggleRoom(room)">
+        <button class="room-detail" (click)="activeRoomId = room.id" [attr.aria-pressed]="activeRoomId === room.id">
+          <strong>{{room.name}} · Floor {{room.level + 1}}</strong><span>{{room.cells.length}} squares · {{room.bounds.x}}, {{room.bounds.y}}</span><small>{{status(room)}}</small>
+        </button>
+      </div>
+    </section>
+    <section class="preview" aria-label="Furnishing preview">
+      <h3>{{room?.name || 'Room preview'}} <small *ngIf="room">· Floor {{room!.level + 1}}</small></h3>
+      <div class="plan-view" *ngIf="room">
+        <svg [attr.viewBox]="viewBox" role="img" [attr.aria-label]="room!.name + ' floor plan preview'">
+          <rect *ngFor="let cell of room!.cells" [attr.x]="cell.x * 36" [attr.y]="cell.y * 36" width="36" height="36" fill="#f5f3ec" stroke="#ddd9cb" stroke-width="0.6"/>
+          <rect *ngFor="let cell of room!.reservedCells" [attr.x]="cell.x * 36 + 2" [attr.y]="cell.y * 36 + 2" width="32" height="32" fill="#dce7ee"/>
+          <g *ngFor="let placement of plan?.placements; let i = index">
+            <rect *ngFor="let cell of placement.accessCells" [attr.x]="cell.x * 36 + 3" [attr.y]="cell.y * 36 + 3" width="30" height="30" fill="none" stroke="#538464" stroke-dasharray="3 2"/>
+            <rect *ngFor="let cell of placement.footprint" [attr.x]="cell.x * 36 + 1" [attr.y]="cell.y * 36 + 1" width="34" height="34" [attr.fill]="color(i)" stroke="#455463" stroke-width="0.6"/>
+            <text [attr.x]="placement.x * 36 + 18" [attr.y]="placement.y * 36 + 22" text-anchor="middle" font-size="12" fill="#17232d">{{i + 1}}</text>
+          </g>
+          <line *ngFor="let edge of room!.boundaries" [attr.x1]="edge.x * 36" [attr.y1]="edge.y * 36" [attr.x2]="(edge.x + (edge.axis === 'N' ? 1 : 0)) * 36" [attr.y2]="(edge.y + (edge.axis === 'W' ? 1 : 0)) * 36" [attr.stroke]="edge.opening?.kind === 'door' ? '#189343' : edge.opening?.kind === 'window' ? '#2a85bf' : edge.wall ? '#43484c' : '#9bafba'" [attr.stroke-width]="edge.wall || edge.opening ? 3 : 1"/>
+        </svg>
+      </div>
+      <small *ngIf="room">Top view · Green edge: entrance · Blue edge: window · Dashed squares: access space</small>
+      <p *ngIf="!preview">Generate a preview to see furniture. The building stays unchanged until Apply.</p>
+      <ng-container *ngIf="plan">
+        <p><strong>{{plan.status | titlecase}}</strong> · {{plan.placements.length}} objects · Score {{plan.score}}</p>
+        <ol class="legend"><li *ngFor="let placement of plan.placements; let i = index"><span class="swatch" [style.background]="color(i)"></span><img *ngIf="thumbnails[placement.id]" [src]="thumbnails[placement.id]" alt="">{{label(placement)}} ({{placement.orient}})</li></ol>
+        <p *ngFor="let missing of plan.unfilled" class="missing">Missing {{missing.count}} × {{missing.requestId}}{{missing.required ? ' (required)' : ' (optional)'}}</p>
+        <details *ngIf="plan.diagnostics.length"><summary>Placement details</summary><p *ngFor="let diagnostic of plan.diagnostics">{{diagnostic.message}}</p></details>
+      </ng-container>
+    </section>
+  </div>
+  <div class="controls"><label>Style <select aria-label="Furnishing style" [(ngModel)]="style" (ngModelChange)="invalidate()" [disabled]="busy"><option *ngFor="let choice of styles" [value]="choice.id">{{choice.label}}</option></select></label><label>Seed <input aria-label="Furnishing seed" [(ngModel)]="seed" (ngModelChange)="invalidate()" [disabled]="busy" maxlength="100"></label><button (click)="generate()" [disabled]="busy || !selected.size">Generate preview</button><button (click)="generate(true)" [disabled]="busy || !preview">Regenerate</button><span *ngIf="preview">Preview seed: {{preview.seed}}</span></div>
+  <p *ngIf="busy" role="status">Checking rooms and planning furniture…</p>
+  <p *ngIf="error" class="error" role="alert">{{error}}</p>
+  <label *ngIf="incomplete" class="partial"><input type="checkbox" [(ngModel)]="allowPartial" [disabled]="busy"> Apply the valid placements even though some rooms are incomplete.</label>
+  <div class="footer"><span>{{selected.size}} rooms selected<span *ngIf="preview"> · {{count}} objects previewed</span></span><button class="apply" (click)="apply()" [disabled]="busy || !preview || !count || (incomplete && !allowPartial)">Apply {{count}} objects</button><button (click)="close()">Cancel</button></div>
+</dialog>

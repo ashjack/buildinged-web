@@ -24,9 +24,11 @@ import { ToolOptionsComponent } from './components/tool-options/tool-options.com
 import { RoomsDialogComponent } from './components/rooms-dialog/rooms-dialog.component';
 import { RoomTilePickerComponent } from './components/room-tile-picker/room-tile-picker.component';
 import { TilesFurnitureSidebarComponent } from './components/furniture-selection-menu/tiles-furniture-sidebar.component';
+import { AutoFurnishingDialogComponent } from './components/auto-furnishing-dialog/auto-furnishing-dialog.component';
 
 @NgModule({
   declarations: [
+    AutoFurnishingDialogComponent,
     AppComponent,
     MenuComponent,
     ViewportCanvasComponent,
