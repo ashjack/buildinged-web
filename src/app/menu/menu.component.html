@@ -40,6 +40,7 @@
       <li *ngFor="let room of getRooms()" role="none"><button class="dropdown-item" role="menuitem" (click)="setRoom(room)"><span class="room-color" [style.background]="'rgb(' + room.Color + ')'"></span>{{room.Name}}</button></li>
     </ul>
   </div>
+  <button class="toolbar-button" title="Edit rooms" aria-label="Edit rooms" (click)="roomsEditor.open()" [disabled]="!floorCount"><img src="assets/icons/icon_rooms.png" alt=""></button>
   <span class="separator"></span>
   <div class="toolbar-group" aria-label="Floors">
     <button class="floor-button" title="Click to edit floors" aria-label="Edit floors" (click)="openFloors()" [disabled]="!floorCount">Floor {{selectedLevel + 1}}/{{floorCount}}</button>
@@ -49,6 +50,7 @@
   <span class="separator"></span>
   <button class="toolbar-button" title="Tilesets" aria-label="Tilesets" (click)="toggleWindow()"><img src="assets/icons/icon_tile.png" alt=""></button>
 </div>
+<app-rooms-dialog #roomsEditor></app-rooms-dialog>
 <dialog #floorsDialog class="floors-dialog" aria-labelledby="floors-title" (keydown)="floorDialogKey($event)" (keyup)="$event.stopPropagation()">
   <h2 id="floors-title">Floors</h2>
   <div class="floor-list" role="listbox" aria-label="Floors, highest first" tabindex="0" (keydown)="floorListKey($event)" [attr.aria-activedescendant]="'floor-option-' + selectedLevel">

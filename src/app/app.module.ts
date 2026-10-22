@@ -21,6 +21,8 @@ import { TilesetListWindowComponent } from './components/tileset-list-window/til
 import { BuildingSelectionWindowComponent } from './components/admin/building-selection-window/building-selection-window.component';
 import { RoofSelectionMenuComponent } from './components/roof-selection-menu/roof-selection-menu.component';
 import { ToolOptionsComponent } from './components/tool-options/tool-options.component';
+import { RoomsDialogComponent } from './components/rooms-dialog/rooms-dialog.component';
+import { RoomTilePickerComponent } from './components/room-tile-picker/room-tile-picker.component';
 
 @NgModule({
   declarations: [
@@ -33,7 +35,9 @@ import { ToolOptionsComponent } from './components/tool-options/tool-options.com
     TilesetListWindowComponent,
     BuildingSelectionWindowComponent,
     RoofSelectionMenuComponent,
-    ToolOptionsComponent
+    ToolOptionsComponent,
+    RoomsDialogComponent,
+    RoomTilePickerComponent
   ],
   imports: [
     BrowserModule,

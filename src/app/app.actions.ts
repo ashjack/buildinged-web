@@ -1,5 +1,7 @@
 import { Action } from "@ngrx/store";
-import { Building, Furniture, TileArea } from "./models/app.models";
+import { Building, Furniture, Room, TileArea } from "./models/app.models";
+import { RoomDefinitionDraft } from './utils/room-definitions';
+import { cloneRoomEntry } from './utils/room-tile-entries';
 import { GUID } from './utils/guid';
 import { VisualFurniture } from "./models/furniture-window.models";
 import { SelectionEdit, TileCellEdit } from './utils/selection-edits';
@@ -21,6 +23,7 @@ export enum ActionTypes {
     PaintTileCells = '[Building] Paint Tile Cells',
     TransformSelection = '[Building] Transform Selection',
     EditFloor = '[Building] Edit Floor',
+    EditRoomDefinitions = '[Building] Edit Room Definitions',
 
     SetTileCount = '[Loading] Set Tile Count',
 
@@ -83,6 +86,14 @@ export class Redo implements Action { readonly type = ActionTypes.Redo; }
 export class EditFloor implements Action {
     readonly type = ActionTypes.EditFloor;
     constructor(public operation: 'add' | 'duplicate' | 'remove' | 'up' | 'down', public level: number) { }
+}
+
+export class EditRoomDefinitions implements Action {
+    readonly type = ActionTypes.EditRoomDefinitions;
+    constructor(public originalRooms: Room[], public drafts: RoomDefinitionDraft[], public level: number) {
+        this.drafts = drafts.map(draft => ({ ...draft, room: { ...draft.room }, ...(draft.materials ? {
+            materials: Object.fromEntries(Object.entries(draft.materials).map(([key, entry]) => [key, entry ? cloneRoomEntry(entry) : null])) } : {}) }));
+    }
 }
 
 export class PaintTileCells implements Action {
@@ -183,6 +194,7 @@ export type ActionsUnion =
     PaintTileCells |
     TransformSelection |
     EditFloor |
+    EditRoomDefinitions |
     SetTileCount |
     TogglePopup
     ;

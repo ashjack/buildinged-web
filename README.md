@@ -146,6 +146,40 @@ floors with their rooms, objects and manual tiles. Add, duplicate, remove and
 reorder support undo/redo and TBX save/reopen. Duplicate objects receive fresh
 UIDs. The native limit of eight floors and a minimum of one floor are enforced.
 
+The Rooms button beside the room picker opens the room editor. Add, duplicate,
+remove or reorder rooms; edit their display/internal names, colors and materials.
+New rooms receive an unused native
+name/color and default wall, trim and floor entries when available. OK applies
+the dialog as one undoable edit, while Cancel or Escape discards it. Room-grid
+indices on every floor are remapped when rooms move or are removed, and the
+selected room is ready for painting after applying the dialog.
+
+Select a room tile category and click `Choose…` (or double-click the category)
+to open the thumbnail Tile Picker. It includes None, filtering, zoom, keyboard
+navigation and double-click selection. `Tiles…` opens the separate default tile
+library: browse downloaded tilesets, select sprites and click + to create reusable
+category entries. Ctrl/Shift select several sprites. Walls, trim and grime use
+the native enum/neighbor offsets; the variants panel permits individual sprite
+and offset edits. Library entries can be removed, reordered and undone/redone.
+
+The Tiles toolbar's Expert Mode button switches to the native shadow-template
+grid. Each slot represents one wall, trim, floor or grime variant; + inserts a
+blank entry after the current entry. Drag a tileset sprite into a slot, or select
+a slot and use the selected sprite button. Ctrl/Shift select slots for batch
+clearing; removing selected slots' rows removes their complete entries. Tile
+Offset edits the active slot's x/y position in the native range -3 through 3,
+with the isometric displacement previewed over its shadow. Double-click a slot
+to reveal its sprite in the tileset browser. Blank and duplicate entries persist,
+and the expert preference and library zoom are remembered. Slot assignments,
+clears, offsets, insertions and removals use the library's undo/redo history.
+
+Closing the Tiles library saves its changes in this browser, as the native dialog
+does on Done/Escape. These presets remain available across buildings even if the
+picker or Rooms is canceled. A room assignment only changes on picker OK followed
+by Rooms OK; its tile definition is interned into the building in the same undo
+command and survives TBX save/reopen. Tile previews and the sprite browser use
+the downloaded tilepack database; missing images show the native placeholder.
+
 ## Running end-to-end tests
 
 Run `ng e2e` to execute the end-to-end tests via a platform of your choice. To use this command, you need to first add a package that implements end-to-end testing capabilities.

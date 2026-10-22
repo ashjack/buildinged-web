@@ -1,0 +1,85 @@
+﻿<dialog #picker class="picker" aria-labelledby="tile-picker-title" (cancel)="$event.preventDefault(); cancel()" (keydown)="$event.stopPropagation()" (keyup)="$event.stopPropagation()">
+  <h2 id="tile-picker-title">Tile Picker</h2>
+  <p>{{prompt}}</p>
+  <input class="filter" type="search" [(ngModel)]="search" aria-label="Filter room tiles" placeholder="Filter tiles">
+  <p *ngIf="loading" role="status">Loading tiles…</p>
+  <p class="error" *ngIf="error" role="alert">{{error}}</p>
+  <div class="tile-grid choices" role="listbox" aria-label="Available room tiles" [style.--tile-width]="(64 * scale + 8) + 'px'" (keydown)="gridKey($event, 'choice')">
+    <section *ngFor="let group of choiceGroups; trackBy: trackChoiceGroup" class="tileset-section" role="group" [attr.aria-label]="group.name">
+      <h3 class="tileset-heading">{{group.name}}</h3>
+      <div class="tileset-grid">
+        <button type="button" *ngFor="let entry of group.entries" role="option" [attr.aria-label]="display(entry)" [attr.aria-selected]="isChosen(entry)" [class.selected]="isChosen(entry)" [title]="display(entry)" (click)="choice = entry" (dblclick)="choose()">
+          <img [src]="thumbnail(entry)" [style.width.px]="64 * scale" [style.height.px]="128 * scale" alt="">
+        </button>
+      </div>
+    </section>
+  </div>
+  <div class="picker-controls">
+    <button type="button" (click)="openManager()" [disabled]="loading || !!error">Tiles…</button>
+    <label>Zoom <select [(ngModel)]="scale" aria-label="Tile picker zoom"><option [ngValue]="0.5">50%</option><option [ngValue]="1">100%</option><option [ngValue]="1.5">150%</option><option [ngValue]="2">200%</option></select></label>
+  </div>
+  <div class="dialog-footer"><button type="button" (click)="choose()" [disabled]="loading || !!error">OK</button><button type="button" (click)="cancel()">Cancel</button></div>
+</dialog>
+<dialog #manager class="manager" aria-labelledby="tile-library-title" [style.--library-image-width]="(64 * libraryScale) + 'px'" [style.--library-image-height]="(128 * libraryScale) + 'px'" (cancel)="$event.preventDefault(); closeManager()" (keydown)="$event.stopPropagation()" (keyup)="$event.stopPropagation()">
+  <h2 id="tile-library-title">Tiles</h2>
+  <div class="library-layout">
+    <section class="categories" aria-label="Tile categories">
+      <button type="button" *ngFor="let field of categories" [class.selected]="managedCategory === field.category" [attr.aria-pressed]="managedCategory === field.category" (click)="changeCategory(field.category)">{{field.label}}</button>
+    </section>
+    <section class="presets" aria-label="Default room tiles">
+      <h3>Default room tiles</h3>
+      <div *ngIf="!expertMode" class="tile-grid presets-grid" role="listbox" aria-label="Default tile entries" (keydown)="gridKey($event, 'preset')">
+        <button type="button" *ngFor="let entry of categoryEntries" role="option" [attr.aria-selected]="entry === selectedEntry" [class.selected]="entry === selectedEntry" [title]="display(entry)" (click)="selectedEntry = entry">
+          <img [src]="thumbnail(entry)" alt=""><span>{{display(entry)}}</span>
+        </button>
+      </div>
+      <div *ngIf="expertMode" class="expert-scroll" role="listbox" aria-label="Expert tile variants" aria-multiselectable="true" (keydown)="expertKey($event)">
+        <section class="expert-entry" *ngFor="let entry of categoryEntries; let row = index; trackBy: trackExpertRow" role="group" [attr.aria-label]="'Entry ' + (row + 1)" [style.grid-template-columns]="'repeat(' + expertColumns + ', ' + (64 * libraryScale + 4) + 'px)'">
+          <button type="button" *ngFor="let name of expertEnums; let column = index" role="option" [attr.aria-label]="'Entry ' + (row + 1) + ' ' + name" [attr.aria-selected]="expertSelected(row, column)" [class.selected]="expertSelected(row, column)" [title]="name + ': ' + (variant(entry, name)?.tile || 'None')" (click)="selectExpert(entry, name, $event)" (dblclick)="revealExpertSprite(entry, name)" (dragover)="$event.preventDefault()" (drop)="dropExpert($event, entry, name)">
+            <span class="variant-shadow" [style.width.px]="64 * libraryScale" [style.height.px]="128 * libraryScale" [style.background-image]="'url(' + expertShadow + ')'" [style.background-size]="(expertColumns * 64 * libraryScale) + 'px ' + (Math.ceil(expertEnums.length / expertColumns) * 128 * libraryScale) + 'px'" [style.background-position]="(-(column % expertColumns) * 64 * libraryScale) + 'px ' + (-Math.floor(column / expertColumns) * 128 * libraryScale) + 'px'">
+              <img *ngIf="variant(entry, name)?.tile && variant(entry, name)?.tile !== 'None'" [src]="image(variant(entry, name)!.tile)" [style.transform]="expertSpriteTransform(entry, name)" alt="">
+            </span>
+          </button>
+        </section>
+      </div>
+      <div class="entry-tools" role="toolbar" aria-label="Edit tile entries">
+        <button type="button" [title]="expertMode ? 'Add a blank entry after the current entry' : 'Add selected sprites to this category'" [attr.aria-label]="expertMode ? 'Add blank tile entry' : 'Add selected tiles'" (click)="addSprites()" [disabled]="!expertMode && !selectedSprites.size"><img src="assets/icons/add.png" alt=""></button>
+        <button type="button" title="Remove selected default entry" aria-label="Remove default tile" (click)="removeEntry()" [disabled]="!selectedEntry"><img src="assets/icons/edit-delete.png" alt=""></button>
+        <button *ngIf="expertMode" type="button" title="Clear selected variant slots" aria-label="Clear selected variants" (click)="clearExpertTiles()" [disabled]="!expertSelection.size"><img src="assets/icons/icon_eraser.png" alt=""></button>
+        <button type="button" title="Move entry up" aria-label="Move default tile up" (click)="moveEntry(-1)" [disabled]="!selectedEntry || categoryEntries.indexOf(selectedEntry) <= 0"><img src="assets/icons/go-up.png" alt=""></button>
+        <button type="button" title="Move entry down" aria-label="Move default tile down" (click)="moveEntry(1)" [disabled]="!selectedEntry || categoryEntries.indexOf(selectedEntry) >= categoryEntries.length - 1"><img src="assets/icons/go-down.png" alt=""></button>
+        <button type="button" title="Expert Mode" aria-label="Expert mode" [attr.aria-pressed]="expertMode" [class.selected]="expertMode" (click)="toggleExpert()"><img src="assets/icons/icon_expert_mode.png" alt=""></button>
+      </div>
+      <div *ngIf="expertMode" class="expert-controls">
+        <fieldset [disabled]="!selectedEntry || expertSelection.size !== 1"><legend>Tile Offset — {{selectedEnum}}</legend>
+          <label>x: <input type="number" min="-3" max="3" step="1" [ngModel]="offsetX" (ngModelChange)="setExpertOffset('x', $event)" aria-label="Variant offset x"></label>
+          <label>y: <input type="number" min="-3" max="3" step="1" [ngModel]="offsetY" (ngModelChange)="setExpertOffset('y', $event)" aria-label="Variant offset y"></label>
+        </fieldset>
+        <button type="button" (click)="assignSelectedSprite()" [disabled]="!selectedEntry || selectedSprites.size !== 1">Use selected sprite</button>
+      </div>
+      <label class="library-zoom">Zoom <select [(ngModel)]="libraryScale" aria-label="Tile library zoom"><option [ngValue]="0.5">50%</option><option [ngValue]="1">100%</option><option [ngValue]="1.5">150%</option><option [ngValue]="2">200%</option></select></label>
+      <details *ngIf="!expertMode && selectedEntry as entry" class="variants">
+        <summary>Variants and offsets</summary>
+        <div class="variant" *ngFor="let tile of entry.tiles; let i = index">
+          <label>{{tile.enum}}<input [value]="tile.tile" (change)="updateVariant(i, $any($event.target).value)" [attr.aria-label]="tile.enum + ' sprite'" list="room-sprite-names"></label>
+          <label>Offset x y<input [value]="tile.offset || '0 0'" (change)="updateVariant(i, $any($event.target).value, true)" [attr.aria-label]="tile.enum + ' offset'"></label>
+        </div>
+      </details>
+    </section>
+    <section class="sprite-browser" aria-label="Tileset sprites">
+      <h3>Tilesets</h3>
+      <input type="search" [(ngModel)]="sheetFilter" aria-label="Filter tilesets" placeholder="Filter tilesets">
+      <select [ngModel]="sheet" (ngModelChange)="selectSheet($event)" aria-label="Tileset"><option *ngFor="let name of filteredSheets" [ngValue]="name">{{name}}</option></select>
+      <p *ngIf="!sheets.length">Download tilepacks in the toolbar's Tilesets window to browse their sprites.</p>
+      <p *ngIf="sheetLoading" role="status">Loading sprites…</p>
+      <div class="tile-grid sprites" role="listbox" aria-label="Tileset sprites" aria-multiselectable="true" (keydown)="gridKey($event, 'sprite')">
+        <button type="button" *ngFor="let sprite of sprites; let i = index" role="option" [attr.aria-selected]="selectedSprites.has(sprite.name)" [class.selected]="selectedSprites.has(sprite.name)" [title]="sprite.name" (click)="selectSprite(sprite, i, $event)" (dblclick)="expertMode ? assignSelectedSprite() : addSprites()" draggable="true" (dragstart)="startSpriteDrag($event, sprite)"><img [src]="sprite.url" alt=""><span>{{sprite.name}}</span></button>
+      </div>
+      <p *ngIf="!expertMode" class="hint">Select a sprite, then click + to add a default entry. Ctrl-click or Shift-click selects several. Wall, trim and grime variants are filled automatically.</p>
+      <p *ngIf="expertMode" class="hint">Click + to create a blank entry. Drag a sprite into a variant slot to assign it. Ctrl-click or Shift-click slots to clear several together. Tile Offset adjusts the selected slot.</p>
+      <datalist id="room-sprite-names"><option *ngFor="let sprite of sprites" [value]="sprite.name.replace('.png', '')"></option></datalist>
+    </section>
+  </div>
+  <p class="error" *ngIf="managerError" role="alert">{{managerError}}</p>
+  <div class="dialog-footer"><button type="button" (click)="undoLibrary()" [disabled]="!past.length || saving">Undo</button><button type="button" (click)="undoLibrary(true)" [disabled]="!future.length || saving">Redo</button><span class="hint">Default tiles are saved in this browser and remain available across buildings.</span><button type="button" class="done" (click)="closeManager()" [disabled]="saving">Done</button></div>
+</dialog>

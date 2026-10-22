@@ -79,6 +79,11 @@ export class BuildingService {
         return catalog.templates.map(t => t.Name);
     }
 
+    async getDefaultTileEntries(): Promise<TileEntry[]> {
+        const catalog = await this.ensureTemplateCatalogLoaded();
+        return catalog.entries.map(entry => ({ ...entry, tiles: entry.tiles.map(tile => ({ ...tile })) }));
+    }
+
     private async ensureTemplateCatalogLoaded(): Promise<TemplateCatalog> {
         if (this.templateCatalog) {
             return this.templateCatalog;

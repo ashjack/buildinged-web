@@ -7,6 +7,7 @@ import { editRooms, editTiles } from './utils/document-edits';
 import { registerFurniture } from './utils/furniture-definition';
 import { paintTileCells, transformSelection } from './utils/selection-edits';
 import { editFloor } from './utils/floor-edits';
+import { editRoomDefinitions } from './utils/room-definitions';
 
 export interface State
 {
@@ -51,6 +52,7 @@ export const HISTORY_LIMIT = 100;
 
 function commandLabel(action: Actions.ActionsUnion): string {
     switch (action.type) {
+      case Actions.ActionTypes.EditRoomDefinitions: return 'Edit rooms';
       case Actions.ActionTypes.EditFloor: return ({ add: 'Add floor', duplicate: 'Duplicate floor', remove: 'Remove floor', up: 'Raise floor', down: 'Lower floor' })[action.operation];
       case Actions.ActionTypes.EditRooms: return action.room === 0 ? 'Erase rooms' : 'Draw rooms';
       case Actions.ActionTypes.RemoveRoom: return 'Erase rooms';
@@ -144,6 +146,11 @@ function reduceState(state: State, action: Actions.ActionsUnion): State {
       }
 
       //Building
+      case Actions.ActionTypes.EditRoomDefinitions: {
+        if (!state.building) return state;
+        const building = editRoomDefinitions(state.building, action.originalRooms, action.drafts);
+        return building === state.building ? state : { ...state, building };
+      }
       case Actions.ActionTypes.EditFloor: {
         if (!state.building) return state;
         const result = editFloor(state.building, action);

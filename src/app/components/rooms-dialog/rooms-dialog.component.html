@@ -1,0 +1,45 @@
+<dialog #dialog aria-labelledby="rooms-title" (cancel)="cancel()" (keydown)="$event.stopPropagation()" (keyup)="$event.stopPropagation()">
+  <h2 id="rooms-title">Rooms in building</h2>
+  <div class="room-editor">
+    <section class="room-list-panel" aria-label="Room list">
+      <div class="room-list" role="listbox" aria-label="Rooms" tabindex="0" (keydown)="listKey($event)" [attr.aria-activedescendant]="selected >= 0 ? 'room-definition-' + selected : null">
+        <div *ngFor="let draft of drafts; let i = index" role="option" [id]="'room-definition-' + i" [attr.aria-selected]="selected === i" [class.selected]="selected === i" (click)="selected = i">
+          <span class="room-color" [style.background]="'rgb(' + draft.room.Color + ')'"></span>{{draft.room.Name || '(unnamed room)'}}
+        </div>
+      </div>
+      <div class="room-actions" role="toolbar" aria-label="Edit room list">
+        <button type="button" title="Add a new room" aria-label="Add room" (click)="add()"><img src="assets/icons/add.png" alt=""></button>
+        <button type="button" title="Duplicate the selected room" aria-label="Duplicate room" (click)="duplicate()" [disabled]="!room"><img src="assets/icons/stock-duplicate-16.png" alt=""></button>
+        <button type="button" title="Remove the selected room" aria-label="Remove room" (click)="remove()" [disabled]="!room"><img src="assets/icons/edit-delete.png" alt=""></button>
+        <span class="separator"></span>
+        <button type="button" title="Move selected room up" aria-label="Move room up" (click)="move(-1)" [disabled]="selected <= 0"><img src="assets/icons/go-up.png" alt=""></button>
+        <button type="button" title="Move selected room down" aria-label="Move room down" (click)="move(1)" [disabled]="selected < 0 || selected >= drafts.length - 1"><img src="assets/icons/go-down.png" alt=""></button>
+      </div>
+    </section>
+    <section class="room-properties" aria-label="Room properties" *ngIf="room as current; else noRoom">
+      <label>Name <input #roomName [(ngModel)]="current.Name" aria-label="Room name" required></label>
+      <label>Internal name <input [(ngModel)]="current.InternalName" aria-label="Room internal name" required></label>
+      <label>Color <input type="color" [(ngModel)]="colorHex" aria-label="Room color"></label>
+      <fieldset><legend>Room tiles</legend>
+        <div class="material-editor">
+          <div class="material-list" role="listbox" aria-label="Room tile categories">
+            <button type="button" *ngFor="let field of materials" role="option" [attr.aria-selected]="selectedMaterial === field" [class.selected]="selectedMaterial === field" (click)="selectedMaterial = field" (dblclick)="chooseTile()">{{field.label}}</button>
+          </div>
+          <div class="material-preview">
+            <img [src]="tilePicker.thumbnail(selectedDefinition)" [alt]="tileName(selectedDefinition)">
+            <span [title]="tileName(selectedDefinition)">{{tileName(selectedDefinition)}}</span>
+            <button type="button" (click)="chooseTile()">Choose…</button>
+          </div>
+        </div>
+      </fieldset>
+    </section>
+    <ng-template #noRoom><p class="empty">Click + to create a room.</p></ng-template>
+  </div>
+  <p class="error" *ngIf="!valid">Each room needs a name and internal name.</p>
+  <p class="error" role="alert" *ngIf="error">{{error}}</p>
+  <div class="dialog-footer">
+    <button type="button" (click)="apply()" [disabled]="!valid">OK</button>
+    <button type="button" (click)="cancel()">Cancel</button>
+  </div>
+</dialog>
+<app-room-tile-picker #tilePicker (tileChosen)="tileChosen($event)"></app-room-tile-picker>
