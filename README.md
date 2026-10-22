@@ -65,6 +65,15 @@ drag. Panning pauses updates to the tool endpoint. Release middle to resume the
 same edit, then release left to commit it. Releasing middle outside the canvas
 does not cancel the edit; releasing left outside still cancels it.
 
+Ctrl+wheel zooms around the pointer using the native stops: 6%, 12%, 25%, 33%,
+50%, 75%, 100%, 150%, 200%, 300% and 400%. Fine-resolution wheel input uses
+`Zoomable`'s bounded fractional scaling. Ordinary wheel input scrolls vertically;
+Shift+wheel scrolls horizontally. Panning is limited to the scene's map border,
+floor levels and committed sprite overhangs. An axis that fits in the viewport
+is centered and cannot be panned away. Opening a document centers its scene;
+window resizing and toolbar wrapping resize the canvas and preserve the scene
+center within those bounds. Navigation never changes the building document.
+
 ## Selection, movement and editing tools
 
 - **Move objects:** click an object or drag a rectangle. Shift adds to the selection;

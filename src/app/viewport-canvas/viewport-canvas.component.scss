@@ -1,0 +1,3 @@
+:host { display: block; position: relative; overflow: hidden; }
+canvas { display: block; touch-action: none; }
+.coordinates { position: absolute; left: 0; top: 0; color: white; pointer-events: none; }

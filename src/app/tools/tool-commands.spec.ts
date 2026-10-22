@@ -40,6 +40,8 @@ function setup() {
     const view = new ViewportCanvasComponent(null!, null!, scene.store as any, null!, null!, furnitures,
         scene.buildings, scene.grid, scene.rooms, null!, doors, windows, roofs);
     view.canvasElement = new ElementRef(document.createElement('canvas'));
+    // Start inside the native scroll range so gesture tests exercise free panning, not its limits.
+    view.xOffset = 2350; view.yOffset = 0;
     return { ...scene, tools, doors, windows, furnitures, roofs, furniture, view };
 }
 
@@ -50,6 +52,60 @@ function targetedKey(target: HTMLElement, key: string, modifiers: KeyboardEventI
 }
 
 describe('Tool edit commands', () => {
+    it('bounds Ctrl-wheel zoom while retaining the world point under a CSS-scaled pointer', () => {
+        const scene = setup(), view = scene.view, canvas = view.canvasElement.nativeElement as HTMLCanvasElement;
+        spyOn(view, 'drawCanvas').and.stub();
+        spyOn(canvas, 'getBoundingClientRect').and.returnValue(new DOMRect(10, 20, 600, 300));
+        const before = { x: view.xOffset + 150 / view.zoom, y: view.yOffset + 75 / view.zoom };
+        view.onMouseWheel(new WheelEvent('wheel', { ctrlKey: true, deltaY: -100, clientX: 310, clientY: 170, cancelable: true }));
+        expect(view.zoom).toBe(1.5);
+        expect(view.xOffset + 150 / view.zoom).toBeCloseTo(before.x); expect(view.yOffset + 75 / view.zoom).toBeCloseTo(before.y);
+        for (let i = 0; i < 100; i++) view.onMouseWheel(new WheelEvent('wheel', { ctrlKey: true, deltaY: 100 }));
+        expect(view.zoom).toBe(0.06);
+        expect(view.xOffset + canvas.width / (2 * view.zoom)).toBeCloseTo(2500);
+        expect(view.yOffset + canvas.height / (2 * view.zoom)).toBeCloseTo(0);
+        for (let i = 0; i < 100; i++) view.onMouseWheel(new WheelEvent('wheel', { ctrlKey: true, deltaY: -100 }));
+        expect(view.zoom).toBe(4); expect(scene.state.value.past.length).toBe(0); scene.destroy();
+    });
+
+    it('clamps middle panning and reverses immediately at a scroll boundary without moving the active tool', () => {
+        const scene = setup(), view = scene.view, tool = scene.tools[0];
+        spyOn(view, 'drawCanvas').and.stub(); view.selectedTool = tool; tool.beginDrag(0, 0);
+        const hover = spyOn(tool, 'hoverTile');
+        view.onMouseDown(new MouseEvent('mousedown', { button: 1, buttons: 5, clientX: 0, clientY: 0 }));
+        view.getMousePos(new MouseEvent('mousemove', { buttons: 5, clientX: 1e6, clientY: 1e6 }));
+        expect(view.xOffset).toBe(2200); expect(view.yOffset).toBe(-300);
+        view.getMousePos(new MouseEvent('mousemove', { buttons: 5, clientX: 1e6 - 10, clientY: 1e6 - 10 }));
+        expect(view.xOffset).toBe(2210); expect(view.yOffset).toBe(-290);
+        expect(tool.isDragging).toBeTrue(); expect(hover).not.toHaveBeenCalled(); expect(scene.state.value.past.length).toBe(0);
+        scene.destroy();
+    });
+
+    it('scrolls with the ordinary wheel and Shift-wheel instead of changing zoom', () => {
+        const scene = setup(), view = scene.view;
+        spyOn(view, 'drawCanvas').and.stub();
+        const wheel = new WheelEvent('wheel', { deltaY: 100, cancelable: true }); view.onMouseWheel(wheel);
+        expect(wheel.defaultPrevented).toBeTrue(); expect(view.zoom).toBe(1); expect(view.yOffset).toBe(100);
+        view.onMouseWheel(new WheelEvent('wheel', { deltaY: 100, shiftKey: true }));
+        expect(view.xOffset).toBe(2450); expect(view.yOffset).toBe(100);
+        const unrelated = new WheelEvent('wheel', { ctrlKey: true, deltaY: -100 }); document.createElement('select').dispatchEvent(unrelated);
+        view.onMouseWheel(unrelated); expect(view.zoom).toBe(1); scene.destroy();
+    });
+
+    it('resizes the backing canvas to the available viewport while preserving its scene center', () => {
+        const scene = setup(), view = scene.view, canvas = view.canvasElement.nativeElement as HTMLCanvasElement;
+        (view as any).ctx = canvas.getContext('2d'); view.drawCanvas();
+        view.xOffset = 2400; view.yOffset = 0;
+        const parent = document.createElement('div'); parent.appendChild(canvas);
+        Object.defineProperty(parent, 'clientWidth', { value: 400 });
+        spyOn(canvas, 'getBoundingClientRect').and.returnValue(new DOMRect(0, window.innerHeight - 200, 300, 150));
+        const center = { x: view.xOffset + canvas.width / 2, y: view.yOffset + canvas.height / 2 };
+        view.onViewportResize();
+        expect(canvas.width).toBe(400); expect(canvas.height).toBe(200);
+        expect(view.xOffset + canvas.width / 2).toBeCloseTo(center.x); expect(view.yOffset + canvas.height / 2).toBeCloseTo(center.y);
+        scene.destroy();
+    });
+
     it('pans with left and middle held without updating or ending the active tool gesture', () => {
         const scene = setup(), view = scene.view, tool = scene.tools[0];
         view.selectedTool = tool; view.zoom = 2;

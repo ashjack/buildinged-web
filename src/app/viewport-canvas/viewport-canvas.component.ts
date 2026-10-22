@@ -29,6 +29,7 @@ import ToolWall from '../tools/tool-wall';
 import ToolStairs from '../tools/tool-stairs';
 import { ToolSettingsService } from '../services/tool-settings.service';
 import { fractionalCellPosition, nativeTileEdge, nativeWallCorner } from '../utils/native-pointer';
+import { buildingCameraBounds, constrainCamera, nativeWheelZoom, safeZoom, wheelAngle, wheelScroll, zoomAroundPoint } from '../utils/native-camera';
 
 @Component({
     selector: 'app-viewport-canvas',
@@ -72,6 +73,9 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
   xOffset: number = 0;
   yOffset: number = 0;
   zoom: number = 1;
+  private cameraInitialized = false;
+  private cameraLevel = 0;
+  private resizeObserver?: ResizeObserver;
 
   constructor(
     private http: HttpClient, 
@@ -95,8 +99,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     this.screenWidth = window.innerWidth;
     this.screenHeight = window.innerHeight;
 
-    this.xOffset = (this.screenWidth / 1.5);
-    this.yOffset = (this.screenHeight / 2);
+    this.cameraLevel = this.gridService.getSelectedLevel();
   }
 
   ngOnInit() {
@@ -165,11 +168,16 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
       this.cancelGesture();
       if (documentId !== document.documentId) {
         documentId = document.documentId; this.selectedTool.reset();
+        this.cameraInitialized = false;
         this.toolSettings.exterior = this.toolSettings.interior = this.toolSettings.exteriorTrim = this.toolSettings.interiorTrim = this.toolSettings.stairs = null;
         this.toolSettings.stamp = undefined;
       }
     });
-    this.gridService.selectedLevelChanges.pipe(takeUntil(this.unsubscribe)).subscribe(() => { this.cancelGesture(); this.selectedTool.reset(); });
+    this.gridService.selectedLevelChanges.pipe(takeUntil(this.unsubscribe)).subscribe(level => {
+      // The web renderer rebases all floors around the selected level; keep the camera in world space.
+      this.yOffset += (level - this.cameraLevel) * 300; this.cameraLevel = level;
+      this.cancelGesture(); this.selectedTool.reset();
+    });
 
     this.scheduleRedraw$.pipe(
       takeUntil(this.unsubscribe)
@@ -189,6 +197,13 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     const canvas: HTMLCanvasElement = this.canvasElement.nativeElement;
     this.ctx = canvas.getContext('2d');
     canvas.addEventListener("mousemove", this.mouseMove);
+    this.resizeViewport();
+    if (typeof ResizeObserver !== 'undefined' && canvas.parentElement) {
+      this.resizeObserver = new ResizeObserver(() => { if (this.resizeViewport()) this.drawCanvas(); });
+      this.resizeObserver.observe(canvas.parentElement);
+      const toolbar = document.querySelector('app-menu');
+      if (toolbar) this.resizeObserver.observe(toolbar);
+    }
 
     if(this.ctx)
     {
@@ -201,6 +216,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
 
   ngOnDestroy(): void {
     this.stopPanning();
+    this.resizeObserver?.disconnect();
     this.selectedTool.cancel();
     this.unsubscribe.next();
     this.unsubscribe.complete();
@@ -382,13 +398,44 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
 
   //Drawing functions
 
+  private cameraBounds() {
+    return buildingCameraBounds(this.buildingService.building, this.gridService.getSelectedLevel(), [...this.gridService.roomTiles, ...this.gridService.userTiles]);
+  }
+  private constrainViewport(): void {
+    const canvas = this.canvasElement?.nativeElement as HTMLCanvasElement | undefined;
+    if (!canvas) return;
+    this.zoom = safeZoom(this.zoom);
+    const bounds = this.cameraBounds();
+    if (!this.cameraInitialized && this.ctx) {
+      this.xOffset = (bounds.left + bounds.right - canvas.width / this.zoom) / 2;
+      this.yOffset = (bounds.top + bounds.bottom - canvas.height / this.zoom) / 2;
+      this.cameraInitialized = true;
+    }
+    const offset = constrainCamera({ x: this.xOffset, y: this.yOffset }, this.zoom, bounds, canvas);
+    this.xOffset = offset.x; this.yOffset = offset.y;
+  }
+  @HostListener('window:resize') onViewportResize(): void { if (this.resizeViewport()) this.drawCanvas(); }
+  private resizeViewport(): boolean {
+    const canvas = this.canvasElement?.nativeElement as HTMLCanvasElement | undefined;
+    if (!canvas) return false;
+    const rect = canvas.getBoundingClientRect();
+    const width = Math.max(1, Math.floor(canvas.parentElement?.clientWidth || window.innerWidth));
+    const height = Math.max(1, Math.floor(window.innerHeight - rect.top));
+    if (canvas.width === width && canvas.height === height) return false;
+    if (this.cameraInitialized) {
+      this.xOffset += (canvas.width - width) / (2 * safeZoom(this.zoom));
+      this.yOffset += (canvas.height - height) / (2 * safeZoom(this.zoom));
+    }
+    canvas.width = this.screenWidth = width; canvas.height = this.screenHeight = height;
+    if (this.ctx) this.ctx.imageSmoothingEnabled = false;
+    this.constrainViewport(); return true;
+  }
+
   drawCanvas() {
     if (!this.ctx) return;
-
-
-
+    this.constrainViewport();
     //Clear canvas
-    this.ctx.clearRect(0, 0, 5000, 5000);
+    this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
     this.newPositions = [];
 
     //Tiles
@@ -1050,16 +1097,22 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   @HostListener('wheel', ['$event']) onMouseWheel(event: WheelEvent){
+    const canvas = this.canvasElement?.nativeElement as HTMLCanvasElement | undefined;
+    if (!canvas || (event.target && event.target !== canvas) || (!event.deltaX && !event.deltaY)) return;
     event.preventDefault();
-    if(event.ctrlKey) {
-      if(event.deltaY > 0) {
-        this.zoom = this.zoom - 0.2;
-        this.drawCanvas();
-      } else {
-        this.zoom = this.zoom + 0.2;
-        this.drawCanvas();
-      }
+    this.constrainViewport();
+    if (event.ctrlKey && event.deltaY) {
+      const zoom = nativeWheelZoom(this.zoom, wheelAngle(event.deltaY, event.deltaMode));
+      const rect = canvas.getBoundingClientRect();
+      const anchor = { x: (event.clientX - rect.left) * (rect.width ? canvas.width / rect.width : 1),
+        y: (event.clientY - rect.top) * (rect.height ? canvas.height / rect.height : 1) };
+      const offset = zoomAroundPoint({ x: this.xOffset, y: this.yOffset }, this.zoom, zoom, anchor);
+      this.xOffset = offset.x; this.yOffset = offset.y; this.zoom = zoom;
+    } else {
+      this.xOffset += wheelScroll(event.deltaX || (event.shiftKey ? event.deltaY : 0), event.deltaMode, canvas.width) / this.zoom;
+      if (!event.shiftKey) this.yOffset += wheelScroll(event.deltaY, event.deltaMode, canvas.height) / this.zoom;
     }
+    this.constrainViewport(); this.drawCanvas();
   }
 
   getMousePos(event: MouseEvent) {
@@ -1073,6 +1126,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
         this.xOffset -= (event.clientX - this.dragStartPos.x) * scaleX / this.zoom;
         this.yOffset -= (event.clientY - this.dragStartPos.y) * scaleY / this.zoom;
         this.dragStartPos = { x: event.clientX, y: event.clientY };
+        this.constrainViewport();
         this.drawCanvas();
         return; // Do not move the tool's endpoint while moving the camera.
       }
