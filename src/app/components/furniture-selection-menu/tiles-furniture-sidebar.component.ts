@@ -30,7 +30,10 @@ export const OBJECT_MATERIALS: MaterialCategory[] = [
   { category: 'windows', label: 'Windows', field: 'Window' },
   { category: 'curtains', label: 'Curtains', field: 'Curtains' },
   { category: 'shutters', label: 'Shutters', field: 'Shutters' },
-  { category: 'stairs', label: 'Stairs', field: 'Stairs' }
+  { category: 'stairs', label: 'Stairs', field: 'Stairs' },
+  { category: 'roof_caps', label: 'Roof Caps', field: 'RoofCap' },
+  { category: 'roof_slopes', label: 'Roof Slopes', field: 'RoofSlope' },
+  { category: 'roof_tops', label: 'Roof Tops', field: 'RoofTop' }
 ];
 
 @Component({ selector: 'app-tiles-furniture-sidebar', templateUrl: './tiles-furniture-sidebar.component.html', styleUrls: ['./tiles-furniture-sidebar.component.scss'] })
@@ -71,14 +74,15 @@ export class TilesFurnitureSidebarComponent implements OnInit, OnChanges, OnDest
     this.furnitureGroup = group; this.selectCategory('furniture');
   }
   display(entry: TileEntry | null): string {
-    return entry?.tiles.find(tile => tile.enum === (entry.category === 'stairs' ? 'West1' : entry.category === 'shutters' ? 'NorthLeft' : 'West'))?.tile || 'None';
+    const slot: Record<string, string> = { stairs: 'West1', shutters: 'NorthLeft', roof_caps: 'CapRiseE3', roof_slopes: 'SlopeS2', roof_tops: 'West2' };
+    return entry?.tiles.find(tile => tile.enum === (slot[entry.category] || 'West'))?.tile || 'None';
   }
   private rebuild(): void {
     const entries = new Map<string, TileEntry>();
     [...this.defaults, ...(this.building?.entries || [])].filter(entry => entry.category === this.category)
       .forEach(entry => entries.set(this.key(entry), entry));
     const groups = new Map<string, (TileEntry | null)[]>();
-    groups.set('', [null]);
+    if (!['roof_caps', 'roof_slopes'].includes(this.category)) groups.set('', [null]);
     [...entries.values()].sort((a, b) => this.display(a).localeCompare(this.display(b))).forEach(entry => {
       const name = this.display(entry).replace(/_[0-9]+$/, '');
       if (!groups.has(name)) groups.set(name, []);
@@ -113,6 +117,7 @@ export class TilesFurnitureSidebarComponent implements OnInit, OnChanges, OnDest
   choose(entry: TileEntry | null): void {
     const category = this.categories.find(item => item.category === this.category);
     if (!category || !this.building || (entry && entry.category !== category.category)) return;
+    if (!entry && ['roof_caps', 'roof_slopes'].includes(category.category)) return;
     if (category.wall) {
       this.settings.wallMaterials = { ...this.settings.wallMaterials, [category.wall]: entry ? cloneRoomEntry(entry) : null };
     } else {

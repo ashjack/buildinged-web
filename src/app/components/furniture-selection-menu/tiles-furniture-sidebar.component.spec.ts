@@ -4,7 +4,8 @@ import { TestBed } from '@angular/core/testing';
 import { FormsModule } from '@angular/forms';
 import { Store } from '@ngrx/store';
 import { of } from 'rxjs';
-import { Undo, Redo } from '../../app.actions';
+import { AddObject, Undo, Redo } from '../../app.actions';
+import { RoofService } from '../../services/roof.service';
 import { TileEntry } from '../../models/app.models';
 import { BuildingService } from '../../services/building.service';
 import { DbService } from '../../services/db.service';
@@ -125,6 +126,33 @@ describe('Tiles and Furniture material sidebar', () => {
     h.store.dispatch(new Undo()); expect(h.buildings.building).toBe(before);
     h.store.dispatch(new Redo()); expect(h.buildings.building.Door).toBe(0);
     sidebar.selectCategory('exterior_walls'); sidebar.choose(null); expect(settings.wallMaterials['Tile']).toBeNull();
+    fixture.destroy();
+  });
+  it('puts roof categories last and uses native preview slots, roof defaults and undoable cap/slope changes', async () => {
+    const entries: TileEntry[] = [
+      { category: 'roof_caps', tiles: [{ enum: 'CapRiseE3', tile: 'cap_002' }] },
+      { category: 'roof_slopes', tiles: [{ enum: 'SlopeS2', tile: 'slope_001' }] },
+      { category: 'roof_tops', tiles: [{ enum: 'West2', tile: 'top_001' }] }
+    ];
+    (h.buildings.getCategoryTileEntries as jasmine.Spy).and.resolveTo([...defaults, ...entries]);
+    const { fixture, sidebar, element } = await setup();
+    expect(sidebar.categories.slice(-3).map(category => category.label)).toEqual(['Roof Caps', 'Roof Slopes', 'Roof Tops']);
+    h.store.dispatch(new AddObject({ uid: 'roof', type: 'roof', x: 1, y: 1, width: 2, height: 2,
+      RoofType: 'Flat', Depth: 'One', CapTiles: 0, SlopeTiles: 0, TopTiles: 0 }, 0));
+    const before = h.buildings.building;
+    entries.forEach(entry => {
+      sidebar.selectCategory(entry.category); fixture.detectChanges();
+      expect(element.querySelector(`[aria-label="${sidebar.display(entry)}"]`)).not.toBeNull();
+      if (entry.category !== 'roof_tops') expect(sidebar.groups.flatMap(group => group.entries)).not.toContain(null);
+      sidebar.choose(entry);
+    });
+    const building = h.buildings.building, roof = building.floors[0].objects[0];
+    expect(roof.CapTiles).toBe(building.RoofCap); expect(roof.SlopeTiles).toBe(building.RoofSlope);
+    expect(roof.TopTiles).toBe(0);
+    const service = new RoofService(h.buildings, h.grid, h.store as any), next = service.createObject(3, 3, 'Flat');
+    expect([next.CapTiles, next.SlopeTiles, next.TopTiles]).toEqual([building.RoofCap, building.RoofSlope, building.RoofTop]);
+    h.store.dispatch(new Undo()); h.store.dispatch(new Undo()); h.store.dispatch(new Undo());
+    expect(h.buildings.building).toBe(before);
     fixture.destroy();
   });
 });
