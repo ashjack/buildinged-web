@@ -15,4 +15,14 @@
 .furnitureTile {
   width: 50px;
   position: absolute;
-}
+}.furniture-browser { display: flex; height: 100%; box-sizing: border-box; padding: 5px; gap: 5px; font: 12px 'Segoe UI', sans-serif; }
+.groups { flex: 0 0 35%; min-width: 0; overflow: auto; background: white; border: 1px solid #aaa; }
+.groups button { display: block; min-width: 100%; white-space: nowrap; border: 0; background: transparent; padding: 2px 4px; text-align: left; font: inherit; }
+.groups .selected-layer { background: #0078d7; color: white; }
+.entries-column { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.entries { flex: 1; min-height: 0; overflow: auto; background: white; border: 1px solid #aaa; }
+.entry-row { display: flex; width: max-content; border-bottom: 1px solid #ddd; }
+.entry { position: relative; flex-shrink: 0; border: 1px solid transparent; background: transparent; padding: 0; }
+.entry img { position: absolute; image-rendering: pixelated; }
+.entry.selected-entry { background: #85bdf0; border-color: #0078d7; }
+.entries-column select { align-self: flex-end; margin-top: 4px; }

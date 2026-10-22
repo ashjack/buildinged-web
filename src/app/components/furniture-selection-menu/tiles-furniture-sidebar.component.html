@@ -1,0 +1,20 @@
+<aside aria-label="Tiles and Furniture" (keydown)="$event.stopPropagation()" (keyup)="$event.stopPropagation()">
+  <h2>Tiles and Furniture</h2>
+  <div class="category-list" role="listbox" aria-label="Tile and furniture categories">
+    <button *ngFor="let item of categories" role="option" [attr.aria-selected]="category === item.category" [class.active]="category === item.category" (click)="selectCategory(item.category)">{{item.label}}</button>
+    <hr>
+    <button *ngFor="let group of furnitureGroups" role="option" [attr.aria-selected]="category === 'furniture' && furnitureGroup === group.label" [class.active]="category === 'furniture' && furnitureGroup === group.label" (click)="selectFurniture(group.label)">{{group.label}}</button>
+  </div>
+  <div class="material-list" [hidden]="category === 'furniture'" aria-label="Material choices">
+    <section *ngFor="let group of groups">
+      <h3 *ngIf="group.name">{{group.name}}</h3>
+      <div class="thumbnails">
+        <button *ngFor="let entry of group.entries" [class.selected]="selected(entry)" [attr.aria-pressed]="selected(entry)" [attr.aria-label]="display(entry)" [title]="display(entry)" [style.width.px]="128 * zoom + 4" [style.height.px]="256 * zoom + 4" (click)="choose(entry)" [disabled]="!building"><img [src]="image(entry)" alt="" draggable="false"></button>
+      </div>
+    </section>
+  </div>
+  <app-furniture-selection-menu [embedded]="true" [group]="furnitureGroup" [zoom]="zoom" (groupsLoaded)="furnitureGroups = $event" [hidden]="category !== 'furniture'"></app-furniture-selection-menu>
+  <p *ngIf="error" role="alert">{{error}}</p>
+  <p *ngIf="settings.message" role="status">{{settings.message}}</p>
+  <div class="zoom"><select [ngModel]="zoom" (ngModelChange)="setZoom(+$event)" aria-label="Material zoom"><option *ngFor="let scale of zooms" [ngValue]="scale">{{scale * 100 | number:'1.0-0'}} %</option></select></div>
+</aside>

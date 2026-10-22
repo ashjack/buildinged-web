@@ -1,4 +1,17 @@
-
+<div *ngIf="tileEditing || embedded; else objectFurniture" class="furniture-browser">
+  <div class="groups" [hidden]="embedded" role="listbox" aria-label="Furniture groups"><button *ngFor="let group of furnitureGroups" role="option" [attr.aria-selected]="getSelectedFurnitureGroup() === group.label" [class.selected-layer]="getSelectedFurnitureGroup() === group.label" (click)="setSelectedFurnitureGroup(group.label)">{{group.label}}</button></div>
+  <div class="entries-column">
+    <div class="entries" aria-label="Furniture tile patterns">
+      <div *ngFor="let furniture of furnitureTiles" class="entry-row">
+        <button *ngFor="let entry of furniture.entries" class="entry" [class.selected-entry]="selectedFurniture === furniture && selectedFurnitureOrient === entry.orient" [attr.aria-label]="'Furniture pattern ' + entry.orient" (click)="setSelectedFurniture(furniture, entry.orient)" [style.width.px]="(entry.xSize + entry.ySize + 2) * 64 * zoom" [style.height.px]="256 * zoom + (entry.xSize + entry.ySize) * 32 * zoom">
+          <img *ngFor="let tile of entry.tiles" [src]="tile.url" alt="" [style.width.px]="128 * zoom" [style.left.px]="(tile.x - tile.y + entry.ySize) * 64 * zoom" [style.bottom.px]="(entry.xSize + entry.ySize - tile.x - tile.y) * 32 * zoom">
+        </button>
+      </div>
+    </div>
+    <select *ngIf="!embedded" [ngModel]="zoom" (ngModelChange)="zoomChange.emit(+$event)" aria-label="Furniture zoom"><option *ngFor="let scale of zooms" [ngValue]="scale">{{scale * 100 | number:'1.0-0'}} %</option></select>
+  </div>
+</div>
+<ng-template #objectFurniture>
 <div style="position: absolute; height: 40%; width: 20%; background-color: lightgray; top: 0px; right: 0px; overflow-y: auto;">
   <p *ngFor="let furniture of furnitureGroups;" (click)="setSelectedFurnitureGroup(furniture.label)" [ngClass]="getSelectedFurnitureGroup() == furniture.label ? 'selected-layer' : ''"
   style="margin:0">
@@ -33,4 +46,4 @@
         <img (click)="setSelectedTile(tile.name!)" [ngClass]="getSelectedTile() == tile.name! ? 'highlighted-tile' : ''" 
         [src]="tile.url" alt="Tile" class="tile">
       </ng-container>
-</div> -->
+</div> --></ng-template>

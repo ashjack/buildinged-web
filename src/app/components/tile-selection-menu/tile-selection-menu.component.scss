@@ -1,13 +1,40 @@
-.highlighted-tile {
-  //border: 2px solid #000;
-  background: blue;
-}
-
-.tile {
-  width: 70px;
-}
-
-.selected-layer {
-  background: blue;
-  color: white;
-}
+:host { display: block; position: relative; min-width: 0; border-left: 1px solid #888; color: #222; background: #efefef; font: 12px 'Segoe UI', sans-serif; }
+aside { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; }
+h2 { margin: 0; padding: 3px 7px; background: #dedede; border-bottom: 1px solid #aaa; font-size: 12px; font-weight: 600; }
+.layers-dock { height: 34%; min-height: 125px; display: flex; flex-direction: column; resize: vertical; overflow: hidden; border-bottom: 4px ridge #ddd; }
+.slider { display: flex; align-items: center; padding: 2px 5px; gap: 8px; }
+.slider input { flex: 1; min-width: 0; height: 16px; margin: 0; }
+.layers { flex: 1; min-height: 0; overflow: auto; background: white; border: 1px solid #aaa; }
+.layers [role=option] { display: flex; align-items: center; height: 22px; cursor: default; }
+.layers input { margin: 0 5px; }
+.selected { background: #0078d7 !important; color: white; }
+.browser-dock { flex: 1; min-height: 160px; display: flex; flex-direction: column; }
+.tilesets-content { flex: 1; min-height: 0; display: flex; gap: 5px; padding: 5px; }
+[hidden] { display: none !important; }
+.sheet-column { flex: 0 0 43%; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.sheet-column > input { width: 100%; box-sizing: border-box; min-width: 0; height: 24px; }
+.sheet-list { flex: 1; min-height: 0; overflow: auto; background: white; border: 1px solid #aaa; }
+.sheet-list button { display: block; border: 0; background: transparent; white-space: nowrap; text-align: left; min-width: 100%; padding: 2px 4px; font: inherit; }
+.tile-column { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
+.tile-scroll { flex: 1; min-height: 0; overflow: auto; border: 1px solid #aaa; }
+.tile-grid { display: grid; width: max-content; align-items: end; }
+.tile { display: block; padding: 0; border: 1px solid transparent; border-radius: 0; background: transparent; }
+.tile img { width: 100%; height: 100%; object-fit: contain; display: block; image-rendering: pixelated; }
+.tile.selected-tile { background: #85bdf0; border-color: #0078d7; }
+.tile-toolbar { display: flex; align-items: center; gap: 4px; padding-top: 4px; }
+.tile-toolbar button { width: 25px; height: 25px; padding: 3px; }
+.tile-toolbar button img { width: 16px; height: 16px; }
+.tile-toolbar input { width: 25px; height: 25px; padding: 1px; }
+.tile-toolbar select { margin-left: auto; min-width: 65px; }
+.dock-tabs { display: flex; border-top: 1px solid #aaa; }
+.dock-tabs button { font: inherit; padding: 4px 12px; border: 1px solid #aaa; border-top: 0; background: #ddd; }
+.dock-tabs button[aria-selected=true] { background: #fafafa; }
+app-furniture-selection-menu { flex: 1; min-height: 0; }
+.edit-options { border-top: 1px solid #aaa; padding: 4px; display: flex; gap: 6px; align-items: center; }
+.edit-options select { font: inherit; margin-left: 4px; }
+.empty { padding: 8px; color: #666; }
+.default-layer { position: absolute; bottom: 30px; right: 0; padding: 8px; background: #eee; border: 1px solid #888; box-shadow: 0 2px 6px #0004; display: flex; gap: 4px; }
+.default-layer select { display: block; max-width: 180px; }
+.tile { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; overflow: hidden; }
+.tile img { flex-shrink: 0; }
+.tile-label { display: block; width: 100%; height: 16px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 11px/16px 'Segoe UI', sans-serif; color: #222; }

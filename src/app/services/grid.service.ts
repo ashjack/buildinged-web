@@ -9,6 +9,15 @@ import { Subject } from 'rxjs';
     providedIn: 'root',
   })
 export class GridService {
+    // Display preferences belong to each floor, independently of document tile data.
+    private layerViews = new Map<string, { visible: boolean; opacity: number }>();
+    layerView(layer: string, level = this.getSelectedLevel()) {
+        return this.layerViews.get(`${level}:${layer}`) ?? { visible: true, opacity: 1 };
+    }
+    setLayerView(layer: string, value: Partial<{ visible: boolean; opacity: number }>, level = this.getSelectedLevel()): void {
+        this.layerViews.set(`${level}:${layer}`, { ...this.layerView(layer, level), ...value });
+    }
+    resetLayerViews(): void { this.layerViews.clear(); }
     readonly selectedLevelChanges = new Subject<number>();
     //rooms: GridRoom[] = [];
 

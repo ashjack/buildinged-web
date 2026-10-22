@@ -17,7 +17,7 @@
 
     <app-tile-selection-menu *ngIf="(selectedTool$|async) == 'tool-tile' || (selectedTool$|async) == 'tool-select-tiles'"></app-tile-selection-menu>
     <app-roof-selection-menu *ngIf="(selectedTool$|async) == 'tool-roof'"></app-roof-selection-menu>
-    <app-furniture-selection-menu *ngIf="(selectedTool$|async) == 'tool-furniture'"></app-furniture-selection-menu>
+    <app-tiles-furniture-sidebar *ngIf="!['tool-tile', 'tool-select-tiles'].includes((selectedTool$|async) || '')" [tool]="(selectedTool$|async) || ''"></app-tiles-furniture-sidebar>
     </div>
 
     <router-outlet></router-outlet>

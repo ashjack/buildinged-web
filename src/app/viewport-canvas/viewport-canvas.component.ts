@@ -485,7 +485,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     let drawnDarkOverlay = false;
 
     this.gridService.tiles.forEach((tile: SvgTile) => {
-      if(!tile.hidden && !tile.excluded)
+      if(!tile.hidden && !tile.excluded && this.gridService.layerView(tile.layer, tile.level).visible)
       {
         if(!drawnDarkOverlay && this.gridService.getSelectedLevel() == tile.level && this.ctx)
         {
@@ -496,14 +496,15 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
         }
 
         const tileImage = this.getIndividualTile(tile.name!);
-        this.drawTile(tile.x + (tile.offsetX ?? 0), tile.y + (tile.offsetY ?? 0), tile.name!, tileImage as string);
+        this.drawTile(tile.x + (tile.offsetX ?? 0), tile.y + (tile.offsetY ?? 0), tile.name!, tileImage as string,
+          this.gridService.layerView(tile.layer, tile.level).opacity);
       }
     });
 
     
   }
 
-  drawTile(x: number, y: number, tileName: string, tile: string) {
+  drawTile(x: number, y: number, tileName: string, tile: string, opacity = 1) {
     if(!this.ctx) {
       throw new Error('Canvas context is not defined')
     };
@@ -530,12 +531,16 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
       newTileImage.src = tile;
       newTileImage.onload = () => {
         this.cacheService.set(tileName, newTileImage);
-        ctx.drawImage(newTileImage,x, y, size * this.zoom, size * 2 * this.zoom);
+        // Redraw using the current layer visibility and camera after the image loads.
+        this.store.dispatch(new ScheduleRedraw(true));
       }
     }
     else
     {
-      this.ctx.drawImage(tileImage,x, y, size * this.zoom, size * 2 * this.zoom);
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      ctx.drawImage(tileImage,x, y, size * this.zoom, size * 2 * this.zoom);
+      ctx.restore();
     }
   }
 

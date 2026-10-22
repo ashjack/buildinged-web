@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { SvgTile } from '../../models/app.models';
 import { DbService } from '../../services/db.service';
@@ -8,6 +8,8 @@ import { Store } from "@ngrx/store";
 import { HttpClient } from '@angular/common/http';
 import { BEntry, BEntryItem, BFurniture, BFurnitureGroup, VisualFurniture, VisualFurnitureEntry } from 'src/app/models/furniture-window.models';
 import { SetSelectedFurniture } from 'src/app/app.actions';
+import { ToolSettingsService } from '../../services/tool-settings.service';
+import { NATIVE_ZOOM_FACTORS } from '../../utils/native-camera';
 
 
 @Component({
@@ -15,8 +17,16 @@ import { SetSelectedFurniture } from 'src/app/app.actions';
   templateUrl: './furniture-selection-menu.component.html',
   styleUrls: ['./furniture-selection-menu.component.scss']
 })
-export class FurnitureSelectionMenuComponent implements OnInit{
-  constructor(private sanitizer: DomSanitizer, private db: DbService, private http: HttpClient, private store: Store<fromRoot.State>,) { }
+export class FurnitureSelectionMenuComponent implements OnInit, OnChanges {
+  constructor(private sanitizer: DomSanitizer, private db: DbService, private http: HttpClient, private store: Store<fromRoot.State>, private settings: ToolSettingsService) { }
+  @Input() tileEditing = false;
+  @Input() embedded = false;
+  @Input() group = '';
+  @Output() groupsLoaded = new EventEmitter<BFurnitureGroup[]>();
+  @Input() zoom = .5;
+  @Output() zoomChange = new EventEmitter<number>();
+  zooms = NATIVE_ZOOM_FACTORS;
+  private loadVersion = 0;
 
   selectedTileset: string = 'walls_exterior_house_01';
   selectedFurnitureGroup: string = 'Advertising';
@@ -32,13 +42,16 @@ export class FurnitureSelectionMenuComponent implements OnInit{
 
   ngOnInit(): void {
     this.http.get('assets/BuildingFurniture.txt', { responseType: 'text' }).subscribe((data: any) => {
-      console.log(data);
       this.furnitureGroups = this.parseCustomFile(data);
+      this.groupsLoaded.emit(this.furnitureGroups);
+      const group = this.furnitureGroups.find(x => x.label === (this.group || this.getSelectedFurnitureGroup())) || this.furnitureGroups[0];
+      if (group) this.setSelectedFurnitureGroup(group.label);
     });
 
     this.getTilesets();
-    this.furnitureGroups.find(x => x.label == this.getSelectedFurnitureGroup())
-    this.getIndividualTiles(this.furnitureGroups[this.furnitureGroups.findIndex(x => x.label == this.getSelectedFurnitureGroup())]);
+  }
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['group'] && this.group && this.furnitureGroups.length) this.setSelectedFurnitureGroup(this.group);
   }
 
   parseCustomFile(content: string): any {
@@ -184,8 +197,10 @@ export class FurnitureSelectionMenuComponent implements OnInit{
   }
 
   async getIndividualTiles(furnitureGroup: BFurnitureGroup) {
+    const version = ++this.loadVersion;
     this.tiles = [];
     this.furnitureTiles = [];
+    const result: VisualFurniture[] = [];
   
     for (const furniture of furnitureGroup.furniture) {
       
@@ -248,14 +263,14 @@ export class FurnitureSelectionMenuComponent implements OnInit{
         });
       }
       // Push retTiles for each entry
-      this.furnitureTiles.push({
+      result.push({
         layer: furniture.layer,
         corners: furniture.corners,
         entries: retEntry
       });
     }
   
-    console.log(this.tiles);
+    if (version === this.loadVersion) this.furnitureTiles = result;
   }
   
   
@@ -319,6 +334,16 @@ export class FurnitureSelectionMenuComponent implements OnInit{
   setSelectedFurniture(group: VisualFurniture, orient: string) {
     this.selectedFurniture = group;
     this.selectedFurnitureOrient = orient;
+    if (this.tileEditing) {
+      const tiles = group.entries.find(entry => entry.orient === orient)?.tiles || [];
+      if (!tiles.length) return;
+      const x = Math.min(...tiles.map(tile => tile.x)), y = Math.min(...tiles.map(tile => tile.y));
+      this.settings.stamp = { width: Math.max(...tiles.map(tile => tile.x)) - x + 1,
+        height: Math.max(...tiles.map(tile => tile.y)) - y + 1,
+        cells: tiles.map(tile => ({ x: tile.x - x, y: tile.y - y, tile: tile.name! })) };
+      this.settings.tileMode = 'brush';
+      return;
+    }
     this.store.dispatch(new SetSelectedFurniture(group, orient));
   }
 

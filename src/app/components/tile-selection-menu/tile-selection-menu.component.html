@@ -1,32 +1,49 @@
-
-<div style="position: absolute; height: 20%; width: 20%; background-color: lightgray; top: 0px; right: 0px; overflow-y: auto;">
-  <label>Tile tool
-    <select [(ngModel)]="settings.tileMode" aria-label="Tile editing mode">
-      <option value="rectangle">Rectangle</option><option value="brush">Brush / stamp</option>
-      <option value="eraser">Eraser</option><option value="fill">Flood fill</option>
-      <option value="pick">Pick tile</option><option value="capture">Capture manual tile pattern</option>
-    </select>
-  </label>
-  <button *ngIf="settings.stamp" type="button" (click)="settings.stamp = undefined">Clear captured pattern</button>
-  <p>Ctrl erases. Alt-click picks. Right-drag captures manual tiles on the selected layer.</p>
-  <input [(ngModel)]="searchTerm" aria-label="Search tilesets">
-  <p *ngFor="let tilesheet of getFilteredTilesets();" (click)="setSelectedTileset(tilesheet)" [ngClass]="getSelectedTileset() == tilesheet ? 'selected-tilesheet' : ''"
-  style="margin:0">
-    {{tilesheet}}
- </p>
-</div>
-
-<div style="position: absolute; height: 40%; width: 20%; background-color: lightgray; top: 20%; right: 0px; overflow-y: auto;">
-    <ng-container *ngFor="let tile of tiles; let i = index">
-        <!-- <img (click)="setSelectedTile(tile.name!)" ngClass="getSelectedTile() == tile.name!" [src]="tile.url" alt="Tile"> -->
-        <img (click)="setSelectedTile(tile.name!)" [ngClass]="getSelectedTile() == tile.name! ? 'highlighted-tile' : ''" 
-        [src]="tile.url" alt="Tile" class="tile">
-      </ng-container>
-</div>
-
-<div style="position: absolute; height: 40%; width: 20%; background-color: lightgray; bottom: 0px; right: 0px; overflow-y: auto;">
-  <!-- <p (click)="setSelectedLayer('Walls')" [ngClass]="getSelectedLayer() == 'Walls' ? 'selected-layer' : ''">Walls</p>
-  <p (click)="setSelectedLayer('Floor')" [ngClass]="getSelectedLayer() == 'Floor' ? 'selected-layer' : ''">Floor</p> -->
-  <p *ngFor="let layer of layers" (click)="setSelectedLayer(layer)" [ngClass]="getSelectedLayer() == layer ? 'selected-layer' : ''"
-  style="margin:0">{{layer}}</p>
-</div>
+<aside aria-label="Tile mode sidebar" (keydown)="$event.stopPropagation()" (keyup)="$event.stopPropagation()">
+  <section class="layers-dock" aria-label="Layers">
+    <h2>Layers</h2>
+    <label class="slider">Opacity: <input type="range" min="0" max="100" [ngModel]="opacity" (ngModelChange)="setOpacity(+$event)" aria-label="Layer opacity"></label>
+    <label class="slider">Visibility: <input type="range" min="0" [max]="layers.length - 1" [ngModel]="visibility" (ngModelChange)="setVisibility(+$event)" aria-label="Layer visibility cutoff"></label>
+    <div #layerList class="layers" role="listbox" aria-label="Tile layers">
+      <div *ngFor="let layer of layers" role="option" [attr.data-layer]="layer" [attr.aria-selected]="getSelectedLayer() === layer" [class.selected]="getSelectedLayer() === layer" (click)="setSelectedLayer(layer)" (keydown.enter)="setSelectedLayer(layer)" tabindex="0">
+        <input type="checkbox" [ngModel]="grid.layerView(layer).visible" (ngModelChange)="setVisible(layer, $event)" (click)="$event.stopPropagation()" [attr.aria-label]="layer + ' visible'">
+        <span>{{layer}}</span>
+      </div>
+    </div>
+  </section>
+  <section class="browser-dock" aria-label="Tile browser">
+    <h2>{{tab === 'tilesets' ? 'Tilesets' : 'Furniture'}}</h2>
+    <div class="tilesets-content" [hidden]="tab !== 'tilesets'" role="tabpanel" id="tile-sheets-panel" aria-labelledby="tile-sheets-tab">
+      <div class="sheet-column">
+        <input type="search" [(ngModel)]="searchTerm" (ngModelChange)="filterChanged()" placeholder="tileset name" aria-label="Search tilesets">
+        <div class="sheet-list" role="listbox" aria-label="Tilesets">
+          <button *ngFor="let sheet of getFilteredTilesets()" role="option" [attr.aria-selected]="selectedTileset === sheet" [class.selected]="selectedTileset === sheet" (click)="setSelectedTileset(sheet)" [title]="sheet">{{sheet}}</button>
+        </div>
+      </div>
+      <div class="tile-column">
+        <div class="tile-scroll" [style.background]="background" (click)="contextTile = undefined">
+          <div class="tile-grid" [style.grid-template-columns]="'repeat(8, ' + cellWidth + 'px)'">
+            <ng-container *ngFor="let tile of tiles; let i = index">
+              <button *ngIf="tile; else empty" class="tile" [style.width.px]="cellWidth" [style.height.px]="cellHeight" [class.selected-tile]="tileSelected(tile.name)" [attr.aria-label]="tile.name" [attr.aria-pressed]="tileSelected(tile.name)" [title]="tile.name + (autoSwitchLayer ? ' — ' + (defaultLayers[tile.name] || '???') : '')" (click)="selectTile(tile, i, $event)" (contextmenu)="$event.preventDefault(); contextTile = tile.name">
+                <img [src]="tile.url" alt="" draggable="false" [style.width.px]="128 * zoom" [style.height.px]="256 * zoom"><span *ngIf="autoSwitchLayer" class="tile-label">{{defaultLayers[tile.name] || '???'}}</span>
+              </button>
+              <ng-template #empty><span [style.width.px]="cellWidth" [style.height.px]="cellHeight"></span></ng-template>
+            </ng-container>
+          </div>
+          <p *ngIf="!tiles.length" class="empty">{{selectedTileset ? 'No tiles in this tileset.' : 'No matching tilesets.'}}</p>
+        </div>
+        <div *ngIf="contextTile" class="default-layer"><label>Default Layer <select aria-label="Default Layer" [ngModel]="defaultLayers[contextTile] || ''" (ngModelChange)="setDefaultLayer($event)"><option value="">&lt;None&gt;</option><option *ngFor="let layer of layers.slice().reverse()" [value]="layer">{{layer}}</option></select></label><button (click)="contextTile = undefined" aria-label="Close default layer">×</button></div>
+        <div class="tile-toolbar">
+          <button [attr.aria-pressed]="autoSwitchLayer" [title]="autoSwitchLayer ? 'Layer Switch Enabled' : 'Layer Switch Disabled'" aria-label="Automatic layer switching" (click)="toggleAutoSwitch()"><img [src]="'assets/icons/' + (autoSwitchLayer ? 'layer-tile.png' : 'layer-tile-stop.png')" alt=""></button>
+          <input type="color" [ngModel]="background" (ngModelChange)="setBackground($event)" aria-label="Tileset background color" title="Tileset background color">
+          <select [ngModel]="zoom" (ngModelChange)="setZoom(+$event)" aria-label="Tileset zoom"><option *ngFor="let scale of zooms" [ngValue]="scale">{{scale * 100 | number:'1.0-0'}} %</option></select>
+        </div>
+      </div>
+    </div>
+    <app-furniture-selection-menu [tileEditing]="true" [zoom]="zoom" (zoomChange)="setZoom($event)" [hidden]="tab !== 'furniture'" role="tabpanel" id="tile-furniture-panel" aria-labelledby="tile-furniture-tab"></app-furniture-selection-menu>
+    <div class="dock-tabs" role="tablist" aria-label="Tile browser panels">
+      <button role="tab" id="tile-sheets-tab" aria-controls="tile-sheets-panel" [attr.aria-selected]="tab === 'tilesets'" (click)="tab = 'tilesets'">Tilesets</button>
+      <button role="tab" id="tile-furniture-tab" aria-controls="tile-furniture-panel" [attr.aria-selected]="tab === 'furniture'" (click)="tab = 'furniture'">Furniture</button>
+    </div>
+  </section>
+  <div class="edit-options"><label>Tile tool <select [(ngModel)]="settings.tileMode" aria-label="Tile editing mode"><option value="rectangle">Rectangle</option><option value="brush">Brush</option><option value="eraser">Eraser</option><option value="fill">Fill</option><option value="pick">Pick</option><option value="capture">Capture</option></select></label><button *ngIf="settings.stamp" (click)="settings.stamp = undefined">Clear pattern</button></div>
+</aside>

@@ -189,6 +189,25 @@ by Rooms OK; its tile definition is interned into the building in the same undo
 command and survives TBX save/reopen. Tile previews and the sprite browser use
 the downloaded tilepack database; missing images show the native placeholder.
 
+The Tile Mode sidebar follows the native Layers dock over tabbed Tilesets and
+Furniture docks. Tilesets places the filtered sheet list beside an eight-column
+sprite grid with shared tile/furniture zoom. Shift selects a rectangular pattern;
+Ctrl selects individual sprites. Furniture choices paint manual tile patterns on
+the current layer. Right-click a sprite to assign its Default Layer; the Layer
+Switch button enables automatic layer selection for these saved assignments.
+Layer checkboxes, Opacity, and the bottom-up Visibility slider affect the selected
+floor's display without changing its tiles. Display settings survive rebuilds
+and reset for a new document. The canvas resizes beside the dock.
+
+Wall, stairs, door, window and furniture tools share the native-style Tiles and
+Furniture sidebar. Material categories use the bundled native BuildingTiles.txt
+catalog, room-library presets and document definitions, grouped by tileset.
+Wall and trim choices apply to new wall objects; complete definitions are
+registered with the placement command. Stairs, door/frame and window/curtain/
+shutter choices update the corresponding defaults with undo support. Existing
+objects retain their materials. The sidebar stays visible for every tool except
+Tile Mode, which displays its own Layers and Tilesets/Furniture panels.
+
 ## Running end-to-end tests
 
 Run `ng e2e` to execute the end-to-end tests via a platform of your choice. To use this command, you need to first add a package that implements end-to-end testing capabilities.

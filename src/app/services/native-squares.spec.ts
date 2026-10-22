@@ -231,7 +231,23 @@ describe('Native square generation', () => {
         const drawTile = jasmine.createSpy('drawTile');
         ViewportCanvasComponent.prototype.drawTiles.call({ gridService: scene.grid, drawTile,
             getIndividualTile: (name: string) => name } as any);
-        expect(drawTile).toHaveBeenCalledWith(2, 1, b.user_tiles[0].tile + '.png', b.user_tiles[0].tile + '.png');
+        expect(drawTile).toHaveBeenCalledWith(2, 1, b.user_tiles[0].tile + '.png', b.user_tiles[0].tile + '.png', 1);
+        scene.destroy();
+    });
+
+    it('applies per-floor layer visibility and opacity to generated and manual tiles without editing them', () => {
+        const b = fixture(); room(b, 0, 0, 8, 8);
+        const scene = documentHarness(b);
+        const original = scene.state.value.building;
+        const drawTile = jasmine.createSpy('drawTile');
+        const draw = () => ViewportCanvasComponent.prototype.drawTiles.call({ gridService: scene.grid, drawTile,
+            getIndividualTile: (name: string) => name } as any);
+        scene.grid.setLayerView('Floor', { opacity: .4 }); draw();
+        expect(drawTile.calls.allArgs().filter(args => args[2] === 'floor-Floor.png').every(args => args[4] === .4)).toBeTrue();
+        scene.grid.setLayerView('Floor', { visible: false }); drawTile.calls.reset(); draw();
+        expect(drawTile.calls.allArgs().some(args => args[2] === 'floor-Floor.png')).toBeFalse();
+        expect(scene.grid.roomTiles.some(tile => tile.layer === 'Floor')).toBeTrue();
+        expect(scene.state.value.building).toBe(original);
         scene.destroy();
     });
 

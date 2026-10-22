@@ -2,7 +2,10 @@
     cursor: grabbing;
 }
 
-.editor-workspace { position: relative; }
+.editor-workspace { position: relative; display: flex; }
+app-viewport-canvas { flex: 1; min-width: 0; }
+app-tile-selection-menu { flex: 0 0 clamp(340px, 38vw, 620px); align-self: stretch; }
+app-tiles-furniture-sidebar { flex: 0 0 clamp(260px, 23vw, 400px); align-self: stretch; }
 
 .app-tile-download-window {
     position: absolute;

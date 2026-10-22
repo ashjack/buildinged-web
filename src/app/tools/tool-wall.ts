@@ -9,6 +9,7 @@ import { validObject } from '../utils/selection-edits';
 import { insideRectangle, nativeWallHandles, nativeWallShape, rectanglePoints } from '../utils/native-pointer';
 import { GUID } from '../utils/guid';
 import ToolDraw from './tool-draw';
+import { resolveObjectMaterials } from '../utils/object-materials';
 
 export default class ToolWall extends ToolDraw {
     private corner = '';
@@ -55,7 +56,7 @@ export default class ToolWall extends ToolDraw {
         const b = this.buildings.building; if (!b || this.isDragging) return;
         const point = this.point(x, y), wall = this.wallUnderPointer(x, y), p = this.pointerPosition || point;
         if (this.modifiers.alt) {
-            if (wall) { this.settings.exterior = Number(wall.Tile); this.settings.interior = Number(wall.InteriorTile);
+            if (wall) { this.settings.wallMaterials = {}; this.settings.exterior = Number(wall.Tile); this.settings.interior = Number(wall.InteriorTile);
                 this.settings.exteriorTrim = Number(wall.ExteriorTrim); this.settings.interiorTrim = Number(wall.InteriorTrim); }
             this.cancel(); return;
         }
@@ -90,8 +91,9 @@ export default class ToolWall extends ToolDraw {
         this.settings.message = valid ? '' : 'Wall must fit inside the building.';
         if (!valid) return;
         const level = this.grid.getSelectedLevel();
-        this.tileGhosts = generateBuildingSquares({ ...b, floors: b.floors.map((f, i) => i === level ? { ...f,
-            objects: [...f.objects.filter(o => o.uid !== candidate.uid), candidate] } : f) }).tiles.filter(t => t.object === candidate.uid && t.level === level);
+        const resolved = resolveObjectMaterials(b, candidate, this.resizing ? {} : this.settings.wallMaterials);
+        this.tileGhosts = generateBuildingSquares({ ...resolved.building, floors: b.floors.map((f, i) => i === level ? { ...f,
+            objects: [...f.objects.filter(o => o.uid !== candidate.uid), resolved.object] } : f) }).tiles.filter(t => t.object === candidate.uid && t.level === level);
     }
     override endDrag(x: number, y: number): void {
         if (!this.isDragging) return;
@@ -100,7 +102,7 @@ export default class ToolWall extends ToolDraw {
         const start = this.finishGesture(this.grid.getSelectedLevel());
         if (!start || !candidate || !validObject(this.buildings.building, candidate)) return;
         if (resizing) this.store.dispatch(new UpdateObject(resizing.uid, { x: candidate.x, y: candidate.y, length: candidate.length }));
-        else this.store.dispatch(new AddObject({ ...candidate, uid: GUID.generateGUID() }, start.level));
+        else this.store.dispatch(new AddObject({ ...candidate, uid: GUID.generateGUID() }, start.level, undefined, this.settings.wallMaterials));
     }
     override clickTile(x: number, y: number): void { this.beginDrag(x, y); this.endDrag(x, y); }
     override getTileFill(): string { return '#00000000'; }

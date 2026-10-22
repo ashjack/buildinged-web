@@ -1,5 +1,6 @@
 import { Action } from "@ngrx/store";
-import { Building, Furniture, Room, TileArea } from "./models/app.models";
+import { Building, Furniture, Room, TileArea, TileEntry } from "./models/app.models";
+import { BuildingMaterialField } from './utils/object-materials';
 import { RoomDefinitionDraft } from './utils/room-definitions';
 import { cloneRoomEntry } from './utils/room-tile-entries';
 import { GUID } from './utils/guid';
@@ -24,6 +25,7 @@ export enum ActionTypes {
     TransformSelection = '[Building] Transform Selection',
     EditFloor = '[Building] Edit Floor',
     EditRoomDefinitions = '[Building] Edit Room Definitions',
+    SetBuildingMaterial = '[Building] Set Material',
 
     SetTileCount = '[Loading] Set Tile Count',
 
@@ -58,8 +60,9 @@ export class SetBuilding implements Action {
 export class AddObject implements Action {
     readonly type = ActionTypes.AddObject;
 
-    constructor(public obj: any, public level: number, public furnitureDefinition?: Furniture) {
+    constructor(public obj: any, public level: number, public furnitureDefinition?: Furniture, public materials?: Record<string, TileEntry | null>) {
         this.obj = { ...obj, uid: typeof obj.uid === 'string' && obj.uid ? obj.uid : GUID.generateGUID() };
+        if (materials) this.materials = Object.fromEntries(Object.entries(materials).map(([key, entry]) => [key, entry ? cloneRoomEntry(entry) : null]));
     }
 }
 
@@ -81,6 +84,10 @@ export class RemoveObjects implements Action {
 }
 
 export class Undo implements Action { readonly type = ActionTypes.Undo; }
+export class SetBuildingMaterial implements Action {
+    readonly type = ActionTypes.SetBuildingMaterial;
+    constructor(public field: BuildingMaterialField, public entry: TileEntry | null, public level: number) { }
+}
 export class Redo implements Action { readonly type = ActionTypes.Redo; }
 
 export class EditFloor implements Action {
@@ -175,6 +182,7 @@ export class ScheduleRedraw implements Action {
 }
 
 export type ActionsUnion = 
+    SetBuildingMaterial |
     SetCurrentTool |
     SetSelectedFurniture |
     ScheduleRedraw |

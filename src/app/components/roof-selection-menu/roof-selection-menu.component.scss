@@ -1,5 +1,6 @@
 ﻿.roof-selection-panel {
   position: absolute;
+  pointer-events: auto;
   right: 8px;
   bottom: 8px;
   width: 240px;
@@ -14,4 +15,9 @@
   color: #222;
 }
 .roof-selection-title { font-weight: 600; margin-bottom: 8px; }
+:host {
+  position: absolute;
+  inset: 0 clamp(260px, 23vw, 400px) 0 0;
+  pointer-events: none;
+}
 p { margin: 8px 0 0; }

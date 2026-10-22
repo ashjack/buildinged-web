@@ -8,6 +8,7 @@ import { registerFurniture } from './utils/furniture-definition';
 import { paintTileCells, transformSelection } from './utils/selection-edits';
 import { editFloor } from './utils/floor-edits';
 import { editRoomDefinitions } from './utils/room-definitions';
+import { resolveObjectMaterials, setBuildingMaterial } from './utils/object-materials';
 
 export interface State
 {
@@ -52,6 +53,7 @@ export const HISTORY_LIMIT = 100;
 
 function commandLabel(action: Actions.ActionsUnion): string {
     switch (action.type) {
+      case Actions.ActionTypes.SetBuildingMaterial: return 'Change ' + action.field + ' tiles';
       case Actions.ActionTypes.EditRoomDefinitions: return 'Edit rooms';
       case Actions.ActionTypes.EditFloor: return ({ add: 'Add floor', duplicate: 'Duplicate floor', remove: 'Remove floor', up: 'Raise floor', down: 'Lower floor' })[action.operation];
       case Actions.ActionTypes.EditRooms: return action.room === 0 ? 'Erase rooms' : 'Draw rooms';
@@ -190,12 +192,19 @@ function reduceState(state: State, action: Actions.ActionsUnion): State {
         return building === state.building ? state : { ...state, building };
       }
 
+      case Actions.ActionTypes.SetBuildingMaterial: {
+        if (!state.building) return state;
+        const building = setBuildingMaterial(state.building, action.field, action.entry);
+        return building === state.building ? state : { ...state, building };
+      }
       case Actions.ActionTypes.AddObject: {
-        const building = state.building;
+        let building = state.building;
         if (!building || !building.floors[action.level] || building.floors.some(floor => floor.objects.some(object => object.uid === action.obj.uid))) return state;
+        const resolved = resolveObjectMaterials(building, action.obj, action.materials);
+        building = resolved.building;
         const registered = action.obj.type === 'furniture' && action.furnitureDefinition
           ? registerFurniture(building.furniture, action.furnitureDefinition) : undefined;
-        const object = registered ? { ...action.obj, FurnitureTiles: registered.index } : action.obj;
+        const object = registered ? { ...resolved.object, FurnitureTiles: registered.index } : resolved.object;
         return {
           ...state,
           building: {

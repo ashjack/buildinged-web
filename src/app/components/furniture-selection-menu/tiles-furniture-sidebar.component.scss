@@ -1,0 +1,17 @@
+:host { position: relative; display: block; min-width: 0; border-left: 1px solid #888; background: #efefef; color: #222; font: 12px 'Segoe UI', sans-serif; }
+aside { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; }
+h2 { margin: 0; padding: 3px 7px; background: #dedede; border-bottom: 1px solid #aaa; font-size: 12px; font-weight: 600; }
+.category-list { height: 30%; min-height: 130px; overflow: auto; resize: vertical; margin: 3px; border: 1px solid #aaa; background: white; }
+.category-list button { display: block; border: 0; border-radius: 0; background: transparent; text-align: left; white-space: nowrap; min-width: 100%; padding: 3px 5px; font: inherit; }
+.category-list .active { background: #0078d7; color: white; }
+hr { border: 0; border-top: 1px solid #aaa; margin: 4px; }
+.material-list { flex: 1; min-height: 0; overflow: auto; background: white; border: 1px solid #aaa; margin: 2px 3px; padding: 2px; }
+h3 { font: 12px 'Segoe UI', sans-serif; color: #000080; border-top: 1px solid #999; padding-top: 3px; margin: 3px 0 0; }
+.thumbnails { display: flex; flex-wrap: wrap; }
+.thumbnails button { padding: 1px; border: 1px solid transparent; border-radius: 0; background: transparent; }
+.thumbnails button.selected { background: #85bdf0; border-color: #0078d7; }
+.thumbnails img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+app-furniture-selection-menu { flex: 1; min-height: 0; }
+[hidden] { display: none !important; }
+.zoom { padding: 3px; display: flex; justify-content: flex-end; }
+p { margin: 3px 5px; }

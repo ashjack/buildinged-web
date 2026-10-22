@@ -37,7 +37,10 @@ export default class ToolTile extends ToolDraw {
         this.erasing = this.mode === 'eraser' || this.key === 'Control';
         if (this.mode === 'pick' || this.modifiers.alt) {
             const picked = this.gridService.getTileAt(x, y, this.selectedLevel, this.selectedLayer)?.name;
-            if (picked) { this.selectedTile = picked; localStorage.setItem('selectedTile', picked); this.settings.stamp = undefined; }
+            if (picked) {
+                this.selectedTile = picked; localStorage.setItem('selectedTile', picked); this.settings.stamp = undefined;
+                this.settings.pickedTileChanges.next(picked);
+            }
             this.cancel(); return;
         }
         if (this.mode === 'brush' || this.mode === 'eraser') this.stroke(x, y);
