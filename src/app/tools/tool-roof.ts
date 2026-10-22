@@ -2,7 +2,7 @@ import { Point } from '../models/app.models';
 import { GridService } from '../services/grid.service';
 import { RoofService } from '../services/roof.service';
 import { insideRectangle, rectanglePoints } from '../utils/native-pointer';
-import { nativeRoofHalfDepth, nativeRoofHandles, resizeNativeRoof, roofRect, RoofHandle } from '../utils/native-roof';
+import { nativeRoofHalfDepth, nativeRoofHandles, nativeRoofPreview, resizeNativeRoof, roofRect, RoofHandle } from '../utils/native-roof';
 import { validObject } from '../utils/selection-edits';
 import ToolDraw from './tool-draw';
 
@@ -99,7 +99,7 @@ export default class ToolRoof extends ToolDraw {
     private drawCandidate(): void {
         this.overlays = []; this.tileGhosts = []; this.dragTiles = [];
         const b = this.roofService.building, valid = validObject(b, this.candidate);
-        this.addRect(roofRect(this.candidate), valid ? '#00ff0080' : '#ff000080');
+        this.overlays = nativeRoofPreview(this.candidate, valid);
         if (this.original) this.handles(this.candidate, this.lastPointer || { x: -1, y: -1 });
         this.previewTiles = valid ? this.roofService.preview(this.candidate, this.grid.getSelectedLevel()) : undefined;
         this.roofService.message = `Width, height: ${this.candidate.width}, ${this.candidate.height}. Right-click to cancel.`;

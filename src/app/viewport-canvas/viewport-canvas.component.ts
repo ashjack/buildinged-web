@@ -200,6 +200,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   ngOnDestroy(): void {
+    this.stopPanning();
     this.selectedTool.cancel();
     this.unsubscribe.next();
     this.unsubscribe.complete();
@@ -979,21 +980,37 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
   //Mouse functions
 
   dragStartPos: Point = {x: 0, y: 0};
+  private isPanning = false;
+
+  private stopPanning(): void {
+    this.isPanning = false;
+    const canvas = this.canvasElement?.nativeElement || this.ctx?.canvas;
+    if (canvas) canvas.style.cursor = this.selectedTool.cursor;
+  }
+
+  @HostListener('document:mousemove', ['$event']) onDocumentMouseMove(event: MouseEvent): void {
+    // Canvas moves are already handled by its mousemove listener.
+    if (this.isPanning && !this.canvasElement?.nativeElement.contains(event.target)) this.getMousePos(event);
+  }
   
   @HostListener('contextmenu', ['$event']) onContextMenu(event: MouseEvent) {
     event.preventDefault();
   }
 
   @HostListener('mousedown', ['$event']) onMouseDown(event: MouseEvent){
+    if (event.button === 1) {
+      event.preventDefault();
+      this.isPanning = true;
+      this.dragStartPos = { x: event.clientX, y: event.clientY };
+      const canvas = this.canvasElement?.nativeElement || this.ctx?.canvas;
+      if (canvas) canvas.style.cursor = 'grabbing';
+      return;
+    }
+    if (this.isPanning) { event.preventDefault(); return; }
     this.selectedTool.modifiers = { ctrl: event.ctrlKey, shift: event.shiftKey, alt: event.altKey };
     this.selectedTool.hoveredObject = this.currentHoverObject;
     this.selectedTool.key = event.ctrlKey ? 'Control' : '';
-    if(event.button === 1)
-    {
-      event.preventDefault();
-      this.dragStartPos = {x: event.clientX, y: event.clientY};
-    }
-    else if(event.button === 0)
+    if(event.button === 0)
     {
       event.preventDefault();
       this.beginDrag(event, this.currentHoverCoords.x, this.currentHoverCoords.y);
@@ -1011,6 +1028,9 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   @HostListener('document:mouseup', ['$event']) onMouseUp(event: MouseEvent){
+    if (event.button === 1) {
+      event.preventDefault(); this.stopPanning(); return;
+    }
     if (!this.selectedTool.isDragging) return;
     if (!this.canvasElement?.nativeElement.contains(event.target)) {
       this.cancelGesture(); this.drawCanvas(); return;
@@ -1018,7 +1038,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     if (event.button === 2 && this.selectedTool instanceof ToolTile && this.selectedTool.capturing) {
       this.endDrag({ button: 0 } as MouseEvent, this.currentHoverCoords.x, this.currentHoverCoords.y); return;
     }
-    if(event.which === 2 || event.button === 2)
+    if(event.button === 2)
     {
       event.preventDefault();
     }
@@ -1043,6 +1063,21 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   getMousePos(event: MouseEvent) {
+    if (this.isPanning) {
+      if (event.buttons & 4) {
+        event.preventDefault();
+        const canvas = this.canvasElement?.nativeElement || this.ctx?.canvas;
+        const rect = canvas?.getBoundingClientRect();
+        const scaleX = rect?.width ? canvas.width / rect.width : 1;
+        const scaleY = rect?.height ? canvas.height / rect.height : 1;
+        this.xOffset -= (event.clientX - this.dragStartPos.x) * scaleX / this.zoom;
+        this.yOffset -= (event.clientY - this.dragStartPos.y) * scaleY / this.zoom;
+        this.dragStartPos = { x: event.clientX, y: event.clientY };
+        this.drawCanvas();
+        return; // Do not move the tool's endpoint while moving the camera.
+      }
+      this.stopPanning(); // Recover if a release outside the browser was missed.
+    }
     if (!this.ctx) return;
     const canvas = this.ctx.canvas;
     const rect = canvas?.getBoundingClientRect();
@@ -1123,14 +1158,6 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
       this.drawCanvas();
     }
 
-    if(event.which === 2)
-    {
-      event.preventDefault();
-      this.xOffset -= (event.clientX - this.dragStartPos.x) / this.zoom;
-      this.yOffset -= (event.clientY - this.dragStartPos.y) / this.zoom;
-      this.dragStartPos = {x: event.clientX, y: event.clientY};
-      this.drawCanvas();
-    }
 }
 
   getCoordsFromMousePos(x: number, y: number) {
@@ -1228,6 +1255,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   @HostListener('window:blur') onBlur(): void {
+    this.stopPanning();
     this.key = ''; this.selectedTool.key = '';
     this.selectedTool.modifiers = { ctrl: false, shift: false, alt: false };
     this.cancelGesture(); this.drawCanvas();

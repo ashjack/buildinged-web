@@ -60,6 +60,11 @@ included in exported TBX files or the recovery cache.
 - Escape or right-click cancels an unfinished gesture. Releasing outside the canvas,
   changing tools/floors/documents, or losing window focus also cancels it.
 
+Hold the middle mouse button to pan, including while holding left during a tool
+drag. Panning pauses updates to the tool endpoint. Release middle to resume the
+same edit, then release left to commit it. Releasing middle outside the canvas
+does not cancel the edit; releasing left outside still cancels it.
+
 ## Selection, movement and editing tools
 
 - **Move objects:** click an object or drag a rectangle. Shift adds to the selection;

@@ -3,7 +3,7 @@ import { nativeBuildingXml } from '../testing/native-building.fixture';
 import { documentHarness } from '../testing/document-harness';
 import { readBuildingFile, writeBuildingFile } from '../utils/tbx-format';
 import { emptyIndexGrid, writeIndexGrid } from '../utils/tbx-grid';
-import { nativeRoofHalfDepth, nativeRoofHandles, resizeNativeRoof } from '../utils/native-roof';
+import { nativeRoofHalfDepth, nativeRoofHandles, nativeRoofPreview, resizeNativeRoof } from '../utils/native-roof';
 import { RoofService } from '../services/roof.service';
 import ToolRoof from './tool-roof';
 
@@ -28,16 +28,30 @@ function setup() {
 }
 
 describe('Native roof mouse interactions', () => {
-    it('shows the native full-cell cursor, then a normalized footprint with half-depth controlled within the cell', () => {
+    it('shows green only for the idle cursor and shaded gray faces while creating a roof', () => {
         const h = setup(); h.roofs.setSelectedRoofOptionId('slope-w'); h.point(3.2, 4.2);
         expect(h.tool.dragTiles).toEqual([]);
         expect(h.tool.overlays[0].points).toEqual([{ x: 3, y: 4 }, { x: 4, y: 4 }, { x: 4, y: 5 }, { x: 3, y: 5 }]);
         const before = h.buildings.building;
         h.tool.beginDrag(3, 4); h.point(4.2, 6.2);
+        expect(h.tool.overlays.some(o => o.fill === '#00ff0080')).toBeFalse();
+        expect(h.tool.overlays[0].fill).toBe('#80808040');
+        expect(h.tool.overlays[h.tool.overlays.length - 1].stroke).toBe('#0000ff40');
+        expect(h.tool.previewTiles).toBeDefined();
         expect(h.buildings.building).toBe(before);
         h.tool.endDrag(4, 6);
         expect(h.buildings.building.floors[0].objects[0]).toEqual(jasmine.objectContaining({ x: 3, y: 4, width: 2, height: 3, RoofType: 'SlopeW', Depth: 'OnePoint5' }));
         expect(h.state.value.past.length).toBe(1); h.destroy();
+    });
+
+    it('keeps the resize preview gray and restores the green cursor after cancellation', () => {
+        const h = setup(); h.add('PeakNS'); h.point(5.75, 5.75);
+        h.tool.beginDrag(5, 5); h.point(6.75, 7.75);
+        expect(h.tool.overlays.some(o => o.fill === '#00ff0080')).toBeFalse();
+        expect(h.tool.overlays.some(o => o.fill === '#80808040')).toBeTrue();
+        expect(h.tool.overlays.some(o => o.fill === '#c0c0c040')).toBeTrue();
+        h.tool.cancel(); h.point(10.2, 10.2);
+        expect(h.tool.overlays[0].fill).toBe('#00ff0080'); h.destroy();
     });
 
     it('anchors restricted slopes to the starting cell when dragging backwards', () => {
@@ -132,6 +146,20 @@ describe('Native roof mouse interactions', () => {
 });
 
 describe('Native roof handle and fractional rules', () => {
+    it('joins the native half-depth faces at the center of an odd-width peak', () => {
+        const overlays = nativeRoofPreview({ x: 2, y: 3, width: 5, height: 4, RoofType: 'PeakNS', Depth: 'TwoPoint5' }, true);
+        expect(overlays.slice(0, -1).map(o => ({ left: o.points[0].x, right: o.points[1].x, fill: o.fill }))).toEqual([
+            { left: 2, right: 4.5, fill: '#80808040' },
+            { left: 4.5, right: 7, fill: '#c0c0c040' }
+        ]);
+    });
+
+    it('draws flat tops gray and uses red feedback only for invalid placement', () => {
+        const roof = { x: 1, y: 2, width: 4, height: 3, RoofType: 'FlatTop', Depth: 'One' };
+        expect(nativeRoofPreview(roof, true).map(o => o.fill)).toEqual(['#a0a0a440', 'transparent']);
+        expect(nativeRoofPreview(roof, false)[1]).toEqual(jasmine.objectContaining({ fill: '#ff000020', stroke: '#ff000040' }));
+    });
+
     it('uses half-tile resize handles and native type-specific cap visibility', () => {
         const roof = { x: 2, y: 3, width: 4, height: 5, Depth: 'One' };
         const peak = nativeRoofHandles({ ...roof, RoofType: 'PeakNS', cappedN: false });

@@ -50,6 +50,66 @@ function targetedKey(target: HTMLElement, key: string, modifiers: KeyboardEventI
 }
 
 describe('Tool edit commands', () => {
+    it('pans with left and middle held without updating or ending the active tool gesture', () => {
+        const scene = setup(), view = scene.view, tool = scene.tools[0];
+        view.selectedTool = tool; view.zoom = 2;
+        const redraw = spyOn(view, 'drawCanvas').and.stub();
+        view.currentHoverCoords = { x: 0, y: 0 };
+        view.onMouseDown(new MouseEvent('mousedown', { button: 0, buttons: 1 }));
+        view.currentHoverCoords = { x: 1, y: 1 }; tool.hoverTile(1, 1);
+        tool.pointerPosition = { x: 1.2, y: 1.2 };
+        const hover = spyOn(tool, 'hoverTile').and.callThrough();
+        const preview = [...tool.dragTiles], before = scene.buildings.building;
+        const offsets = { x: view.xOffset, y: view.yOffset };
+        view.onMouseDown(new MouseEvent('mousedown', { button: 1, buttons: 5, clientX: 100, clientY: 100 }));
+        const move = new MouseEvent('mousemove', { button: 0, buttons: 5, clientX: 140, clientY: 120, cancelable: true });
+        expect(move.which).not.toBe(2); view.getMousePos(move);
+        expect(view.xOffset).toBe(offsets.x - 20); expect(view.yOffset).toBe(offsets.y - 10);
+        expect(move.defaultPrevented).toBeTrue(); expect(redraw).toHaveBeenCalled();
+        expect(hover).not.toHaveBeenCalled(); expect(tool.dragTiles).toEqual(preview);
+        expect(tool.beginDragCoords).toEqual([0, 0]); expect(tool.isDragging).toBeTrue();
+        expect(tool.pointerPosition).toEqual({ x: 1.2, y: 1.2 });
+        expect(scene.buildings.building).toBe(before);
+        const middleUp = new MouseEvent('mouseup', { button: 1, buttons: 1 });
+        scene.view.canvasElement.nativeElement.dispatchEvent(middleUp); view.onMouseUp(middleUp);
+        expect(tool.isDragging).toBeTrue(); expect(scene.state.value.past.length).toBe(0);
+        const leftUp = new MouseEvent('mouseup', { button: 0, buttons: 0 });
+        scene.view.canvasElement.nativeElement.dispatchEvent(leftUp); view.onMouseUp(leftUp);
+        expect(tool.isDragging).toBeFalse(); expect(scene.state.value.past.length).toBe(1);
+        expect(scene.rooms.rooms[0].tiles.length).toBe(4); scene.destroy();
+    });
+
+    it('keeps panning outside the canvas and does not cancel a tool when middle is released there', () => {
+        const scene = setup(), view = scene.view, tool = scene.tools[1];
+        view.selectedTool = tool; tool.beginDrag(0, 0);
+        spyOn(view, 'drawCanvas').and.stub();
+        view.onMouseDown(new MouseEvent('mousedown', { button: 1, buttons: 5, clientX: 10, clientY: 20 }));
+        const offsets = { x: view.xOffset, y: view.yOffset };
+        const outside = document.createElement('div');
+        const move = new MouseEvent('mousemove', { buttons: 5, clientX: 40, clientY: 60 }); outside.dispatchEvent(move);
+        view.onDocumentMouseMove(move);
+        expect(view.xOffset).toBe(offsets.x - 30); expect(view.yOffset).toBe(offsets.y - 40);
+        const release = new MouseEvent('mouseup', { button: 1, buttons: 1 }); outside.dispatchEvent(release); view.onMouseUp(release);
+        expect(tool.isDragging).toBeTrue(); expect(scene.state.value.past.length).toBe(0);
+        view.onDocumentMouseMove(new MouseEvent('mousemove', { buttons: 1, clientX: 90, clientY: 90 }));
+        expect(view.xOffset).toBe(offsets.x - 30);
+        tool.cancel(); scene.destroy();
+    });
+
+    it('finishes a left-button edit while middle remains held and stops panning on blur', () => {
+        const scene = setup(), view = scene.view, tool = scene.tools[0];
+        view.selectedTool = tool; tool.beginDrag(0, 0); view.currentHoverCoords = { x: 1, y: 1 };
+        spyOn(view, 'drawCanvas').and.stub();
+        view.onMouseDown(new MouseEvent('mousedown', { button: 1, buttons: 5, clientX: 10, clientY: 10 }));
+        const release = new MouseEvent('mouseup', { button: 0, buttons: 4 }); view.canvasElement.nativeElement.dispatchEvent(release); view.onMouseUp(release);
+        expect(scene.state.value.past.length).toBe(1); expect(tool.isDragging).toBeFalse();
+        const x = view.xOffset;
+        view.getMousePos(new MouseEvent('mousemove', { buttons: 4, clientX: 30, clientY: 10 }));
+        expect(view.xOffset).toBe(x - 20);
+        view.onBlur(); view.getMousePos(new MouseEvent('mousemove', { buttons: 4, clientX: 60, clientY: 10 }));
+        expect(view.xOffset).toBe(x - 20); expect(scene.state.value.past.length).toBe(1); scene.destroy();
+    });
+
     it('requires a complete, uncancelled gesture on the same floor for every tool', () => {
         const scene = setup();
         for (const tool of scene.tools) {
