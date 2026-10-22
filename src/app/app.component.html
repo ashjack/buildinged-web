@@ -6,6 +6,8 @@
     <app-tileset-list-window></app-tileset-list-window>
 
     <app-menu></app-menu>
+    <div class="editor-workspace">
+    <app-tool-options></app-tool-options>
 
     <!-- <pan-zoom [config]="panZoomConfig" [ngClass]="isPanning ? 'grabbing' : ''" > -->
     <!-- <app-viewport></app-viewport> -->
@@ -13,9 +15,10 @@
     <!-- </pan-zoom> -->
     <app-viewport-canvas></app-viewport-canvas>
 
-    <app-tile-selection-menu *ngIf="(selectedTool$|async) == 'tool-tile'"></app-tile-selection-menu>
+    <app-tile-selection-menu *ngIf="(selectedTool$|async) == 'tool-tile' || (selectedTool$|async) == 'tool-select-tiles'"></app-tile-selection-menu>
     <app-roof-selection-menu *ngIf="(selectedTool$|async) == 'tool-roof'"></app-roof-selection-menu>
-    <app-furniture-selection-menu *ngIf="(selectedTool$|async) != 'tool-tile' && (selectedTool$|async) != 'tool-roof'"></app-furniture-selection-menu>
+    <app-furniture-selection-menu *ngIf="(selectedTool$|async) == 'tool-furniture'"></app-furniture-selection-menu>
+    </div>
 
     <router-outlet></router-outlet>
 </div>

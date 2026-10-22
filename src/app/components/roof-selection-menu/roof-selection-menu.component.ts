@@ -7,7 +7,7 @@ import { RoofService } from 'src/app/services/roof.service';
   styleUrls: ['./roof-selection-menu.component.scss']
 })
 export class RoofSelectionMenuComponent implements OnInit {
-  constructor(private roofService: RoofService) { }
+  constructor(public roofService: RoofService) { }
 
   roofOptions = this.roofService.roofOptions;
   selectedRoofOptionId: string;

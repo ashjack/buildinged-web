@@ -3,6 +3,7 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { SvgTile } from '../../models/app.models';
 import { DbService } from '../../services/db.service';
 import { liveQuery } from 'dexie';
+import { ToolSettingsService } from '../../services/tool-settings.service';
 
 
 @Component({
@@ -11,7 +12,7 @@ import { liveQuery } from 'dexie';
   styleUrls: ['./tile-selection-menu.component.scss']
 })
 export class TileSelectionMenuComponent implements OnInit{
-  constructor(private sanitizer: DomSanitizer, private db: DbService) { }
+  constructor(private sanitizer: DomSanitizer, private db: DbService, public settings: ToolSettingsService) { }
 
   selectedTileset: string = 'walls_exterior_house_01';
   tilesets: string[] = [];
@@ -93,6 +94,7 @@ export class TileSelectionMenuComponent implements OnInit{
   }
 
   setSelectedTile(tileName: string) {
+    this.settings.stamp = undefined;
     console.log(tileName);
     localStorage.setItem('selectedTile', tileName);
   }

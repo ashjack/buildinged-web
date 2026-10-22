@@ -6,6 +6,7 @@ import { BuildingService } from '../services/building.service';
 import { Room } from '../models/app.models';
 import { RoomService } from '../services/room.service';
 import { GridService } from '../services/grid.service';
+import { Undo, Redo } from '../app.actions';
 
 @Component({
   selector: 'app-menu',
@@ -13,6 +14,9 @@ import { GridService } from '../services/grid.service';
   styleUrls: ['./menu.component.scss']
 })
 export class MenuComponent {
+  readonly currentTool$ = this.store.select(fromRoot.getCurrentTool);
+  readonly undoLabel$ = this.store.select(fromRoot.getUndoLabel);
+  readonly redoLabel$ = this.store.select(fromRoot.getRedoLabel);
   constructor(
     private store: Store<fromRoot.State>,
     private buildingService: BuildingService,
@@ -25,8 +29,11 @@ export class MenuComponent {
     this.store.dispatch(new SetCurrentTool(tool));
   }
 
+  undo(): void { this.store.dispatch(new Undo()); }
+  redo(): void { this.store.dispatch(new Redo()); }
+
   createXml(): void {
-    this.buildingService.saveBuildingToXml();
+    this.buildingService.saveBuildingToXml().catch(error => window.alert(error.message || String(error)));
   }
 
   openFileUpload(): void {
@@ -55,7 +62,7 @@ export class MenuComponent {
 
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(constentsString,"text/xml");
-      this.buildingService.createBuildingFromXml(xmlDoc);
+      this.buildingService.createBuildingFromXml(xmlDoc).catch(error => window.alert(error.message || String(error)));
       console.log(xmlDoc);
     }
     reader.readAsText(file);

@@ -1,5 +1,4 @@
 import { SafeResourceUrl } from "@angular/platform-browser";
-import { GUID } from "../utils/guid";
 
 //Web App Only
 export interface SvgTile {
@@ -20,7 +19,7 @@ export interface SvgTile {
 }
 
 export interface SvgObject {
-    uid: GUID;
+    uid: string;
     tiles: SvgTile[];
     x: number;
     y: number;
@@ -63,6 +62,13 @@ export interface Point {
     y: number;
   }
 
+export interface TileArea {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
 //Tilepacks
 export interface Tilepack {
     name: string;
@@ -73,6 +79,7 @@ export interface Tilepack {
 //Building File Specific
 export interface Building {
     version: number;
+    properties?: Record<string, string>;
     width: number;
     height: number;
     ExteriorWall: number;
@@ -109,11 +116,13 @@ export interface Tile {
 
 export interface Furniture {
     layer?: string;
+    corners?: boolean;
     entries: FurnitureTileEntry[];
 }
 
 export interface FurnitureTileEntry {
     orient: string;
+    grime?: boolean;
     tiles: FurnitureTile[];
 }
 

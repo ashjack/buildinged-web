@@ -53,7 +53,7 @@ import { TogglePopup } from 'src/app/app.actions';
     }
 
     createXml(): void {
-        this.buildingService.saveBuildingToXml();
+        this.buildingService.saveBuildingToXml().catch(error => window.alert(error.message || String(error)));
       }
 
       openTemplatePicker(): void {
@@ -96,11 +96,12 @@ import { TogglePopup } from 'src/app/app.actions';
     
           const parser = new DOMParser();
           const xmlDoc = parser.parseFromString(constentsString,"text/xml");
-          this.buildingService.createBuildingFromXml(xmlDoc);
+          this.buildingService.createBuildingFromXml(xmlDoc)
+            .then(() => this.closeWindow())
+            .catch(error => window.alert(error.message || String(error)));
           console.log(xmlDoc);
         }
         reader.readAsText(file);
-        this.showWindow = false;
       }
 
       openBuildingList(): void {
@@ -110,8 +111,9 @@ import { TogglePopup } from 'src/app/app.actions';
       loadBuilding(xml: string): void {
         const parser = new DOMParser();
         const xmlDoc = parser.parseFromString(xml,"text/xml");
-        this.buildingService.createBuildingFromXml(xmlDoc);
-        this.showWindow = false;
+        this.buildingService.createBuildingFromXml(xmlDoc)
+          .then(() => this.closeWindow())
+          .catch(error => window.alert(error.message || String(error)));
       }
 
       closeWindow(): void {

@@ -9,6 +9,7 @@ import { HttpClientModule } from '@angular/common/http';
 import { TileSelectionMenuComponent } from './components/tile-selection-menu/tile-selection-menu.component';
 import { Store, StoreModule } from '@ngrx/store';
 import { EffectsModule } from '@ngrx/effects';
+import { RootEffects } from './app.effects';
 import { reducer } from './app.reducers';
 import { ViewportCanvasComponent } from './viewport-canvas/viewport-canvas.component';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
@@ -19,6 +20,7 @@ import { FormsModule } from '@angular/forms';
 import { TilesetListWindowComponent } from './components/tileset-list-window/tileset-list-window.component';
 import { BuildingSelectionWindowComponent } from './components/admin/building-selection-window/building-selection-window.component';
 import { RoofSelectionMenuComponent } from './components/roof-selection-menu/roof-selection-menu.component';
+import { ToolOptionsComponent } from './components/tool-options/tool-options.component';
 
 @NgModule({
   declarations: [
@@ -30,7 +32,8 @@ import { RoofSelectionMenuComponent } from './components/roof-selection-menu/roo
     TileDownloadWindowComponent,
     TilesetListWindowComponent,
     BuildingSelectionWindowComponent,
-    RoofSelectionMenuComponent
+    RoofSelectionMenuComponent,
+    ToolOptionsComponent
   ],
   imports: [
     BrowserModule,
@@ -40,7 +43,7 @@ import { RoofSelectionMenuComponent } from './components/roof-selection-menu/roo
     FormsModule,
     StoreModule.forRoot({}),
     StoreModule.forFeature('root', reducer),
-    EffectsModule.forRoot([]),
+    EffectsModule.forRoot([RootEffects]),
     BrowserAnimationsModule,
     BsDropdownModule.forRoot(),
     //StoreModule.forRoot({ reducer: appRed })

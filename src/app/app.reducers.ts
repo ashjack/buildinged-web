@@ -1,11 +1,19 @@
 import { createFeatureSelector, createSelector } from '@ngrx/store';
 import * as Actions from './app.actions';
-import { Building, FurnitureTile, FurnitureTileEntry, SvgTile } from './models/app.models';
+import { Building } from './models/app.models';
 import { VisualFurniture } from './models/furniture-window.models';
+
+import { editRooms, editTiles } from './utils/document-edits';
+import { registerFurniture } from './utils/furniture-definition';
+import { paintTileCells, transformSelection } from './utils/selection-edits';
 
 export interface State
 {
     building: Building | undefined;
+    documentId: number;
+    past: EditCommand[];
+    future: EditCommand[];
+    historyFloor: number | undefined;
     currentTool: string;
     selectedfurniture: VisualFurniture | undefined;
     selectedFurnitureOrient: string;
@@ -17,6 +25,10 @@ export interface State
 
 export const initialState: State = {
     building: undefined,
+    documentId: 0,
+    past: [],
+    future: [],
+    historyFloor: undefined,
     selectedfurniture: undefined,
     selectedFurnitureOrient: 'W',
     currentTool: 'tool-draw-room',
@@ -26,11 +38,56 @@ export const initialState: State = {
     popups: []
 }
 
+export interface EditCommand {
+    label: string;
+    before: Building;
+    after: Building;
+    level: number;
+}
+
+export const HISTORY_LIMIT = 100;
+
+function commandLabel(action: Actions.ActionsUnion): string {
+    switch (action.type) {
+      case Actions.ActionTypes.EditRooms: return action.room === 0 ? 'Erase rooms' : 'Draw rooms';
+      case Actions.ActionTypes.RemoveRoom: return 'Erase rooms';
+      case Actions.ActionTypes.AddRoom: return action.room === 0 ? 'Erase rooms' : 'Draw rooms';
+      case Actions.ActionTypes.EditTiles: return action.tile === null ? 'Erase tiles' : 'Place tiles';
+      case Actions.ActionTypes.PaintTileCells: return action.cells.every(cell => cell.tile === null) ? 'Erase tiles' : 'Paint tiles';
+      case Actions.ActionTypes.TransformSelection: return `${action.edit.erase ? 'Delete' : 'Move'} ${action.edit.mode}`;
+      case Actions.ActionTypes.RemoveTile: return 'Erase tiles';
+      case Actions.ActionTypes.AddTile: return 'Place tile';
+      case Actions.ActionTypes.AddObject: return `Place ${action.obj.type}`;
+      case Actions.ActionTypes.RemoveObject: return 'Delete object';
+      case Actions.ActionTypes.RemoveObjects: return 'Erase objects';
+      default: return 'Edit object';
+    }
+}
+
+/** Existing actions are edit commands; snapshots share their unchanged immutable data. */
 export function reducer(state = initialState, action: Actions.ActionsUnion): State {
-    console.log(`reducer: ${action.type}`);
+    if (action.type === Actions.ActionTypes.Undo || action.type === Actions.ActionTypes.Redo) {
+        const undo = action.type === Actions.ActionTypes.Undo;
+        const list = undo ? state.past : state.future;
+        const command = list[list.length - 1];
+        if (!command) return state;
+        return {
+            ...state, building: undo ? command.before : command.after, historyFloor: command.level,
+            past: undo ? state.past.slice(0, -1) : [...state.past, command],
+            future: undo ? [...state.future, command] : state.future.slice(0, -1),
+        };
+    }
+    const next = reduceState(state, action);
+    if (action.type === Actions.ActionTypes.SetBuilding) return { ...next, past: [], future: [], historyFloor: undefined };
+    if (!state.building || next.building === state.building) return next;
+    const level = 'level' in action ? action.level : state.building.floors.findIndex((floor, index) => floor !== next.building!.floors[index]);
+    const command = { label: commandLabel(action), before: state.building, after: next.building!, level: Math.max(0, level) };
+    return { ...next, past: [...state.past, command].slice(-HISTORY_LIMIT), future: [], historyFloor: undefined };
+}
+
+function reduceState(state: State, action: Actions.ActionsUnion): State {
     switch (action.type) {
       case Actions.ActionTypes.SetCurrentTool: {
-        console.log(state);
         return {
           ...state,
             currentTool: action.tool
@@ -49,57 +106,11 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
         }
       }
       case Actions.ActionTypes.SetSelectedFurniture: {
-
-        if (!state.building) {
-          return {
-            ...state,
-            selectedFurnitureOrient: action.orient,
-            selectedfurniture: action.furniture
-          };
-        }
-
-        let furn = [...state.building.furniture]
-        let furnEntries: FurnitureTileEntry[] = []
-        let furnTiles: FurnitureTile[] = []
-        action.furniture.entries.forEach((f) => {
-          furnTiles = []
-          
-          f.tiles.forEach((fTile) => {
-            console.log(f.orient, fTile.orient)
-            //if(f.orient == fTile.orient)
-            //{
-              furnTiles.push({
-                x: fTile.x,
-                y: fTile.y,
-                name: fTile.name?.replace('.png', "")!
-              })
-            //}
-          })
-
-          furnEntries.push({
-            orient: f.orient,
-            tiles: [...furnTiles]
-          })
-        })
-        //action.furniture.entries.push()
-
-        furn.push({
-          entries: furnEntries
-        })
-
-        const updatedBuilding: Building = {
-          ...state.building,
-          furniture: furn
-        }
-
-        console.log(furn)
-
         return {
           ...state,
           selectedfurniture: action.furniture,
           selectedFurnitureOrient: action.orient,
-          building: updatedBuilding
-        }
+        };
       }
 
       //Popup
@@ -128,313 +139,85 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
       }
 
       //Building
+      case Actions.ActionTypes.PaintTileCells:
+      case Actions.ActionTypes.TransformSelection: {
+        if (!state.building) return state;
+        const building = action.type === Actions.ActionTypes.PaintTileCells
+            ? paintTileCells(state.building, action.level, action.layer, action.cells)
+            : transformSelection(state.building, action.edit);
+        return building === state.building ? state : { ...state, building };
+      }
       case Actions.ActionTypes.SetBuilding: {
         return {
           ...state,
-          building: action.building
+          building: action.building,
+          documentId: state.documentId + 1,
         }
       }
-      case Actions.ActionTypes.AddRoom: {
-        if (!state.building) {
-          return state;
-        }
-
-        const updatedBuilding: Building = {
-          ...state.building,
-          floors: state.building.floors.map((floor, index) => {
-            if (index === action.level) {
-              const updatedRooms = floor.rooms.split(/\r?\n/).map((col, colIndex) => {
-                return col.split(',').map((row, rowIndex) => {
-                  if (colIndex === action.y + 1 && rowIndex === action.x) {
-                    console.log('Found match at ', colIndex, rowIndex)
-                    return action.room;
-                  }
-                  return row;
-                }).join(',');
-              }).join('\n');
-              return {
-                ...floor,
-                rooms: updatedRooms
-              };
-            }
-            return floor;
-          })
-        }
-
-        return {
-          ...state,
-          building: updatedBuilding
-        };
+      case Actions.ActionTypes.AddRoom:
+      case Actions.ActionTypes.RemoveRoom:
+      case Actions.ActionTypes.EditRooms: {
+        if (!state.building) return state;
+        const area = action.type === Actions.ActionTypes.EditRooms ? action.area : { x: action.x, y: action.y, width: 1, height: 1 };
+        const room = action.type === Actions.ActionTypes.RemoveRoom ? 0 : action.room;
+        const building = editRooms(state.building, action.level, area, room);
+        return building === state.building ? state : { ...state, building };
       }
-
-      case Actions.ActionTypes.AddTile: {
-        if (!state.building) {
-          return state;
-        }
-
-        const building = state.building;
-
-        //Get/Create user_tile listing
-        let userTileIndex = building.user_tiles.findIndex(x => x.tile == action.url.replace(".png", ""))
-        let updatedUserTiles = building.user_tiles;
-        console.log(userTileIndex)
-        if(userTileIndex == -1)
-        {
-          updatedUserTiles = [...building.user_tiles, { tile: action.url.replace(".png", "") }];
-          userTileIndex = updatedUserTiles.length;
-        }
-        else
-        {
-          userTileIndex++;
-        }
-
-        const updatedBuilding: Building = {
-          ...building,
-          user_tiles: updatedUserTiles,
-          floors: building.floors.map((floor, index) => {
-            if (index === action.level) {
-              // Found existing layer to modify
-              const existingLayerIndex = floor.tileLayers?.findIndex(layer => layer.layer === action.layer) ?? -1;
-              if (existingLayerIndex !== -1) {
-                const updatedTileLayers = [...floor.tileLayers!];
-                const layer = updatedTileLayers[existingLayerIndex];
-
-                const tilesArray = layer.tiles
-                  .split(/\r?\n/)
-                  .filter(row => row.trim() !== '')
-                  .map(row => row.split(','));
-
-                const expectedWidth = building.width + 1;
-                while (tilesArray.length <= action.y) {
-                  tilesArray.push(Array(expectedWidth).fill('0'));
-                }
-                while (tilesArray[action.y].length <= action.x) {
-                  tilesArray[action.y].push('0');
-                }
-
-                tilesArray[action.y][action.x] = userTileIndex.toString();
-
-                const updatedTiles = tilesArray.map(row => row.join(',')).join('\n');
-
-                updatedTileLayers[existingLayerIndex] = {
-                  ...layer,
-                  tiles: updatedTiles
-                };
-
-                return {
-                  ...floor,
-                  tileLayers: updatedTileLayers
-                };
-              } else {
-                // Create new layer
-                const newLayer = {
-                  layer: action.layer,
-                  tiles: createEmptyMatrix(building.width + 1, building.height + 1, action.x, action.y, userTileIndex)
-                };
-                const updatedTileLayers = floor.tileLayers ? [...floor.tileLayers, newLayer] : [newLayer];
-              
-                return {
-                  ...floor,
-                  tileLayers: updatedTileLayers
-                };
-              }
-              
-              function createEmptyMatrix(width: number, height: number, posX: number, posY: number, tileIndex: number) {
-                const matrix = [];
-                for (let y = 0; y < height; y++) {
-                  const row = [];
-                  for (let x = 0; x < width; x++) {
-                    if (x === posX && y === posY) {
-                      row.push(tileIndex.toString());
-                    } else {
-                      row.push('0');
-                    }
-                  }
-                  matrix.push(row.join(','));
-                }
-                return matrix.join('\n');
-              }
-              
-              
-            }
-            return floor;
-          })
-        };
-        
-        return {
-          ...state,
-          building: updatedBuilding
-        };
-      }        
+      case Actions.ActionTypes.AddTile:
+      case Actions.ActionTypes.RemoveTile:
+      case Actions.ActionTypes.EditTiles: {
+        if (!state.building) return state;
+        const area = action.type === Actions.ActionTypes.EditTiles ? action.area : { x: action.x, y: action.y, width: 1, height: 1 };
+        const tile = action.type === Actions.ActionTypes.RemoveTile ? null : action.type === Actions.ActionTypes.EditTiles ? action.tile : action.url;
+        const building = editTiles(state.building, action.level, area, action.layer, tile);
+        return building === state.building ? state : { ...state, building };
+      }
 
       case Actions.ActionTypes.AddObject: {
-        if (!state.building) {
-          return state;
-        }
-
-        if(action.obj.type == 'furniture')
-        {
-          const furnitureObj = {
-            uid: action.obj.uid,
-            type: 'furniture',
-            FurnitureTiles: 0,
-            orient: action.obj.orient,
-            x: action.obj.x,
-            y: action.obj.y,
-          }
-
-          // let foundMatchingFurniture = false;
-          // state.building.furniture.forEach((furniture, fIndex) => {
-          //   if(!foundMatchingFurniture){
-          //     furniture.entries.forEach((entry, eIndex) => {
-          //       if(!foundMatchingFurniture) {
-          //         const allTilesMatch = action.obj.FurnitureTiles.every((tileToMatch: any) => {
-          //           return entry.tiles.some((tile) => {
-          //             return tile.name === tileToMatch.name && tile.x === tileToMatch.x && tile.y === tileToMatch.y;
-          //           });
-          //         });
-                  
-
-          //         if (allTilesMatch) {
-          //           foundMatchingFurniture = true;
-          //           furnitureObj.FurnitureTiles = fIndex;
-          //         }
-          //       }
-          //     });
-          //   }
-          // });
-
-          let furn = state.building.furniture;
-
-          //if (!foundMatchingFurniture) //Add tiles to furniture
-          //{
-            furn = [...state.building.furniture]
-
-            const entries: FurnitureTileEntry[] = [];
-            action.obj.FurnitureTiles.forEach((tile: SvgTile) => {
-              console.log(tile)
-            })
-
-            console.log(furn)
-
-            // furn.push({
-            //   entries: 
-            // })
-          //}
-
-          const updatedBuilding: Building = {
-            ...state.building,
-            furniture: furn,
-            floors: state.building.floors.map((floor, index) => {
-              if (index === action.level) {
-                return {
-                  ...floor,
-                  objects: [...floor.objects, furnitureObj]
-                };
-              }
-              return floor;
-            })
-          };
-        
-          return {
-            ...state,
-            building: updatedBuilding
-          };
-        }
-
-        const updatedBuilding: Building = {
-          ...state.building,
-          floors: state.building.floors.map((floor, index) => {
-            if (index === action.level) {
-              return {
-                ...floor,
-                objects: [...floor.objects, action.obj]
-              };
-            }
-            return floor;
-          })
-        };
-      
+        const building = state.building;
+        if (!building || !building.floors[action.level] || building.floors.some(floor => floor.objects.some(object => object.uid === action.obj.uid))) return state;
+        const registered = action.obj.type === 'furniture' && action.furnitureDefinition
+          ? registerFurniture(building.furniture, action.furnitureDefinition) : undefined;
+        const object = registered ? { ...action.obj, FurnitureTiles: registered.index } : action.obj;
         return {
           ...state,
-          building: updatedBuilding
+          building: {
+            ...building,
+            furniture: registered?.furniture || building.furniture,
+            floors: building.floors.map((floor, index) => index === action.level
+              ? { ...floor, objects: [...floor.objects, object] } : floor),
+          },
         };
       }
-      case Actions.ActionTypes.UpdateObject: {
-        if (!state.building) {
-          return state;
-        }
-      
-        if (!Array.isArray(state.building.floors)) {
-          return state;
-        }
-      
-        const updatedBuilding: Building = {
-          ...state.building,
-          floors: state.building.floors.map((floor) => {
-            if (!Array.isArray(floor.objects)) {
-              return floor;
-            }
-      
-            const updatedObjects = floor.objects.map(object => {
-              if (object.uid === action.obj.uid) {
-                return {
-                  ...object,
-                  ...action.obj
-                };
-              }
-              return object;
-            });
-      
-            return {
-              ...floor,
-              objects: updatedObjects
-            };
-          })
-        };
-      
-        console.log(updatedBuilding);
-
-        return {
-          ...state,
-          building: updatedBuilding
-        };
-      }
-      
+      case Actions.ActionTypes.UpdateObject:
       case Actions.ActionTypes.RemoveObject: {
-        if (!state.building) {
-          return state;
+        const building = state.building;
+        if (!building || !action.uid) return state;
+        const level = building.floors.findIndex(floor => floor.objects.some(object => object.uid === action.uid));
+        if (level < 0) return state;
+        const floor = building.floors[level];
+        let objects: typeof floor.objects;
+        if (action.type === Actions.ActionTypes.RemoveObject) {
+          objects = floor.objects.filter(object => object.uid !== action.uid);
+        } else {
+          const { uid: ignored, ...changes } = action.changes;
+          const original = floor.objects.find(object => object.uid === action.uid)!;
+          if (!Object.entries(changes).some(([key, value]) => original[key] !== value)) return state;
+          objects = floor.objects.map(object => object.uid === action.uid ? { ...object, ...changes } : object);
         }
-      
-       
-
-        const updatedBuilding: Building = {
-          ...state.building,
-          floors: state.building.floors.map((floor, index) => {
-            if (index === action.level) {
-              const updatedObjects = [...floor.objects];
-              const indexToRemove = updatedObjects.findIndex(object => {
-          return object.x === action.obj.x && object.y === action.obj.y && object.type === action.obj.type && object.orient === action.obj.orient;
-              });
-              if (indexToRemove !== -1) {
-          updatedObjects.splice(indexToRemove, 1);
-              }
-              return {
-          ...floor,
-          objects: updatedObjects
-              };
-            }
-            return floor;
-          })
-        };
-      
-        return {
-          ...state,
-          building: updatedBuilding
-        };
+        return { ...state, building: { ...building, floors: building.floors.map((value, index) => index === level ? { ...floor, objects } : value) } };
       }
-      
-      
+
+      case Actions.ActionTypes.RemoveObjects: {
+        const building = state.building;
+        if (!building) return state;
+        const uids = new Set(action.uids);
+        const floors = building.floors.map(floor => {
+            const objects = floor.objects.filter(object => !uids.has(object.uid));
+            return objects.length === floor.objects.length ? floor : { ...floor, objects };
+        });
+        return floors.every((floor, index) => floor === building.floors[index]) ? state : { ...state, building: { ...building, floors } };
+      }
 
       default: {
         return state;
@@ -444,6 +227,11 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
 
 export const getRootState = createFeatureSelector<State>('root');
 export const getBuilding = createSelector(getRootState, (state: State) => state.building);
+export const getDocumentId = createSelector(getRootState, (state: State) => state.documentId);
+export const getHistoryFloor = createSelector(getRootState, state => state.historyFloor);
+export const getDocumentProjection = createSelector(getBuilding, getDocumentId, getHistoryFloor, (building, documentId, historyFloor) => ({ building, documentId, historyFloor }));
+export const getUndoLabel = createSelector(getRootState, state => state.past[state.past.length - 1]?.label);
+export const getRedoLabel = createSelector(getRootState, state => state.future[state.future.length - 1]?.label);
 export const getSelectedFurniture = createSelector(getRootState, (state: State) => state.selectedfurniture);
 export const getSelectedFurnitureOrient = createSelector(getRootState, (state: State) => state.selectedFurnitureOrient);
 export const getCurrentTool = createSelector(getRootState, (state: State) => state.currentTool);

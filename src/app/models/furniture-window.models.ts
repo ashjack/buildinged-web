@@ -8,10 +8,13 @@ export interface BFurnitureGroup {
 
 export interface BFurniture {
     entries: BEntry[];
+    layer?: string;
+    corners?: boolean;
 }
 
 export interface BEntry {
     orient: string;
+    grime?: boolean;
     items: BEntryItem[];
 }
 
@@ -23,10 +26,13 @@ export interface BEntryItem {
 //Misc
 export interface VisualFurniture {
     entries: VisualFurnitureEntry[];
+    layer?: string;
+    corners?: boolean;
 }
 
 export interface VisualFurnitureEntry {
     orient: string;
+    grime?: boolean;
     tiles: SvgTile[];
     xSize: number;
     ySize: number;

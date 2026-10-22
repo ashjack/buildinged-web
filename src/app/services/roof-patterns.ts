@@ -4,6 +4,7 @@ export interface RoofTileSource { enum?: string; tile: string; offset?: string; 
 export interface RoofTileSet { capTiles: RoofTileSource[]; slopeTiles: RoofTileSource[]; topTiles: RoofTileSource[]; }
 export interface RoofPlacementOptions {
     x: number; y: number; level: number; width: number; height: number; roofType: string; tileset: RoofTileSet;
+    depth?: string;
     hasRoofTile?: (x: number, y: number, level: number) => boolean;
     isManualRoofTile?: (x: number, y: number, level: number) => boolean;
     hasRoofCapTile?: (x: number, y: number, level: number) => boolean;
@@ -42,12 +43,20 @@ export const ROOF_OPTIONS: RoofOption[] = [
     { id: "corner-outer-se", label: "Corner Outer (SE)", roofType: "CornerOuterSE", group: "Corners" },
 ];
 
-type Depth = "Zero" | "Point5" | "One" | "OnePoint5" | "Two" | "TwoPoint5" | "Three";
+export type Depth = "Zero" | "Point5" | "One" | "OnePoint5" | "Two" | "TwoPoint5" | "Three";
 interface Rect { x: number; y: number; width: number; height: number; }
 interface Matrix { rect: Rect; enums: (string | null)[]; tag?: string; }
 
 export function getDefaultRoofOption(): RoofOption { return ROOF_OPTIONS.find(o => o.roofType === "PeakNS")!; }
 export function getRoofOptionById(id: string): RoofOption { return ROOF_OPTIONS.find(o => o.id === id) || getDefaultRoofOption(); }
+
+export function defaultRoofCaps(type: string) {
+    const corner = type.startsWith('Corner');
+    return { cappedW: !corner && !['SlopeE', 'ShallowSlopeE'].includes(type),
+        cappedN: !corner && !['SlopeS', 'ShallowSlopeS'].includes(type),
+        cappedE: !corner && !['SlopeW', 'ShallowSlopeW'].includes(type),
+        cappedS: !corner && !['SlopeN', 'ShallowSlopeN'].includes(type) };
+}
 
 export function normalizeRoofSize(width: number, height: number, type: string): { width: number; height: number } {
     if (["SlopeW", "SlopeE"].includes(type)) width = clamp(width, 1, 3);
@@ -57,7 +66,20 @@ export function normalizeRoofSize(width: number, height: number, type: string): 
     if (type === "ShallowPeakNS") width = width < 4 ? 2 : 4;
     if (type === "ShallowPeakWE") height = height < 4 ? 2 : 4;
     if (type.startsWith("Corner")) width = height = clamp(Math.max(width, height), 1, 3);
+    if (["DormerW", "DormerE"].includes(type)) width = Math.max(width, Math.ceil(Math.min(height, 6) / 2));
+    if (["DormerN", "DormerS"].includes(type)) height = Math.max(height, Math.ceil(Math.min(width, 6) / 2));
     return { width, height };
+}
+
+// Native loading calls resize(): peaks derive depth from size; slopes and corners
+// retain the saved half-depth flag; a flat roof retains its explicit height.
+export function resolveRoofDepth(width: number, height: number, type: string, saved?: string): Depth {
+    if (type === 'FlatTop' && ['Zero', 'One', 'Two', 'Three'].includes(saved || '')) return saved as Depth;
+    const depth = calculateRoofDepth(width, height, type);
+    if ((type.startsWith('Corner') || /^Slope[WNES]$/.test(type)) && ['Point5', 'OnePoint5', 'TwoPoint5'].includes(saved || '')) {
+        return ({ One: 'Point5', Two: 'OnePoint5', Three: 'TwoPoint5' } as Record<string, Depth>)[depth] || depth;
+    }
+    return depth;
 }
 
 export function calculateRoofDepth(width: number, height: number, type: string): Depth {
@@ -72,32 +94,34 @@ export function calculateRoofDepth(width: number, height: number, type: string):
 export function buildRoofPlacements(input: RoofPlacementOptions): SvgTile[] {
     const options = { ...input, ...normalizeRoofSize(input.width, input.height, input.roofType) };
     const output: SvgTile[] = [];
-    const depth = calculateRoofDepth(options.width, options.height, options.roofType);
-    const add = (source: RoofTileSource | undefined, x: number, y: number, layer: string, floor = false, tag?: string) => {
-        if (!source) return;
+    const depth = resolveRoofDepth(options.width, options.height, options.roofType, options.depth);
+    const add = (source: RoofTileSource | undefined, x: number, y: number, layer: string, floor = false, tag?: string, level = options.level) => {
+        if (!source?.tile || source.tile === 'None') return;
         const [offsetX, offsetY] = parseOffset(source.offset);
+        x += offsetX; y += offsetY;
         const cap = layer === "RoofCap";
         const occupied = floor ? options.hasFloorTile?.(x, y, options.level) : cap
             ? options.hasRoofCapTile?.(x, y, options.level) : options.hasRoofTile?.(x, y, options.level);
         const manual = floor ? options.isManualFloorTile?.(x, y, options.level) : cap
             ? options.isManualRoofCapTile?.(x, y, options.level) : options.isManualRoofTile?.(x, y, options.level);
-        output.push({ name: source.tile + ".png", url: source.tile + ".png", x, y, offsetX, offsetY,
-            layer: occupied && !manual ? (floor ? "FloorOverlay" : cap ? "RoofCap2" : "Roof2") : layer,
-            level: options.level, tag });
+        output.push({ name: source.tile + ".png", url: source.tile + ".png", x, y,
+            layer: !floor && occupied && !manual ? (cap ? "RoofCap2" : "Roof2") : layer,
+            level, tag });
     };
-    const place = (matrix: Matrix | undefined, tiles: RoofTileSource[], layer: string, floor = false) => {
+    const place = (matrix: Matrix | undefined, tiles: RoofTileSource[], layer: string, floor = false, level = options.level) => {
         if (!matrix) return;
         matrix.enums.forEach((name, index) => {
             if (!name) return;
             add(find(tiles, name), matrix.rect.x + index % matrix.rect.width,
-                matrix.rect.y + Math.floor(index / matrix.rect.width), layer, floor, matrix.tag);
+                matrix.rect.y + Math.floor(index / matrix.rect.width), layer, floor, matrix.tag, level);
         });
     };
 
     place(slopeMatrix(options, depth), options.tileset.slopeTiles, "Roof");
     for (const cap of capMatrices(options, depth)) place(cap, options.tileset.capTiles, "RoofCap");
     place(cornerMatrix(options, depth), options.tileset.slopeTiles, "Roof");
-    place(topMatrix(options, depth), options.tileset.topTiles, "Floor", true);
+    place(topMatrix(options, depth), options.tileset.topTiles,
+        depth === 'Zero' || depth === 'Three' ? 'Floor' : 'RoofTop', true, options.level + (depth === 'Three' ? 1 : 0));
     return output;
 }
 
@@ -166,6 +190,29 @@ function capMatrices(o: RoofPlacementOptions, depth: Depth): Matrix[] {
         edge("W", { x: o.x, y: o.y, width: 1, height: shallowWE.length }, shallowWE);
         edge("E", { x: o.x + o.width, y: o.y, width: 1, height: shallowWE.length }, shallowWE);
     }
+    // The corners facing away from the isometric camera have cap faces only.
+    const cornerSides: Record<string, Partial<Record<'W' | 'E' | 'N' | 'S', 'Rise' | 'Fall' | 'Gap'>>> = {
+        CornerInnerSW: { W: 'Gap', E: 'Fall', N: 'Fall', S: 'Gap' },
+        CornerInnerNW: { W: 'Gap', E: 'Rise', N: 'Gap', S: 'Fall' },
+        CornerInnerNE: { W: 'Rise', E: 'Gap', N: 'Gap', S: 'Rise' },
+        CornerInnerSE: { W: 'Fall', E: 'Gap', N: 'Rise', S: 'Gap' },
+        CornerOuterSW: { E: 'Rise', N: 'Rise' }, CornerOuterNW: { E: 'Fall', S: 'Rise' },
+        CornerOuterNE: { W: 'Fall', S: 'Fall' }, CornerOuterSE: { W: 'Rise', N: 'Fall' },
+        FlatTop: { W: 'Gap', E: 'Gap', N: 'Gap', S: 'Gap' },
+    };
+    for (const side of ['W', 'E', 'N', 'S'] as const) {
+        const kind = cornerSides[t]?.[side];
+        if (!kind) continue;
+        const vertical = side === 'W' || side === 'E', axis = vertical ? 'E' : 'S';
+        const length = vertical ? o.height : o.width;
+        const gap = depth === 'One' ? 1 : depth === 'Two' ? 2 : depth === 'Three' ? 3 : 0;
+        const p = kind === 'Gap' ? gap ? Array(length).fill(`CapGap${axis}${gap}`) : [] : capSide(depth, axis, kind);
+        const reversed = kind === 'Rise' && vertical || kind === 'Fall' && !vertical;
+        edge(side, { x: o.x + (side === 'E' ? o.width : !vertical && reversed ? o.width - p.length : 0),
+            y: o.y + (side === 'S' ? o.height : vertical && reversed ? o.height - p.length : 0),
+            width: vertical ? 1 : p.length, height: vertical ? p.length : 1 }, p);
+    }
+    result.sort((a, b) => ['cappedW', 'cappedE', 'cappedN', 'cappedS'].indexOf(a.tag!) - ['cappedW', 'cappedE', 'cappedN', 'cappedS'].indexOf(b.tag!));
     return result;
 }
 
@@ -209,6 +256,7 @@ function cornerMatrix(o: RoofPlacementOptions, depth: Depth): Matrix | undefined
     };
     const enums = matrices[t]?.[n];
     if (!enums) return undefined; // Other orientations expose cap faces only in TileZed's isometric view.
+    if (['CornerOuterSW', 'CornerOuterNE'].includes(t) && ['Point5', 'OnePoint5', 'TwoPoint5'].includes(depth)) return undefined;
     return { rect: bounds(o), enums };
 }
 
@@ -235,7 +283,7 @@ function capPeak(depth: Depth, axis: "E" | "S", length: number): string[] {
 }
 
 function capSide(depth: Depth, axis: "E" | "S", direction: "Rise" | "Fall"): string[] {
-    const count = depth === "Three" || depth === "TwoPoint5" ? 3 : depth === "Two" || depth === "OnePoint5" ? 2 : depth === "One" ? 1 : 0;
+    const count = depth === "Three" ? 3 : depth === "Two" || depth === "TwoPoint5" ? 2 : depth === "One" || depth === "OnePoint5" ? 1 : 0;
     const values = Array.from({ length: count }, (_, i) => `Cap${direction}${axis}${i + 1}`);
     return direction === "Fall" && axis === "S" || direction === "Rise" && axis === "E" ? values.reverse() : values;
 }

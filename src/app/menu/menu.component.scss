@@ -1,6 +1,8 @@
 .toolbar {
     width: 100%;
-    height: 40px;
+    min-height: 40px;
+    display: flex;
+    flex-wrap: wrap;
     background-color: lightgray;
 }
 
@@ -11,3 +13,14 @@
     border: solid 1px gray;
     cursor: pointer;
 }
+
+.history-button {
+    height: 40px;
+    padding: 0 10px;
+    border: 1px solid gray;
+    background: lightgray;
+    cursor: pointer;
+}
+
+.history-button:disabled { cursor: default; opacity: 0.5; }
+.toolbar-button.active, .history-button.active { background: #9cc5ee; box-shadow: inset 0 -3px #225d97; }

@@ -43,8 +43,9 @@ describe("BuildingEd roof placement", () => {
             },
         });
         const slope = result.find(value => value.layer === "Roof")!;
-        expect(slope.offsetX).toBe(1);
-        expect(slope.offsetY).toBe(-2);
+        expect(slope.x).toBe(1);
+        expect(slope.y).toBe(-2);
+        expect(slope.offsetX).toBeUndefined();
     });
 
     it("keeps caps on cap layers when a slope occupies the same square", () => {

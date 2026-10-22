@@ -1,15 +1,15 @@
 import { Injectable } from "@angular/core";
-import { GridRoom, SvgObject, SvgObjectOverlay, SvgTile } from "../models/app.models";
-import ToolDrawRoom from "../tools/tool-draw-room";
+import { SvgObject, SvgObjectOverlay, SvgTile } from "../models/app.models";
 import { DbService, PngTile } from "./db.service";
 import { SafeResourceUrl } from "@angular/platform-browser";
 import { CacheService } from "./cache.service";
-import { GUID } from "../utils/guid";
+import { Subject } from 'rxjs';
 
 @Injectable({
     providedIn: 'root',
   })
 export class GridService {
+    readonly selectedLevelChanges = new Subject<number>();
     //rooms: GridRoom[] = [];
 
     roomTiles: SvgTile[] = [];
@@ -23,6 +23,30 @@ export class GridService {
 
     fetchedTiles: PngTile[] = [];
     fetchingTiles: string[] = [];
+
+    private rebuilding = false;
+    private objectUid: string | undefined;
+
+    beginRebuild(): void {
+        this.rebuilding = true;
+        this.roomTiles = [];
+        this.userTiles = [];
+        this.tiles = [];
+        this.objects = [];
+        this.objectOverlays = [];
+        this.hiddenTiles = [];
+        this.excludedTiles = [];
+    }
+
+    endRebuild(): void {
+        this.rebuilding = false;
+        this.redrawTiles();
+    }
+
+    renderObject(uid: string, render: () => unknown): void {
+        this.objectUid = uid;
+        try { render(); } finally { this.objectUid = undefined; }
+    }
 
     constructor(private db: DbService, private cacheService: CacheService) { }
 
@@ -83,44 +107,34 @@ export class GridService {
         }
     }
 
-    redrawTiles() {
-      this.tiles = [];
+    redrawTiles(generated: SvgTile[] = this.roomTiles): void {
+      if (this.rebuilding) return;
       const level = this.getSelectedLevel();
-  
-      // Draw lower layers offset & greyed out
-      this.roomTiles.forEach((tile: SvgTile) => {
-          if (!tile.hidden && !tile.excluded && tile.level <= level) {
-              const levelDif = Math.abs(tile.level - level)
-              const offsetX = 3 * (level - tile.level);
-              const offsetY = 3 * (level - tile.level);
-
-              const tileOffsetX = tile.offsetX ? tile.offsetX : 0;
-              const tileOffsetY = tile.offsetY ? tile.offsetY : 0;
-
-              this.placeTile_old(tile.x + offsetX, tile.y + offsetY, tile.level, tileOffsetX + (levelDif * 0.05), tileOffsetY + (levelDif * 0.05), tile.name, tile.layer, tile.auto);
-          }
-      });
-  
-      this.userTiles.forEach((tile: SvgTile) => {
-          if (!tile.hidden && !tile.excluded && tile.level <= level) {
-            const levelDif = Math.abs(tile.level - level)
-            const offsetX = 3 * (level - tile.level);
-            const offsetY = 3 * (level - tile.level);
-
-            const tileOffsetX = tile.offsetX ? tile.offsetX : 0;
-            const tileOffsetY = tile.offsetY ? tile.offsetY : 0;
-              this.placeTile_old(tile.x + offsetX, tile.y + offsetY, tile.level, tileOffsetX + (levelDif * 0.05), tileOffsetY + (levelDif * 0.05), tile.name, tile.layer,  tile.auto);
-          }
-      });
-  
-      // Sort tiles by level first (lower levels first), then by x and then y
+      const tiles = new Map<string, SvgTile>();
+      // Object tiles override automatic room tiles; manual tiles override both.
+      for (const source of [...generated.filter(tile => tile.auto), ...generated.filter(tile => !tile.auto), ...this.userTiles]) {
+        if (source.hidden || source.excluded || source.level > level) continue;
+        const difference = level - source.level;
+        const tile = {
+          ...source,
+          x: source.x + 3 * difference, y: source.y + 3 * difference,
+          offsetX: (source.offsetX || 0) + difference * 0.05,
+          offsetY: (source.offsetY || 0) + difference * 0.05,
+          url: this.getIndividualTile(source.name!),
+        };
+        tiles.set([tile.level, tile.x, tile.y, tile.layer].join(':'), tile);
+      }
+      this.tiles = [...tiles.values()];
       this.sortTiles();
-  }
-  
-  
+    }
 
     placeTile2(tile: SvgTile, isRoom: boolean)
     {
+      if (this.objectUid) {
+        tile = { ...tile, object: this.objectUid };
+        isRoom = true;
+      }
+      if (!tile.name || tile.name === 'undefined.png') return;
       if(isRoom)
       {
         //check if roomTiles contains tile
@@ -160,57 +174,11 @@ export class GridService {
       this.redrawTiles();
   }
 
-  placeTile_old(x: number, y: number, level: number, xOffset: number, yOffset: number, name: string = '', layer: string = 'Walls', auto: boolean = false) {
-
-    if(name === '')
-    {
-      name = localStorage.getItem('selectedTile')!;
-    }
-
-    if(this.tileExists(x, y, level, layer))
-    {
-      //edit tile name and url
-      const tile = this.getTileAt(x, y, level, layer);
-      if(tile)
-      {
-        tile.name = name;
-        tile.url = this.getIndividualTile(name);
-        return;
-      }
-    }
-    const tile: SvgTile = {
-      name: name,
-            url: this.getIndividualTile(name),
-      x: x,
-      y: y,
-      level: level,
-      offsetX: xOffset,
-      offsetY: yOffset,
-      layer: layer,
-    };
-
-    this.tiles.push(tile);
-    //this.tileGhosts = [];
+  addObject(obj: SvgObject): void {
+    const previous = this.objects.findIndex(object => object.uid === obj.uid);
+    if (previous < 0) this.objects.push(obj);
+    else this.objects[previous] = obj;
   }
-
-  addObject(obj: SvgObject)
-  {
-    //obj.uid = GUID.generateGUID();
-    this.objects.push(obj);
-  }
-
-  removeObject(obj: any, level: number) {
-    const index = this.objects.findIndex(x => 
-        x.x === obj.x && 
-        x.y === obj.y && 
-        x.type === obj.type && 
-        x.orient === obj.orient && 
-        x.level === level
-    );
-    if (index !== -1) {
-        this.objects.splice(index, 1);
-    }
-}
 
   layers: string[] = [
     'Floor', 
@@ -286,16 +254,9 @@ export class GridService {
 }
 
 
-  removeTile(x: number, y: number, level: number, layer: string) {
-    this.tiles = this.tiles.filter((tile: SvgTile) => {
-      return tile.x !== x || tile.y !== y || tile.layer !== layer || tile.level !== level;
-    });
-  }
-
   getTileAt(x: number, y: number, level: number, layer: string): SvgTile | undefined {
-    return this.tiles.find((tile: SvgTile) => {
-      return tile.x === x && tile.y === y && tile.level === level && tile.layer === layer;
-    });
+    const matches = (tile: SvgTile) => tile.x === x && tile.y === y && tile.level === level && tile.layer === layer;
+    return this.userTiles.find(matches) || [...this.roomTiles].reverse().find(matches);
   }
 
   getObjectFromTile(x: number, y: number, level: number, layer: string): SvgObject | undefined {
@@ -312,9 +273,7 @@ export class GridService {
   }
 
   tileExists(x: number, y: number, level: number, layer: string): boolean {
-    return this.tiles.some((tile: SvgTile) => {
-      return tile.x === x && tile.y === y && tile.level === level && tile.layer == layer;
-    });
+    return this.getTileAt(x, y, level, layer) !== undefined;
   }
 
   tileHidden(x: number, y: number, level: number, layer: string): boolean {
@@ -384,8 +343,9 @@ export class GridService {
     }
 
     setSelectedLevel(level: number) {
-      console.log(level);
+      const changed = this.getSelectedLevel() !== level;
       localStorage.setItem('selectedLevel', level.toString());
+      if (changed) this.selectedLevelChanges.next(level);
     }
 
     public getFullDir(dir: string): string

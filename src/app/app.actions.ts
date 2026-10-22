@@ -1,16 +1,25 @@
 import { Action } from "@ngrx/store";
-import { Building } from "./models/app.models";
+import { Building, Furniture, TileArea } from "./models/app.models";
+import { GUID } from './utils/guid';
 import { VisualFurniture } from "./models/furniture-window.models";
+import { SelectionEdit, TileCellEdit } from './utils/selection-edits';
 
 export enum ActionTypes {
     SetBuilding = '[Building] Set Building',
     AddObject = '[Building] Add Object',
     UpdateObject = '[Building] Update Object',
     RemoveObject = '[Building] Remove Object',
+    RemoveObjects = '[Building] Remove Objects',
+    Undo = '[Building] Undo',
+    Redo = '[Building] Redo',
     AddRoom = '[Building] Add Room',
     RemoveRoom = '[Building] Remove Room',
     AddTile = '[Building] Add Tile',
     RemoveTile = '[Building] Remove Tile',
+    EditRooms = '[Building] Edit Rooms',
+    EditTiles = '[Building] Edit Tiles',
+    PaintTileCells = '[Building] Paint Tile Cells',
+    TransformSelection = '[Building] Transform Selection',
 
     SetTileCount = '[Loading] Set Tile Count',
 
@@ -25,25 +34,69 @@ export enum ActionTypes {
 export class SetBuilding implements Action {
     readonly type = ActionTypes.SetBuilding;
 
-    constructor(public building: Building) { }
+    constructor(public building: Building) {
+        const used = new Set<string>();
+        this.building = {
+            ...building,
+            floors: building.floors.map(floor => ({
+                ...floor,
+                objects: floor.objects.map(object => {
+                    let uid = object.uid;
+                    if (typeof uid !== 'string' || !uid || used.has(uid)) uid = GUID.generateGUID();
+                    used.add(uid);
+                    return { ...object, uid };
+                }),
+            })),
+        };
+    }
 }
 
 export class AddObject implements Action {
     readonly type = ActionTypes.AddObject;
 
-    constructor(public obj: any, public level: number) { }
+    constructor(public obj: any, public level: number, public furnitureDefinition?: Furniture) {
+        this.obj = { ...obj, uid: typeof obj.uid === 'string' && obj.uid ? obj.uid : GUID.generateGUID() };
+    }
 }
 
 export class UpdateObject implements Action {
     readonly type = ActionTypes.UpdateObject;
 
-    constructor(public obj: any) { }
+    constructor(public uid: string, public changes: Record<string, unknown>) { }
 }
 
 export class RemoveObject implements Action {
     readonly type = ActionTypes.RemoveObject;
 
-    constructor(public obj: any, public level: number) { }
+    constructor(public uid: string) { }
+}
+
+export class RemoveObjects implements Action {
+    readonly type = ActionTypes.RemoveObjects;
+    constructor(public uids: string[]) { }
+}
+
+export class Undo implements Action { readonly type = ActionTypes.Undo; }
+export class Redo implements Action { readonly type = ActionTypes.Redo; }
+
+export class PaintTileCells implements Action {
+    readonly type = ActionTypes.PaintTileCells;
+    constructor(public level: number, public layer: string, public cells: TileCellEdit[]) { }
+}
+export class TransformSelection implements Action {
+    readonly type = ActionTypes.TransformSelection;
+    constructor(public edit: SelectionEdit) { }
+    get level(): number { return this.edit.level; }
+}
+
+export class EditRooms implements Action {
+    readonly type = ActionTypes.EditRooms;
+    constructor(public area: TileArea, public level: number, public room: number) { }
+}
+
+export class EditTiles implements Action {
+    readonly type = ActionTypes.EditTiles;
+    constructor(public area: TileArea, public level: number, public layer: string, public tile: string | null) { }
 }
 
 export class AddRoom implements Action {
@@ -112,10 +165,17 @@ export type ActionsUnion =
     AddObject |
     UpdateObject |
     RemoveObject |
+    RemoveObjects |
+    Undo |
+    Redo |
     AddRoom |
     RemoveRoom |
     AddTile |
     RemoveTile |
+    EditRooms |
+    EditTiles |
+    PaintTileCells |
+    TransformSelection |
     SetTileCount |
     TogglePopup
     ;

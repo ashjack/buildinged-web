@@ -1,5 +1,5 @@
 import { HttpClient } from "@angular/common/http";
-import { AfterViewInit, Component, ElementRef, HostListener, OnInit, ViewChild } from "@angular/core";
+import { AfterViewInit, Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from "@angular/core";
 import { DomSanitizer, SafeResourceUrl } from "@angular/platform-browser";
 import { Store } from "@ngrx/store";
 import { Observable, Subject, from, take, takeUntil } from "rxjs";
@@ -15,7 +15,8 @@ import ToolTile from "../tools/tool-tile";
 import { GridTile, Point, SvgObject, SvgObjectOverlay, SvgTile, Tilepack } from "../models/app.models";
 import { CacheService } from "../services/cache.service";
 import { BuildingService } from "../services/building.service";
-import { RemoveObject, ScheduleRedraw, UpdateObject } from "../app.actions";
+import { RemoveObject, ScheduleRedraw, UpdateObject, Undo, Redo } from "../app.actions";
+import { historyShortcut, isTextEditing } from '../utils/editor-shortcuts';
 import ToolDoor from "../tools/tool-door";
 import { DoorService } from "../services/door.service";
 import ToolWindow from "../tools/tool-window";
@@ -23,13 +24,18 @@ import { WindowService } from "../services/window.service";
 import ToolFurniture from "../tools/tool-furniture";
 import ToolRoof from "../tools/tool-roof";
 import { RoofService } from "../services/roof.service";
+import ToolSelect from '../tools/tool-select';
+import ToolWall from '../tools/tool-wall';
+import ToolStairs from '../tools/tool-stairs';
+import { ToolSettingsService } from '../services/tool-settings.service';
+import { fractionalCellPosition, nativeTileEdge, nativeWallCorner } from '../utils/native-pointer';
 
 @Component({
     selector: 'app-viewport-canvas',
     templateUrl: './viewport-canvas.component.html',
     styleUrls: ['./viewport-canvas.component.scss']
 })
-export class ViewportCanvasComponent implements OnInit, AfterViewInit{
+export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy{
     rowArray = Array(20).fill(0).map((x,i)=>i);
     colArray = Array(20).fill(0).map((x,i)=>i);
 
@@ -50,6 +56,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   scheduleRedraw$: Observable<boolean>;
 
   private unsubscribe: Subject<void> = new Subject();
+  private readonly mouseMove = (event: MouseEvent) => this.getMousePos(event);
 
   currentHoverCoords: Point = {x: 0, y: 0};
   currentHoverCoordSegments = {edge: '', corner: ''}
@@ -79,7 +86,8 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     private cacheService: CacheService,
     private doorService: DoorService,
     private windowService: WindowService,
-    private roofService: RoofService) 
+    private roofService: RoofService,
+    public toolSettings: ToolSettingsService = new ToolSettingsService())
   { 
     this.selectedTool$ = store.select(fromRoot.getCurrentTool);
     this.scheduleRedraw$ = store.select(fromRoot.getRedrawSchedule);
@@ -113,10 +121,22 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     this.selectedTool$.pipe(
       takeUntil(this.unsubscribe)
     ).subscribe((x) => {
+      this.selectedTool.cancel();
       switch(x)
       {
         case 'tool-tile':
-          this.selectedTool = new ToolTile(this.gridService, this.store);
+          this.selectedTool = new ToolTile(this.gridService, this.store, this.toolSettings);
+          break;
+        case 'tool-select-objects':
+        case 'tool-select-rooms':
+        case 'tool-select-tiles':
+          this.selectedTool = new ToolSelect(x.replace('tool-select-', '') as 'objects' | 'rooms' | 'tiles', this.gridService, this.buildingService, this.store, this.toolSettings);
+          break;
+        case 'tool-wall':
+          this.selectedTool = new ToolWall(this.buildingService, this.gridService, this.store, this.toolSettings);
+          break;
+        case 'tool-stairs':
+          this.selectedTool = new ToolStairs(this.buildingService, this.gridService, this.store, this.toolSettings);
           break;
         case 'tool-draw-room':
           this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService, this.store);
@@ -137,7 +157,19 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
           this.selectedTool = new ToolDrawRoom(this.roomService, this.gridService, this.buildingService, this.store);
           break;
       }
+      this.selectedTool.key = this.key;
     });
+
+    let documentId = -1;
+    this.store.select(fromRoot.getDocumentProjection).pipe(takeUntil(this.unsubscribe)).subscribe(document => {
+      this.cancelGesture();
+      if (documentId !== document.documentId) {
+        documentId = document.documentId; this.selectedTool.reset();
+        this.toolSettings.exterior = this.toolSettings.interior = this.toolSettings.exteriorTrim = this.toolSettings.interiorTrim = this.toolSettings.stairs = null;
+        this.toolSettings.stamp = undefined;
+      }
+    });
+    this.gridService.selectedLevelChanges.pipe(takeUntil(this.unsubscribe)).subscribe(() => { this.cancelGesture(); this.selectedTool.reset(); });
 
     this.scheduleRedraw$.pipe(
       takeUntil(this.unsubscribe)
@@ -156,7 +188,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   ngAfterViewInit() {
     const canvas: HTMLCanvasElement = this.canvasElement.nativeElement;
     this.ctx = canvas.getContext('2d');
-    canvas.addEventListener("mousemove", (event) => this.getMousePos(event));
+    canvas.addEventListener("mousemove", this.mouseMove);
 
     if(this.ctx)
     {
@@ -167,12 +199,35 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     this.loadBuildingXmlFromLocalStorage();
   }
 
+  ngOnDestroy(): void {
+    this.selectedTool.cancel();
+    this.unsubscribe.next();
+    this.unsubscribe.complete();
+    this.canvasElement?.nativeElement.removeEventListener('mousemove', this.mouseMove);
+  }
+
+  cancelGesture(): void {
+    this.selectedTool.cancel();
+    if (this.canvasElement?.nativeElement) this.canvasElement.nativeElement.style.cursor = 'default';
+    this.currentHoverObject = undefined;
+    this.currentHoverOverlay = undefined;
+    this.currentHoverSubOverlay = undefined;
+  }
+
+  private deleteHoveredObject(): void {
+    if (this.selectedTool.isDragging) { this.cancelGesture(); return; }
+    if (this.selectedTool.deleteSelection()) { this.gridService.redrawTiles(); return; }
+    const object = this.currentHoverObject;
+    if (object && object.level === this.gridService.getSelectedLevel()) this.store.dispatch(new RemoveObject(object.uid));
+    this.cancelGesture();
+  }
+
   loadBuildingXmlFromLocalStorage() {
     const xmlString = localStorage.getItem('buildingXml');
     if (xmlString) {
         const parser = new DOMParser();
         const xmlDoc = parser.parseFromString(xmlString, 'text/xml');
-        this.buildingService.createBuildingFromXml(xmlDoc);
+        this.buildingService.createBuildingFromXml(xmlDoc).catch(error => window.alert(error.message || String(error)));
         return xmlDoc;
     } else {
         return null;
@@ -185,7 +240,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
       this.currentHoverCoordSegments = {edge: closestEdge ?? '', corner: closestCorner ?? ''}
     }
 
-    else if(this.currentHoverCoords.x == x && this.currentHoverCoords.y == y)
+    else if(this.currentHoverCoords.x == x && this.currentHoverCoords.y == y && !(this.selectedTool instanceof ToolWall) && !(this.selectedTool instanceof ToolStairs) && !(this.selectedTool instanceof ToolRoof))
     {
       return;
     }
@@ -243,7 +298,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
 
     //Gets room currently being hovered over - TODO disable this
     const hoverRoom = this.roomService.getRoomFromTile(x, y, this.gridService.getSelectedLevel());
-    if(hoverRoom)
+    if(hoverRoom && !(this.selectedTool instanceof ToolSelect) && !(this.selectedTool instanceof ToolWall) && !(this.selectedTool instanceof ToolStairs))
     {
       this.gridService.tiles.forEach((tile: SvgTile) => {
         if(!hoverRoom.tiles.some((t: GridTile) => t.x == tile.x && t.y == tile.y && t.level == tile.level) && tile.layer !== 'Floor' && tile.level == this.gridService.getSelectedLevel())
@@ -289,7 +344,9 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
 
     }
 
+    this.selectedTool.hoveredObject = this.currentHoverObject;
     this.selectedTool.hoverTile(x, y, closestEdge, closestCorner);
+    if (this.canvasElement?.nativeElement) this.canvasElement.nativeElement.style.cursor = this.selectedTool.cursor;
 
     this.drawCanvas(); //TODO call this from any redraw functions in the services...somehow
     //this.drawOverlaySquare(x, y, 'black', 'red');
@@ -307,21 +364,6 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
       return;
     }
 
-    if(this.selectedTool instanceof ToolRoof && this.currentHoverSubOverlay?.func)
-    {
-
-      const capProperty = this.currentHoverSubOverlay.func as 'cappedW' | 'cappedN' | 'cappedE' | 'cappedS';
-      const objectUid = this.currentHoverSubOverlay.object?.uid;
-      this.store.dispatch(new UpdateObject({ uid: objectUid, [capProperty]: 'false' }));
-      const obj = this.gridService.objects.find((candidate: SvgObject) => candidate.uid == objectUid);
-      if (obj) {
-        obj[capProperty] = false;
-        obj.tiles.filter((tile: SvgTile) => tile.tag === capProperty).forEach((tile: SvgTile) => tile.excluded = true);
-      }
-      this.currentHoverSubOverlay = undefined;
-      this.gridService.redrawTiles();
-      return;
-    }
     this.selectedTool.beginDrag(x, y);
   }
 
@@ -340,9 +382,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   //Drawing functions
 
   drawCanvas() {
-    if (!this.ctx) {
-      throw new Error('Canvas context is not defined');
-    }
+    if (!this.ctx) return;
 
 
 
@@ -376,9 +416,11 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   }
 
   drawTiles() {
+    this.gridService.redrawTiles(this.selectedTool?.previewTiles);
 
-    if (this.selectedTool instanceof ToolTile || this.selectedTool instanceof ToolDoor || this.selectedTool instanceof ToolWindow || this.selectedTool instanceof ToolFurniture || this.selectedTool instanceof ToolRoof) {
+    if (this.selectedTool instanceof ToolDraw) {
       this.selectedTool.tileGhosts.forEach((tile: SvgTile) => {
+          if (tile.level !== this.gridService.getSelectedLevel()) return;
           // Filter out tiles with the same position and layer on the same level as the hovering tile
           this.gridService.tiles = this.gridService.tiles.filter((t: SvgTile) => {
               return !(t.x === tile.x && t.y === tile.y && t.layer === tile.layer && t.level === tile.level);
@@ -395,14 +437,6 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     let drawnDarkOverlay = false;
 
     this.gridService.tiles.forEach((tile: SvgTile) => {
-      const underObject = this.gridService.getObjectFromTile(tile.x, tile.y, tile.level - 1, "Furniture");
-      if(underObject && underObject.type == 'Stairs')
-      {
-        if(tile.layer == 'Floor')
-        {
-          tile.excluded = true;
-        }
-      }
       if(!tile.hidden && !tile.excluded)
       {
         if(!drawnDarkOverlay && this.gridService.getSelectedLevel() == tile.level && this.ctx)
@@ -460,31 +494,51 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   drawTileOverlays() {
     this.gridService.objectOverlays = [];
     this.gridService.objects.forEach((obj: SvgObject) => {   
-      if(obj.level === this.gridService.getSelectedLevel())
+      if(obj.level === this.gridService.getSelectedLevel() && !(this.selectedTool instanceof ToolRoof && this.selectedTool.resizingUid === obj.uid))
       {
         const isRoof = obj.type === 'roof';
         const isHoveredRoof = isRoof && obj.uid === this.currentHoverObject?.uid;
-        const isHoveredPeak = isHoveredRoof && obj.orient?.includes('Peak');
         this.drawOverlayBlock(obj.x, obj.y, obj.length ?? 0, obj.width ?? 0,
-          '#1d1aeb60', isHoveredPeak ? '#00000000' : isHoveredRoof ? '#ffffff60' : '#ffffff30', obj.orient, obj.type, obj);
+          '#1d1aeb60', isHoveredRoof ? '#ffffff60' : '#ffffff30', obj.orient, obj.type, obj);
       }
     });
   }
 
   drawOverlay() {
+    for (const overlay of this.selectedTool.overlays) {
+      if (!this.ctx || !overlay.points.length) continue;
+      this.ctx.beginPath(); this.ctx.setLineDash([]);
+      overlay.points.forEach((p, i) => {
+        const x = (2500 + p.x * 100 - p.y * 100 - this.xOffset) * this.zoom;
+        const y = (p.x * 50 + p.y * 50 - this.yOffset) * this.zoom;
+        if (i === 0) this.ctx!.moveTo(x, y); else this.ctx!.lineTo(x, y);
+      });
+      this.ctx.closePath(); this.ctx.fillStyle = overlay.fill; this.ctx.fill();
+      this.ctx.strokeStyle = overlay.stroke; this.ctx.lineWidth = 1; this.ctx.stroke();
+      if (overlay.crossed) {
+        this.ctx.beginPath();
+        for (const [a, b] of [[0, 2], [1, 3]]) {
+          const first = overlay.points[a], last = overlay.points[b];
+          this.ctx.moveTo((2500 + first.x * 100 - first.y * 100 - this.xOffset) * this.zoom, (first.x * 50 + first.y * 50 - this.yOffset) * this.zoom);
+          this.ctx.lineTo((2500 + last.x * 100 - last.y * 100 - this.xOffset) * this.zoom, (last.x * 50 + last.y * 50 - this.yOffset) * this.zoom);
+        }
+        this.ctx.stroke();
+      } else if (overlay.label) {
+        const center = overlay.points.reduce((p, q) => ({ x: p.x + q.x / overlay.points.length, y: p.y + q.y / overlay.points.length }), { x: 0, y: 0 });
+        this.ctx.fillStyle = '#000'; this.ctx.font = `${14 * this.zoom}px sans-serif`; this.ctx.textAlign = 'center'; this.ctx.textBaseline = 'middle';
+        this.ctx.fillText(overlay.label, (2500 + center.x * 100 - center.y * 100 - this.xOffset) * this.zoom, (center.x * 50 + center.y * 50 - this.yOffset) * this.zoom);
+      }
+    }
     if(this.selectedTool instanceof ToolDraw && !(this.selectedTool instanceof ToolDoor) && !(this.selectedTool instanceof ToolWindow))
     {
       this.selectedTool.dragTiles.forEach((tile: SvgTile) => {
-        if(this.selectedTool instanceof ToolRoof && this.selectedTool.dragTiles.length === 1 && this.currentHoverSubOverlay?.func)
-        {
-          return;
-        }
         this.drawOverlaySquare(tile.x, tile.y, 'black', this.selectedTool.getTileFill(tile.x, tile.y));
       });
     }
   }
 
   drawIsometricGrid(length: number, width: number) {
+    if (this.selectedTool instanceof ToolTile || this.selectedTool instanceof ToolSelect && this.selectedTool.mode === 'tiles') { length++; width++; }
     for (let x = 0; x < width; x++) {
       for (let y = 0; y < length; y++) {
         const square = this.drawIsometricSquare(x, y);
@@ -792,60 +846,6 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     
       if(obj) { this.gridService.objectOverlays.push(objOverlay); }
 
-      // The roof footprint is only a hit target for selection/deletion. The
-      // side controls below are separate, compact hit targets.
-      const hovered = obj?.uid === this.currentHoverObject?.uid;
-      if (hovered && orient?.includes('Peak')) {
-        const midpoint = (a: Point, b: Point): Point => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
-        const [bottom, right, top, left] = objOverlay.points;
-        const halves = orient.includes('NS')
-          ? [[bottom, midpoint(bottom, right), midpoint(left, top), left], [midpoint(bottom, right), right, top, midpoint(left, top)]]
-          : [[bottom, right, midpoint(right, top), midpoint(bottom, left)], [midpoint(bottom, left), midpoint(right, top), top, left]];
-        halves.forEach((points, index) => {
-          this.ctx!.beginPath();
-          this.ctx!.moveTo(points[0].x, points[0].y);
-          points.slice(1).forEach(point => this.ctx!.lineTo(point.x, point.y));
-          this.ctx!.closePath();
-          this.ctx!.fillStyle = index === 0 ? '#ffffff60' : '#ffffff30';
-          this.ctx!.fill();
-        });
-      }
-
-      if (hovered && obj) {
-        const exposedSides: Record<string, Array<'W' | 'N' | 'E' | 'S'>> = {
-          PeakNS: ['N', 'S'], PeakWE: ['W', 'E'],
-          SlopeW: ['W', 'N', 'S'], SlopeE: ['E', 'N', 'S'],
-          SlopeN: ['N', 'W', 'E'], SlopeS: ['S', 'W', 'E'],
-          ShallowPeakNS: ['N', 'S'], ShallowPeakWE: ['W', 'E'],
-          ShallowSlopeW: ['W', 'N', 'S'], ShallowSlopeE: ['E', 'N', 'S'],
-          ShallowSlopeN: ['N', 'W', 'E'], ShallowSlopeS: ['S', 'W', 'E'],
-        };
-        const [bottom, right, top, left] = objOverlay.points;
-        const edges = { N: [bottom, right], E: [right, top], S: [top, left], W: [left, bottom] } as const;
-        const center = { x: (bottom.x + top.x) / 2, y: (bottom.y + top.y) / 2 };
-        const interpolate = (a: Point, b: Point, amount: number): Point =>
-          ({ x: a.x + (b.x - a.x) * amount, y: a.y + (b.y - a.y) * amount });
-        for (const side of exposedSides[orient || ''] || []) {
-          if ((obj as any)[`capped${side}`] === false) continue;
-          const [edgeStart, edgeEnd] = edges[side];
-          const outerA = interpolate(edgeStart, edgeEnd, 0.3);
-          const outerB = interpolate(edgeStart, edgeEnd, 0.7);
-          const innerA = interpolate(outerA, center, 0.18);
-          const innerB = interpolate(outerB, center, 0.18);
-          const points = [outerA, outerB, innerB, innerA];
-          const handle: SvgObjectOverlay = { points, object: obj, func: `capped${side}` };
-          this.gridService.objectOverlays.push(handle);
-          this.ctx!.beginPath();
-          this.ctx!.moveTo(points[0].x, points[0].y);
-          points.slice(1).forEach(point => this.ctx!.lineTo(point.x, point.y));
-          this.ctx!.closePath();
-          this.ctx!.strokeStyle = '#000000';
-          this.ctx!.lineWidth = 1 * this.zoom;
-          this.ctx!.stroke();
-          this.ctx!.fillStyle = this.currentHoverSubOverlay?.func === handle.func ? '#ffffff99' : '#97979760';
-          this.ctx!.fill();
-        }
-      }
       return;
     }
     else
@@ -985,7 +985,10 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   }
 
   @HostListener('mousedown', ['$event']) onMouseDown(event: MouseEvent){
-    if(event.which === 2)
+    this.selectedTool.modifiers = { ctrl: event.ctrlKey, shift: event.shiftKey, alt: event.altKey };
+    this.selectedTool.hoveredObject = this.currentHoverObject;
+    this.selectedTool.key = event.ctrlKey ? 'Control' : '';
+    if(event.button === 1)
     {
       event.preventDefault();
       this.dragStartPos = {x: event.clientX, y: event.clientY};
@@ -994,23 +997,27 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     {
       event.preventDefault();
       this.beginDrag(event, this.currentHoverCoords.x, this.currentHoverCoords.y);
+      this.drawCanvas();
     }
     else if(event.button === 2)
     {
       event.preventDefault();
-      if(this.currentHoverObject)
-      {
-        this.store.dispatch(new RemoveObject(this.currentHoverObject, this.gridService.getSelectedLevel()));
-        //this.gridService.removeObject(this.currentHoverObject, this.gridService.getSelectedLevel());
-        //this.buildingService.placeTiles();
-        this.buildingService.removeTile(this.currentHoverObject, this.gridService.getSelectedLevel())
-        this.gridService.redrawTiles();
-        this.drawCanvas();
-      }
+      if (this.selectedTool.isDragging) this.cancelGesture();
+      else if (this.selectedTool instanceof ToolTile) this.selectedTool.beginCapture(this.currentHoverCoords.x, this.currentHoverCoords.y);
+      else if (this.selectedTool instanceof ToolSelect) this.selectedTool.reset();
+      else this.deleteHoveredObject();
+      this.drawCanvas();
     }
   }
 
-  @HostListener('mouseup', ['$event']) onMouseUp(event: MouseEvent){
+  @HostListener('document:mouseup', ['$event']) onMouseUp(event: MouseEvent){
+    if (!this.selectedTool.isDragging) return;
+    if (!this.canvasElement?.nativeElement.contains(event.target)) {
+      this.cancelGesture(); this.drawCanvas(); return;
+    }
+    if (event.button === 2 && this.selectedTool instanceof ToolTile && this.selectedTool.capturing) {
+      this.endDrag({ button: 0 } as MouseEvent, this.currentHoverCoords.x, this.currentHoverCoords.y); return;
+    }
     if(event.which === 2 || event.button === 2)
     {
       event.preventDefault();
@@ -1042,9 +1049,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
     const x: number = (Math.round(event.clientX - rect.left) / (rect.right - rect.left) * canvas.width);
     const y: number = (Math.round(event.clientY - rect.top) / (rect.bottom - rect.top) * canvas.height);
 
-    let nearestEdgeDistanceSq = Infinity;
     let nearestEdgeIndex = -1;
-    let nearestEdgePoint: Point = { x: 0, y: 0 };
 
     this.newPositions.forEach((pos: Position) => {
         const pointToCheck: Point = { x: x, y: y };
@@ -1053,50 +1058,10 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
             const localX = pos.localPoint.x;
             const localY = pos.localPoint.y;
 
-            // Calculate nearest edge
-            for (let i = 0; i < pos.point.length; i++) {
-                const p1 = pos.point[i];
-                const p2 = pos.point[(i + 1) % pos.point.length];
-                const edgeVector = { x: p2.x - p1.x, y: p2.y - p1.y };
-                const pointVector = { x: x - p1.x, y: y - p1.y };
-                const edgeLengthSq = edgeVector.x * edgeVector.x + edgeVector.y * edgeVector.y;
-                const dotProduct = (pointVector.x * edgeVector.x + pointVector.y * edgeVector.y) / edgeLengthSq;
-                let edgePoint: Point;
-                if (dotProduct < 0) {
-                    edgePoint = p1;
-                } else if (dotProduct > 1) {
-                    edgePoint = p2;
-                } else {
-                    edgePoint = { x: p1.x + dotProduct * edgeVector.x, y: p1.y + dotProduct * edgeVector.y };
-                }
-                const distanceSq = (edgePoint.x - x) * (edgePoint.x - x) + (edgePoint.y - y) * (edgePoint.y - y);
-                if (distanceSq < nearestEdgeDistanceSq) {
-                    nearestEdgeDistanceSq = distanceSq;
-                    nearestEdgeIndex = i;
-                    nearestEdgePoint = edgePoint;
-                }
-            }
-
-            let nearestEdge = '';
-            switch(nearestEdgeIndex)
-            {
-              case 0:
-                nearestEdge = 'E';
-                break;
-              case 1:
-                nearestEdge = 'N';
-                break;
-              case 2:
-                nearestEdge = 'W';
-                break;
-              case 3:
-                nearestEdge = 'S';
-                break;
-              default:
-                break;
-            }
-
-            
+            const fraction = fractionalCellPosition(pointToCheck, pos.point);
+            const nearestEdge = nativeTileEdge(fraction);
+            nearestEdgeIndex = ['E', 'N', 'W', 'S'].indexOf(nearestEdge);
+            this.selectedTool.pointerPosition = { x: localX + fraction.x, y: localY + fraction.y };
 
         //Check for object overlays
         let foundOverlay = false;
@@ -1141,12 +1106,18 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
             this.drawCanvas();
         }
 
-            this.hoverTile(localX, localY, nearestEdge, ''); // Perform hover action
+            this.hoverTile(localX, localY, nearestEdge, nativeWallCorner(fraction));
         }
     });
 
     if(nearestEdgeIndex == -1)
     {
+      this.selectedTool.pointerPosition = undefined;
+      if (!this.selectedTool.isDragging && (this.selectedTool instanceof ToolWall || this.selectedTool instanceof ToolStairs || this.selectedTool instanceof ToolRoof)) this.selectedTool.cancel();
+      canvas.style.cursor = 'default';
+      this.currentHoverObject = undefined;
+      this.currentHoverOverlay = undefined;
+      this.currentHoverSubOverlay = undefined;
       this.gridService.showAllTiles();
       this.gridService.redrawTiles();
       this.drawCanvas();
@@ -1224,16 +1195,42 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit{
   //Keyboard functions
   @HostListener('document:keydown', ['$event'])
   handleKeyDown(event: KeyboardEvent) { 
-    this.key = event.key;
-    this.selectedTool.key = event.key;
+    if (isTextEditing(event)) return;
+    const history = historyShortcut(event);
+    if (history) {
+      event.preventDefault();
+      this.cancelGesture();
+      this.store.dispatch(history === 'undo' ? new Undo() : new Redo());
+      this.drawCanvas(); return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (!this.selectedTool.isDragging) this.selectedTool.reset();
+      this.cancelGesture(); this.drawCanvas(); return;
+    }
+    if (event.key === 'Delete' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault(); this.deleteHoveredObject(); this.drawCanvas(); return;
+    }
+    this.key = event.ctrlKey ? 'Control' : event.key;
+    this.selectedTool.key = this.key;
+    this.selectedTool.modifiers = { ctrl: event.ctrlKey, shift: event.shiftKey, alt: event.altKey };
+    if (this.selectedTool.keyDown(event.key)) event.preventDefault();
+    this.selectedTool.hoverTile(this.currentHoverCoords.x, this.currentHoverCoords.y, this.currentHoverCoordSegments.edge, this.currentHoverCoordSegments.corner);
     this.drawCanvas();
   }
 
   @HostListener('document:keyup', ['$event'])
   handleKeyUp(event: KeyboardEvent) { 
-    this.key = '';
-    this.selectedTool.key = '';
+    this.key = event.ctrlKey ? 'Control' : '';
+    this.selectedTool.key = this.key;
+    this.selectedTool.modifiers = { ctrl: event.ctrlKey, shift: event.shiftKey, alt: event.altKey };
     this.drawCanvas();
+  }
+
+  @HostListener('window:blur') onBlur(): void {
+    this.key = ''; this.selectedTool.key = '';
+    this.selectedTool.modifiers = { ctrl: false, shift: false, alt: false };
+    this.cancelGesture(); this.drawCanvas();
   }
 
   

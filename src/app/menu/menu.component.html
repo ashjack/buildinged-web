@@ -1,13 +1,22 @@
 <div class="toolbar">
+    <button type="button" class="history-button" title="Select and move objects" (click)="setTool('tool-select-objects')" [class.active]="(currentTool$ | async) === 'tool-select-objects'" aria-label="Select and move objects">Move objects</button>
+    <button type="button" class="history-button" title="Select and move room areas" (click)="setTool('tool-select-rooms')" [class.active]="(currentTool$ | async) === 'tool-select-rooms'" aria-label="Select and move rooms">Move rooms</button>
+    <button type="button" class="history-button" title="Select and move manual tiles on the selected layer" (click)="setTool('tool-select-tiles')" [class.active]="(currentTool$ | async) === 'tool-select-tiles'" aria-label="Select and move tiles">Move tiles</button>
+    <button type="button" class="history-button" title="Draw and resize wall objects" (click)="setTool('tool-wall')" [class.active]="(currentTool$ | async) === 'tool-wall'" aria-label="Wall tool">Wall</button>
+    <button type="button" class="history-button" title="Place stairs" (click)="setTool('tool-stairs')" [class.active]="(currentTool$ | async) === 'tool-stairs'" aria-label="Stairs tool">Stairs</button>
     <button class="toolbar-button" (click)="openMainMenu()"><img src="assets/icons/system-run.png"></button>
-    <button class="toolbar-button" (click)="setTool('tool-tile')"><img src="assets/icons/icon_clone.png"></button>
-    <button class="toolbar-button" (click)="setTool('tool-draw-room')"><img src="assets/icons/icon_pencil.png"></button>
-    <button class="toolbar-button" (click)="setTool('tool-door')"><img src="assets/icons/icon_door.png"></button>
-    <button class="toolbar-button" (click)="setTool('tool-window')"><img src="assets/icons/icon_window.png"></button>
-    <button class="toolbar-button" (click)="setTool('tool-furniture')"><img src="assets/icons/icon_furniture.png" alt="Furniture Tool"></button>
-    <button class="toolbar-button" (click)="setTool('tool-roof')"><img src="assets/icons/icon_roof_peakNS.png"></button>
+    <button class="toolbar-button" (click)="setTool('tool-tile')" [class.active]="(currentTool$ | async) === 'tool-tile'" aria-label="Manual tile tools"><img src="assets/icons/icon_clone.png"></button>
+    <button class="toolbar-button" (click)="setTool('tool-draw-room')" [class.active]="(currentTool$ | async) === 'tool-draw-room'" aria-label="Draw rooms"><img src="assets/icons/icon_pencil.png"></button>
+    <button class="toolbar-button" (click)="setTool('tool-door')" [class.active]="(currentTool$ | async) === 'tool-door'" aria-label="Place doors"><img src="assets/icons/icon_door.png"></button>
+    <button class="toolbar-button" (click)="setTool('tool-window')" [class.active]="(currentTool$ | async) === 'tool-window'" aria-label="Place windows"><img src="assets/icons/icon_window.png"></button>
+    <button class="toolbar-button" (click)="setTool('tool-furniture')" [class.active]="(currentTool$ | async) === 'tool-furniture'" aria-label="Place furniture"><img src="assets/icons/icon_furniture.png" alt="Furniture Tool"></button>
+    <button class="toolbar-button" (click)="setTool('tool-roof')" [class.active]="(currentTool$ | async) === 'tool-roof'" aria-label="Place roofs"><img src="assets/icons/icon_roof_peakNS.png"></button>
     <button class="toolbar-button" (click)="openFileUpload()"><img src="assets/icons/icon_harddisk.png"></button>
     <button class="toolbar-button" (click)="createXml()"><img src="assets/icons/icon_harddisk.png"></button>
+    <button type="button" class="history-button" (click)="undo()" [disabled]="!(undoLabel$ | async)"
+            [title]="'Undo ' + ((undoLabel$ | async) || '')" aria-label="Undo">Undo</button>
+    <button type="button" class="history-button" (click)="redo()" [disabled]="!(redoLabel$ | async)"
+            [title]="'Redo ' + ((redoLabel$ | async) || '')" aria-label="Redo">Redo</button>
     <div class="btn-group" dropdown>
         <button id="button-custom-html" dropdownToggle type="button" class="btn btn-secondary dropdown-toggle"
                 aria-controls="dropdown-custom-html">

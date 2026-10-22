@@ -1,5 +1,7 @@
 <div class="roof-selection-panel">
   <div class="roof-selection-title">Roof Type</div>
+  <p>Drag to create. Hover a roof to show its resize handle and cap switches. Flat roofs also have depth +/− controls. Right-click cancels a drag or deletes an object.</p>
+  <p role="status">{{roofService.message}}</p>
 
   <button
     *ngFor="let option of roofOptions"

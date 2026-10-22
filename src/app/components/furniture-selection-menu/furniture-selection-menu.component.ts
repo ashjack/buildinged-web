@@ -81,6 +81,15 @@ export class FurnitureSelectionMenuComponent implements OnInit{
         {
           currentEntry.orient = value;
         }
+        else if(key === 'grime' && currentEntry) {
+          currentEntry.grime = value !== 'false';
+        }
+        else if(key === 'corners' && currentFurniture) {
+          currentFurniture.corners = value === 'true';
+        }
+        else if(key === 'layer' && currentFurniture) {
+          currentFurniture.layer = value;
+        }
         else if(key.includes(',') && currentEntry)
         {
           currentEntry.items.push({ pos: key, tile: value })
@@ -217,6 +226,7 @@ export class FurnitureSelectionMenuComponent implements OnInit{
 
         retEntry.push({
           orient: entry.orient,
+          grime: entry.grime,
           tiles: [...retTiles],
           xSize: maxX,
           ySize: maxY
@@ -239,6 +249,8 @@ export class FurnitureSelectionMenuComponent implements OnInit{
       }
       // Push retTiles for each entry
       this.furnitureTiles.push({
+        layer: furniture.layer,
+        corners: furniture.corners,
         entries: retEntry
       });
     }
