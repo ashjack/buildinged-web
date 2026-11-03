@@ -1,39 +1,82 @@
-<div class="window" *ngIf="showWindow || (forceShowWindow$ | async)">
-    <div class="col">
-        <h2>Project Zomboid Building Editor</h2>
-        <span>
-            <button class="square" (click)="openTemplatePicker()"><img src="assets/icons/document-new.png"></button>
-            <span>New Building</span>
-        </span>
-        <span>
-            <button class="square" (click)="openFileUpload()"><img src="assets/icons/document-open.png"></button>
-            <span>Upload Building</span>
-        </span>
-        <span>
-            <button class="square" (click)="closeWindow()"><img src="assets/icons/document-open.png"></button>
-            <span>Close Menu</span>
-        </span>
-
-        <div class="template-picker" *ngIf="showTemplatePicker">
-            <h3>Select Template</h3>
-            <select [(ngModel)]="selectedTemplateName" [disabled]="templateNames.length === 0">
-                <option *ngFor="let name of templateNames" [value]="name">{{name}}</option>
-            </select>
-
-            <div class="template-actions">
-                <button (click)="createNewBuilding()" [disabled]="templateNames.length === 0">Create</button>
-                <button (click)="cancelTemplatePicker()">Cancel</button>
-            </div>
-            <p *ngIf="templateNames.length === 0">No templates found.</p>
+﻿<div class="dashboard" *ngIf="showWindow || (forceShowWindow$ | async)" (keydown)="$event.stopPropagation()" (keyup)="$event.stopPropagation()">
+  <header>
+    <div class="shell topbar">
+      <a class="brand" href="#quick-start"><span class="icon-box small"><span class="symbol">handyman</span></span><strong>BuildingEd <span class="web-badge">Web</span></strong></a>
+      <nav aria-label="Main navigation">
+        <a href="#projects" class="active">Projects</a><a href="#templates">Templates</a>
+        <button (click)="openDialog('docs')">Documentation</button><a href="https://theindiestone.com/forums/index.php?/forum/64-mapping/" target="_blank" rel="noopener noreferrer">Community</a>
+      </nav>
+      <div class="utilities"><a href="https://pzwiki.net" target="_blank" rel="noopener noreferrer"><span class="symbol">menu_book</span> PZ Wiki</a><button *ngIf="openBuilding$ | async" (click)="closeWindow()"><span class="symbol">arrow_back</span> Back to editor</button><span class="avatar" title="Local workspace"><span class="symbol">person</span></span></div>
+    </div>
+  </header>
+  <main class="shell">
+    <section class="hero" aria-labelledby="welcome-title">
+      <div><span class="eyebrow"><span class="symbol">cottage</span> Project Zomboid Map Maker</span>
+        <h1 id="welcome-title">Welcome to BuildingEd</h1>
+        <p>Design, edit, and share custom structures for Project Zomboid. Export <code>.tbx</code> files for your maps and building projects.</p>
+      </div>
+      <a class="primary" href="#quick-start">Start Building Now</a>
+    </section>
+    <div *ngIf="error" class="notice" role="alert"><span>{{error}}</span><button aria-label="Dismiss error" (click)="error = ''">×</button></div>
+    <section class="actions" id="quick-start" aria-label="Start building">
+      <article class="action-card">
+        <span class="icon-box"><span class="symbol">add_box</span></span>
+        <h2>New Building</h2><p>Start with an empty isometric grid. Pick a starting room size or define custom dimensions.</p>
+        <div class="card-bottom"><span class="overline">Quick Presets</span>
+          <div class="presets"><button *ngFor="let preset of presets" [class.selected]="width === preset.width && height === preset.height" [attr.aria-pressed]="width === preset.width && height === preset.height" (click)="selectPreset(preset.width, preset.height)">{{preset.name}} ({{preset.width}}×{{preset.height}})</button></div>
+          <button class="primary full" (click)="openTemplatePicker()" [disabled]="busy">Create Empty Canvas <span class="symbol">arrow_forward</span></button>
         </div>
-    </div>
-
-    <div class="col" *ngIf="!listBuildings">
-        <h2>Projects</h2>
-        <button class="project-button" (click)="openBuildingList()">Thames Valley</button>
-    </div>
-    <div class="col" *ngIf="listBuildings">
-        <h2>Thames Valley - Buildings</h2>
-        <button (click)="loadBuilding(building.Contents)" class="project-button" id="{{building.id}}" *ngFor="let building of buildings">{{building.Name}}</button>
-    </div>   
+      </article>
+      <article class="action-card sage">
+        <span class="icon-box"><span class="symbol">upload_file</span></span>
+        <h2>Open / Upload (.tbx)</h2><p>Drag and drop an existing building file or open previous works from your computer.</p>
+        <div class="card-bottom"><input #fileInput type="file" accept=".tbx" hidden (change)="handleFileSelect($event)">
+          <button class="drop-zone" [class.dragging]="dragging" [disabled]="busy" (click)="fileInput.click()" (dragover)="onDragOver($event)" (dragleave)="onDragLeave($event)" (drop)="onDrop($event)"><span class="symbol">file_upload</span><strong>{{busy ? 'Opening building…' : 'Click to choose or drop file'}}</strong><small>Supports .tbx building files</small></button>
+        </div>
+      </article>
+      <article class="action-card coral">
+        <span class="icon-box"><span class="symbol">groups</span></span>
+        <div class="title-line"><h2>Join Session</h2><span class="soon">Coming soon</span></div>
+        <p>A shared workspace for your friends and community cartographers.</p>
+        <div class="card-bottom"><label class="overline" for="invite-code">Invite Code</label><div class="invite"><input id="invite-code" placeholder="e.g. KNOX-4819" disabled><button disabled>Join</button></div><small class="session-note">Shared sessions are not available yet.</small></div>
+      </article>
+    </section>
+    <section id="projects">
+      <div class="section-heading"><div><h2>{{listBuildings ? 'Thames Valley — Buildings' : 'My Projects'}}</h2><p>{{listBuildings ? 'Choose a building to continue editing.' : 'Continue working on your map developments.'}}</p></div>
+        <div class="filters"><button *ngIf="listBuildings" (click)="listBuildings = false; search = ''">All projects</button><label class="search"><span class="symbol">search</span><input [placeholder]="listBuildings ? 'Filter buildings…' : 'Filter projects…'" aria-label="Filter projects or buildings" [(ngModel)]="search"></label><span class="filter-pill">{{listBuildings ? 'Buildings' : 'All projects'}}</span></div>
+      </div>
+      <div class="projects-grid" *ngIf="!listBuildings">
+        <article class="project-card" *ngIf="showProject">
+          <div class="project-art"><img src="https://lh3.googleusercontent.com/aida-public/AB6AXuDSHkbc_UMNlB4HyrQNsgMD4d-a1GqPgoEE-IjdiskR1qOAA49YBN2iRLESCWEsH7_v5iG-7oLeQswi-fX5exfLQMgdel7_IvD1lFY7t4jSwdJoXrwWHw3XEmrqKjZVbREU7FAeKf3GFG2R8FideFqeqE7CS2t6Mh8xFGHwWflwiDjodcYtN9CaGyy7otVTbQ7hB1TAnCXKHJnzdefQoO5LhPbuCiQbxVYJ5n-J6wq9JXRxuNiTOYC8wg" alt="Thames Valley map preview" (error)="$any($event.target).hidden = true"><span class="map-badge">Group Project</span></div>
+          <div class="project-info"><div><h3>Thames Valley</h3><p>Custom buildings for the Thames Valley map. Open the project to browse the community’s structures.</p><div class="metrics"><span><span class="symbol">domain</span> {{loadingProjects ? 'Loading buildings…' : projectError ? 'Project unavailable' : buildings.length + ' Buildings'}}</span><span><span class="symbol">folder_shared</span> Shared collection</span></div></div>
+            <div class="project-footer"><small>Project Zomboid</small><button class="primary" (click)="listBuildings = true; search = ''">Open Project <span class="symbol">arrow_forward</span></button></div>
+          </div>
+        </article>
+        <button class="blank-project" (click)="openTemplatePicker()"><span class="add-circle symbol">add</span><strong>New Blank Building</strong><small>Start fresh with custom dimensions and your choice of building template.</small><span class="create-label">Create Building</span></button>
+      </div>
+      <p class="empty" *ngIf="!listBuildings && !showProject">No projects match “{{search}}”.</p>
+      <div *ngIf="projectError" class="notice" role="status"><span>{{projectError}}</span><button (click)="getBuildingsByProjectName('ThamesValley')">Retry</button></div>
+      <ng-container *ngIf="listBuildings">
+        <p class="empty" *ngIf="loadingProjects" role="status">Loading project buildings…</p>
+        <div class="buildings-grid"><button class="building-card" *ngFor="let building of filteredBuildings" (click)="openProjectBuilding(building)" [disabled]="busy"><span class="icon-box small"><span class="symbol">cottage</span></span><strong>{{building.Name}}</strong><span class="symbol">arrow_forward</span></button></div>
+        <p class="empty" *ngIf="!loadingProjects && !projectError && !filteredBuildings.length">{{search ? 'No buildings match your search.' : 'There are no buildings in this project yet.'}}</p>
+      </ng-container>
+    </section>
+    <section id="templates">
+      <div class="section-heading compact"><div><h2>Starter Templates</h2><p>Room definitions and materials to get your next building started.</p></div><button class="text-button" (click)="showAllTemplates = !showAllTemplates" *ngIf="templateNames.length > 4">{{showAllTemplates ? 'Show Less' : 'Browse All (' + templateNames.length + ')'}} <span class="symbol">chevron_right</span></button></div>
+      <div class="templates-grid"><button class="template-card" *ngFor="let name of (showAllTemplates ? templateNames : templateNames.slice(0, 4)); let i = index" (click)="openTemplatePicker(name)"><span class="icon-box small" [class.sage]="i % 3 === 1" [class.coral]="i % 3 === 2"><span class="symbol">{{i % 3 === 0 ? 'cottage' : i % 3 === 1 ? 'domain' : 'cabin'}}</span></span><strong>{{name}}</strong><small>Room &amp; material preset</small></button></div>
+      <p class="empty" *ngIf="!templateNames.length">Starter templates are loading or unavailable. Create an empty canvas to get started.</p>
+    </section>
+  </main>
+  <footer><div class="shell"><span><span class="symbol">handyman</span> BuildingEd Web · Made for the Project Zomboid mapping community</span><div><a href="https://steamcommunity.com/app/108600/workshop/" target="_blank" rel="noopener noreferrer">Steam Workshop</a><button (click)="openDialog('docs')">Help &amp; Documentation</button></div></div></footer>
+  <dialog #setupDialog class="setup" aria-labelledby="setup-title" (cancel)="showTemplatePicker = false" (click)="onDialogClick($event)">
+    <ng-container *ngIf="showTemplatePicker; else documentation">
+      <h2 id="setup-title">Create a new building</h2><p>Choose the canvas size and starting materials.</p>
+      <form (ngSubmit)="createNewBuilding()"><label>Building template<select name="template" [(ngModel)]="selectedTemplateName"><option value="">Empty canvas</option><option *ngFor="let name of templateNames" [value]="name">{{name}}</option></select></label>
+        <div class="dimensions"><label>Width (tiles)<input name="width" type="number" min="1" max="256" required [(ngModel)]="width"></label><span>×</span><label>Height (tiles)<input name="height" type="number" min="1" max="256" required [(ngModel)]="height"></label></div>
+        <small>Use whole numbers between 1 and 256 tiles.</small><p *ngIf="error" role="alert">{{error}}</p><div class="setup-actions"><button type="button" (click)="closeDialog()">Cancel</button><button class="primary" type="submit" [disabled]="busy || !validDimensions">{{busy ? 'Creating…' : 'Create Building'}}</button></div>
+      </form>
+    </ng-container>
+    <ng-template #documentation><h2 id="setup-title">BuildingEd quick start</h2><p>Create a building from a room and material preset, or upload an existing <code>.tbx</code> file.</p><p>Draw rooms, add doors and windows, then furnish your building with the editor tools. Use the save button in the editor to download your <code>.tbx</code> file.</p><p>The browser keeps a recovery copy of your current building. Download your work to keep a separate copy. Shared saving and live sessions are planned for a later update.</p><div class="setup-actions"><button class="primary" (click)="closeDialog()">Got it</button></div></ng-template>
+  </dialog>
 </div>

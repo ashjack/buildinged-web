@@ -83,6 +83,31 @@ Template
         scene.destroy();
     });
 
+    it('creates rectangular canvases with the requested dimensions that survive a TBX round trip', async () => {
+        const scene = documentHarness(undefined, '');
+        try {
+            for (const dimensions of [{ width: 16, height: 16 }, { width: 24, height: 20 }, { width: 32, height: 24 }]) {
+                await scene.buildings.createNewBuilding(undefined, dimensions);
+                const restored = readBuildingFile(writeBuildingFile(scene.buildings.building));
+                expect(restored.width).toBe(dimensions.width);
+                expect(restored.height).toBe(dimensions.height);
+                expect(restored.floors[0].rooms.trim().split(',').length).toBe(dimensions.width * dimensions.height);
+                expect(restored.floors[0].objects).toEqual([]);
+            }
+        } finally { scene.destroy(); }
+    });
+
+    it('rejects invalid canvas dimensions without replacing the current document', async () => {
+        const scene = documentHarness(building(), '');
+        const before = scene.buildings.building;
+        try {
+            for (const width of [0, -1, 1.5, 257, NaN]) {
+                await expectAsync(scene.buildings.createNewBuilding(undefined, { width, height: 20 })).toBeRejected();
+                expect(scene.buildings.building).toBe(before);
+            }
+        } finally { scene.destroy(); }
+    });
+
     it('exports every bundled template with valid palette references and offsets', async () => {
         const response = await fetch('/assets/BuildingTemplates.txt');
         expect(response.ok).toBeTrue();

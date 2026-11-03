@@ -500,7 +500,11 @@ export class BuildingService {
         return xml;
     }
 
-    async createNewBuilding(templateName?: string) {
+    async createNewBuilding(templateName?: string, dimensions = { width: 20, height: 20 }) {
+        const { width, height } = dimensions;
+        if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > 256 || height > 256) {
+            throw new Error('Building dimensions must be whole numbers between 1 and 256 tiles.');
+        }
         let template: BuildingTemplateDefinition | undefined = undefined;
         let catalog: TemplateCatalog | undefined = undefined;
 
@@ -514,8 +518,6 @@ export class BuildingService {
         }
 
         const rooms = template ? template.Rooms.map(room => this.cloneRoom(room)) : [];
-        const width = 20;
-        const height = 20;
         const floors = [{
             objects: [],
             rooms: this.createEmptyRoomsMatrix(width, height),
