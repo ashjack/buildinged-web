@@ -27,6 +27,7 @@ export class BuildingSelectionWindowComponent implements OnInit, OnDestroy {
   projectDescription = '';
   projectVisibility: 'private' | 'public' = 'private';
   creatingProject = false;
+  showProjectForm = false;
   hasStandaloneRecovery = false;
   templateNames: string[] = [];
   selectedTemplateName = '';

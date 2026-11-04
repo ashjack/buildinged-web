@@ -1,105 +1,200 @@
-<main class="workspace">
-  <header><a routerLink="/">BuildingEd / Projects</a><span>{{auth.user?.displayName}}</span></header>
-  <p role="status" *ngIf="loading">Loading project...</p>
-  <p class="notice error" role="alert" *ngIf="error">{{error}} <button (click)="load()" [disabled]="busy">Retry</button></p>
-  <p class="notice" role="status" *ngIf="message">{{message}}</p>
+<header class="topbar">
+  <div class="shell bar">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a class="brand" routerLink="/">BuildingEd</a>
+      <ng-container *ngIf="project"><span aria-hidden="true">/</span><a [routerLink]="['/projects', project.id]" [attr.aria-current]="task ? null : 'page'">{{project.name}}</a></ng-container>
+      <ng-container *ngIf="task"><span aria-hidden="true">/</span><span class="current" aria-current="page">{{task.title}}</span></ng-container>
+    </nav>
+    <span class="user">{{auth.user?.displayName}}</span>
+  </div>
+</header>
+
+<main class="shell">
+  <p class="muted loading" role="status" *ngIf="loading && !project">Loading project…</p>
+  <p class="notice error" role="alert" *ngIf="error"><span>{{error}}</span><button class="link" (click)="load()" [disabled]="busy">Retry</button></p>
+  <p class="notice" role="status" *ngIf="message"><span>{{message}}</span><button class="link" (click)="message = ''">Dismiss</button></p>
+
   <ng-container *ngIf="project as project">
-    <section class="hero">
-      <div><a *ngIf="task" [routerLink]="['/projects', project.id]">Back to project</a><h1>{{project.name}}</h1><p>{{project.description}}</p></div>
-      <span class="badge">{{project.visibility}} / {{project.role}}</span>
-    </section>
-
+    <!-- Project overview -->
     <ng-container *ngIf="!task">
-      <section>
-        <div class="heading"><div><h2>Available and pending tasks</h2><p>Choose a task and create your own contribution. Nobody owns the task exclusively.</p></div>
-          <label>Filter <input [(ngModel)]="search" placeholder="Task title"></label>
-          <label>Status <select [(ngModel)]="statusFilter"><option value="pending">Available / review pending</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="all">All</option></select></label>
+      <section class="page-head">
+        <div>
+          <h1>{{project.name}}</h1>
+          <p class="lede" *ngIf="project.description">{{project.description}}</p>
         </div>
-        <div class="cards">
-          <a class="card task-card" *ngFor="let item of filteredTasks" [routerLink]="['/projects', project.id, 'tasks', item.id]">
-            <div class="heading"><span class="badge">{{item.type === 'furnish' ? 'Furnish' : 'Make tiles'}}</span><span>{{item.priority}} priority</span></div>
-            <h3>{{item.title}}</h3><p>{{item.description}}</p><strong>{{item.status.replace('_', ' ')}}</strong>
-          </a>
-        </div>
-        <p *ngIf="!loading && !filteredTasks.length">No matching tasks yet.</p>
+        <span class="meta">{{project.visibility}} · {{project.role}}</span>
       </section>
-      <section class="panel"><h2>Original builds</h2><p>Contributions are stored separately; furnishing never overwrites these originals.</p>
-        <ul><li *ngFor="let build of builds"><strong>{{build.name}}</strong> <button (click)="download(build)" [disabled]="busy">Download original TBX</button></li></ul>
-        <p *ngIf="!builds.length">No builds have been added.</p>
-        <div *ngIf="project.role === 'owner'"><label>Build name (optional) <input [(ngModel)]="buildName" maxlength="200"></label><label class="upload">Add original TBX <input type="file" accept=".tbx" [disabled]="busy" (change)="uploadBuild($event)"></label></div>
-      </section>
-      <section class="panel" *ngIf="project.role === 'owner'"><h2>Project access</h2>
-        <p>{{project.visibility === 'public' ? 'Every signed-in Google user can see and contribute to this project.' : 'Only invited members can see this project.'}}</p>
-        <button (click)="changeVisibility()" [disabled]="busy">Make {{project.visibility === 'public' ? 'private' : 'public'}}</button>
-        <form (ngSubmit)="addMember()"><label>Google account email <input type="email" name="memberEmail" [(ngModel)]="memberEmail" required></label>
-          <label>Role <select name="memberRole" [(ngModel)]="memberRole"><option value="contributor">Contributor</option><option value="reviewer">Reviewer</option></select></label>
-          <button [disabled]="busy || !memberEmail.trim()">Add / update member</button>
-        </form><p>The person must have signed in once before being invited.</p>
-        <ul><li *ngFor="let member of members">{{member.userId}} / {{member.role}} <button *ngIf="member.role !== 'owner'" (click)="removeMember(member)" [disabled]="busy">Remove</button></li></ul>
-      </section>
-    </ng-container>
 
-    <ng-container *ngIf="task as task">
-      <div class="brief-layout">
-        <section class="panel brief"><div class="heading"><span class="badge">{{task.type === 'furnish' ? 'Furnish' : 'Make tiles'}}</span><span>{{task.status.replace('_', ' ')}} / {{task.priority}} priority</span></div>
-          <h2>{{task.title}}</h2><p class="preformatted">{{task.description}}</p>
-          <h3>Requirements / acceptance checklist</h3><p class="preformatted">{{task.requirements || 'No additional requirements.'}}</p>
-          <p *ngIf="task.sourceBuildId">Source build: {{task.sourceBuildId}}. This task uses a pinned source revision.</p>
-          <form *ngIf="accepting" (ngSubmit)="startContribution()">
-            <label>{{task.type === 'furnish' ? 'Variant name' : 'Contribution name'}} <input name="contributionName" [(ngModel)]="contributionName" required maxlength="200"></label>
-            <button class="primary" [disabled]="busy || !contributionName.trim()">{{task.type === 'furnish' ? 'Start a furnishing variant' : 'Start tile contribution'}}</button>
-          </form>
-          <p *ngIf="!accepting">This task is not accepting new contributions.</p>
-          <div *ngIf="canManage" class="heading"><button (click)="editBrief()" [disabled]="busy">Edit brief</button><button (click)="updateTask(task.status !== 'cancelled' && task.status !== 'completed')" [disabled]="busy">{{task.status === 'cancelled' || task.status === 'completed' ? 'Reopen task' : 'Cancel task'}}</button></div>
+      <div class="layout">
+        <section class="main-col tasks" aria-labelledby="tasks-title">
+          <div class="section-head">
+            <div><h2 id="tasks-title">Tasks</h2><p class="muted">Pick a task and start your own contribution. Nobody owns the task exclusively.</p></div>
+            <button class="button primary" *ngIf="canManage && !showTaskForm" (click)="showTaskForm = true">Create a task</button>
+          </div>
+          <ng-container *ngIf="canManage && showTaskForm" [ngTemplateOutlet]="taskForm"></ng-container>
+          <div class="filters">
+            <input type="search" [(ngModel)]="search" placeholder="Search tasks" aria-label="Filter tasks by title">
+            <select [(ngModel)]="statusFilter" aria-label="Filter tasks by status"><option value="pending">Open</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="all">All</option></select>
+          </div>
+          <ul class="list" *ngIf="filteredTasks.length">
+            <li *ngFor="let item of filteredTasks">
+              <a class="item" [routerLink]="['/projects', project.id, 'tasks', item.id]">
+                <span class="item-main"><strong>{{item.title}}</strong><span class="muted">{{item.description}}</span></span>
+                <span class="meta">{{item.type === 'furnish' ? 'Furnish' : 'Tiles'}} · {{item.priority}}</span>
+                <span class="status" [attr.data-status]="item.status">{{item.status.replace('_', ' ')}}</span>
+              </a>
+            </li>
+          </ul>
+          <p class="empty muted" *ngIf="!loading && !filteredTasks.length">No matching tasks.</p>
         </section>
-        <aside class="panel"><h2>Reference images</h2><p>Images are embedded from external sites, not hosted by BuildingEd.</p>
-          <figure *ngFor="let reference of task.references">
-            <img *ngIf="!imageUnavailable(reference)" [src]="reference.imageUrl" [alt]="reference.alt" loading="lazy" referrerpolicy="no-referrer" (error)="imageFailed(reference)">
-            <p *ngIf="imageUnavailable(reference)" role="status">This image cannot be embedded. View its source instead.</p>
-            <figcaption>{{reference.caption}} <a [href]="reference.sourceUrl" target="_blank" rel="noopener noreferrer">View source</a></figcaption>
-          </figure>
-          <p *ngIf="!task.references.length">No reference images supplied.</p>
+
+        <aside class="side-col">
+          <section class="panel" aria-labelledby="builds-title">
+            <h2 id="builds-title">Original builds</h2>
+            <p class="muted fine">Contributions are stored separately and never overwrite these.</p>
+            <ul class="plain" *ngIf="builds.length">
+              <li *ngFor="let build of builds"><span>{{build.name}}</span><button class="link" (click)="download(build)" [disabled]="busy">Download</button></li>
+            </ul>
+            <p class="muted fine" *ngIf="!builds.length">No builds added yet.</p>
+            <div class="stack" *ngIf="project.role === 'owner'">
+              <label>Build name (optional)<input [(ngModel)]="buildName" maxlength="200"></label>
+              <label>Upload original .tbx<input type="file" accept=".tbx" [disabled]="busy" (change)="uploadBuild($event)"></label>
+            </div>
+          </section>
+
+          <section class="panel" *ngIf="project.role === 'owner'" aria-labelledby="access-title">
+            <h2 id="access-title">Project access</h2>
+            <div class="inline">
+              <p class="muted fine">{{project.visibility === 'public' ? 'Any signed-in Google user can see and contribute.' : 'Only invited members can see this project.'}}</p>
+              <button class="button compact" (click)="changeVisibility()" [disabled]="busy">Make {{project.visibility === 'public' ? 'private' : 'public'}}</button>
+            </div>
+            <ul class="plain" *ngIf="members.length">
+              <li *ngFor="let member of members"><span class="truncate">{{member.userId}} <span class="muted">· {{member.role}}</span></span><button class="link danger" *ngIf="member.role !== 'owner'" (click)="removeMember(member)" [disabled]="busy">Remove</button></li>
+            </ul>
+            <form class="stack" (ngSubmit)="addMember()">
+              <label>Invite by Google email<input type="email" name="memberEmail" [(ngModel)]="memberEmail" required></label>
+              <div class="inline">
+                <select name="memberRole" [(ngModel)]="memberRole" aria-label="Member role"><option value="contributor">Contributor</option><option value="reviewer">Reviewer</option></select>
+                <button class="button compact" [disabled]="busy || !memberEmail.trim()">Add member</button>
+              </div>
+              <p class="muted fine">They must have signed in once before being invited.</p>
+            </form>
+          </section>
         </aside>
       </div>
-      <section><h2>Contributions and variants</h2><p>Your drafts are private. Submitted work is visible to the project.</p>
-        <div class="cards"><article class="card" *ngFor="let item of contributions"><h3>{{item.name}}</h3><p>{{item.status.replace('_', ' ')}} / revision {{item.revision}}</p>
-          <p *ngIf="item.originalBuildId">Variant of {{item.originalBuildId}}</p><p class="preformatted" *ngIf="item.reviewNote">Review: {{item.reviewNote}}</p>
-          <div class="heading"><a *ngIf="item.originalBuildId && item.createdBy === auth.user?.uid && (item.status === 'draft' || item.status === 'changes_requested')" class="primary" [routerLink]="['/projects', project.id, 'variants', item.id, 'edit']">Resume variant</a>
-            <button *ngIf="item.originalBuildId" (click)="download(item)" [disabled]="busy">Download TBX</button>
-            <a *ngIf="item.deliverableUrl" [href]="item.deliverableUrl" target="_blank" rel="noopener noreferrer">View tile deliverable</a>
-          </div>
-          <form *ngIf="!item.originalBuildId && item.createdBy === auth.user?.uid && (item.status === 'draft' || item.status === 'changes_requested')" (ngSubmit)="submitTile(item)">
-            <label>HTTPS deliverable link <input type="url" [name]="'deliverable-' + item.id" [(ngModel)]="deliverableUrls[item.id]" required placeholder="https://..."></label>
-            <button [disabled]="busy || !deliverableUrls[item.id]?.trim() || !accepting">Submit tile work</button>
-          </form>
-          <div *ngIf="canManage && item.status === 'submitted'">
-            <label>Review note <textarea [(ngModel)]="reviewNotes[item.id]" maxlength="5000"></textarea></label>
-            <div class="heading"><button (click)="review(item, 'approved')" [disabled]="busy">Approve</button><button (click)="review(item, 'changes_requested')" [disabled]="busy || !reviewNotes[item.id]?.trim()">Request changes</button><button (click)="review(item, 'rejected')" [disabled]="busy || !reviewNotes[item.id]?.trim()">Reject</button></div>
-          </div>
-        </article></div><p *ngIf="!contributions.length">No contributions yet.</p>
-      </section>
     </ng-container>
 
-    <section class="panel" *ngIf="canManage && (!task || editingBrief)">
-      <h2>{{editingBrief ? 'Edit task brief' : 'Create a task'}}</h2>
-      <form (ngSubmit)="editingBrief ? updateTask() : createTask()">
-        <label>Title <input name="title" [(ngModel)]="draft.title" required maxlength="200"></label>
-        <label>Type <select name="type" [(ngModel)]="draft.type" [disabled]="editingBrief"><option value="furnish">Furnish a build</option><option value="tile">Make tiles</option></select></label>
-        <label *ngIf="draft.type === 'furnish'">Source build <select name="source" [(ngModel)]="draft.sourceBuildId" [disabled]="editingBrief"><option *ngFor="let build of builds" [value]="build.id">{{build.name}}</option></select></label>
-        <label>Brief <textarea name="description" [(ngModel)]="draft.description" required maxlength="10000"></textarea></label>
-        <label>Requirements, dimensions, orientations and acceptance checklist <textarea name="requirements" [(ngModel)]="draft.requirements" maxlength="10000"></textarea></label>
-        <label>Priority <select name="priority" [(ngModel)]="draft.priority"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option></select></label>
-        <fieldset *ngFor="let reference of draft.references; let i = index"><legend>Reference {{i + 1}}</legend>
-          <label>HTTPS image URL <input type="url" [name]="'image-' + i" [(ngModel)]="reference.imageUrl" required></label>
-          <label>HTTPS source page <input type="url" [name]="'source-' + i" [(ngModel)]="reference.sourceUrl" required></label>
-          <label>Image description <input [name]="'alt-' + i" [(ngModel)]="reference.alt" required maxlength="500"></label>
-          <label>Caption <input [name]="'caption-' + i" [(ngModel)]="reference.caption" maxlength="500"></label>
-          <button type="button" (click)="removeReference(i)" [disabled]="busy">Remove reference</button>
-        </fieldset>
-        <div class="heading"><button type="button" (click)="addReference()" [disabled]="busy || draft.references.length >= 12">Add reference image</button>
-          <button class="primary" [disabled]="busy || !draft.title.trim() || !draft.description.trim() || (draft.type === 'furnish' && !draft.sourceBuildId)">{{editingBrief ? 'Save brief' : 'Create shared task'}}</button>
-          <button *ngIf="editingBrief" type="button" (click)="editingBrief = false" [disabled]="busy">Cancel editing</button></div>
-      </form>
-    </section>
+    <!-- Task detail -->
+    <ng-container *ngIf="task as task">
+      <section class="page-head">
+        <div>
+          <h1>{{task.title}}</h1>
+          <p class="meta-line"><span class="status" [attr.data-status]="task.status">{{task.status.replace('_', ' ')}}</span><span>{{task.type === 'furnish' ? 'Furnish a build' : 'Make tiles'}}</span><span>{{task.priority}} priority</span></p>
+        </div>
+        <div class="tools" *ngIf="canManage && !editingBrief">
+          <button class="button" (click)="editBrief()" [disabled]="busy">Edit brief</button>
+          <button class="button" (click)="updateTask(task.status !== 'cancelled' && task.status !== 'completed')" [disabled]="busy">{{task.status === 'cancelled' || task.status === 'completed' ? 'Reopen task' : 'Cancel task'}}</button>
+        </div>
+      </section>
+
+      <ng-container *ngIf="editingBrief" [ngTemplateOutlet]="taskForm"></ng-container>
+
+      <div class="layout" *ngIf="!editingBrief">
+        <div class="main-col">
+          <section class="block">
+            <h2>Brief</h2>
+            <p class="prose">{{task.description}}</p>
+          </section>
+          <section class="block">
+            <h2>Requirements</h2>
+            <p class="prose">{{task.requirements || 'No additional requirements.'}}</p>
+            <p class="muted fine" *ngIf="task.sourceBuildId">Uses a pinned revision of source build {{task.sourceBuildId}}.</p>
+          </section>
+
+          <section class="panel start">
+            <form *ngIf="accepting" (ngSubmit)="startContribution()">
+              <label>{{task.type === 'furnish' ? 'Variant name' : 'Contribution name'}}<input name="contributionName" [(ngModel)]="contributionName" required maxlength="200"></label>
+              <button class="button primary" [disabled]="busy || !contributionName.trim()">{{task.type === 'furnish' ? 'Start a furnishing variant' : 'Start tile contribution'}}</button>
+            </form>
+            <p class="muted" *ngIf="!accepting">This task is not accepting new contributions.</p>
+          </section>
+
+          <section class="block" aria-labelledby="contributions-title">
+            <div class="section-head"><div><h2 id="contributions-title">Contributions</h2><p class="muted">Drafts are private. Submitted work is visible to the project.</p></div></div>
+            <ul class="list" *ngIf="contributions.length">
+              <li *ngFor="let item of contributions" class="contribution">
+                <div class="item-top">
+                  <span class="item-main"><strong>{{item.name}}</strong><span class="muted">Revision {{item.revision}}<ng-container *ngIf="item.originalBuildId"> · variant of {{item.originalBuildId}}</ng-container></span></span>
+                  <span class="status" [attr.data-status]="item.status">{{item.status.replace('_', ' ')}}</span>
+                </div>
+                <p class="prose review-note" *ngIf="item.reviewNote"><span class="muted">Review:</span> {{item.reviewNote}}</p>
+                <div class="tools">
+                  <a *ngIf="item.originalBuildId && item.createdBy === auth.user?.uid && (item.status === 'draft' || item.status === 'changes_requested')" class="button primary compact" [routerLink]="['/projects', project.id, 'variants', item.id, 'edit']">Resume variant</a>
+                  <button *ngIf="item.originalBuildId" class="button compact" (click)="download(item)" [disabled]="busy">Download .tbx</button>
+                  <a *ngIf="item.deliverableUrl" class="button compact" [href]="item.deliverableUrl" target="_blank" rel="noopener noreferrer">View tile deliverable</a>
+                </div>
+                <form class="inline" *ngIf="!item.originalBuildId && item.createdBy === auth.user?.uid && (item.status === 'draft' || item.status === 'changes_requested')" (ngSubmit)="submitTile(item)">
+                  <input type="url" [name]="'deliverable-' + item.id" [(ngModel)]="deliverableUrls[item.id]" required placeholder="https://… deliverable link" aria-label="HTTPS deliverable link">
+                  <button class="button compact" [disabled]="busy || !deliverableUrls[item.id]?.trim() || !accepting">Submit tile work</button>
+                </form>
+                <div class="stack" *ngIf="canManage && item.status === 'submitted'">
+                  <label>Review note<textarea [(ngModel)]="reviewNotes[item.id]" maxlength="5000"></textarea></label>
+                  <div class="tools">
+                    <button class="button primary compact" (click)="review(item, 'approved')" [disabled]="busy">Approve</button>
+                    <button class="button compact" (click)="review(item, 'changes_requested')" [disabled]="busy || !reviewNotes[item.id]?.trim()">Request changes</button>
+                    <button class="button compact" (click)="review(item, 'rejected')" [disabled]="busy || !reviewNotes[item.id]?.trim()">Reject</button>
+                  </div>
+                </div>
+              </li>
+            </ul>
+            <p class="empty muted" *ngIf="!contributions.length">No contributions yet.</p>
+          </section>
+        </div>
+
+        <aside class="side-col">
+          <section class="panel" aria-labelledby="refs-title">
+            <h2 id="refs-title">References</h2>
+            <p class="muted fine">Embedded from external sites, not hosted by BuildingEd.</p>
+            <figure *ngFor="let reference of task.references">
+              <img *ngIf="!imageUnavailable(reference)" [src]="reference.imageUrl" [alt]="reference.alt" loading="lazy" referrerpolicy="no-referrer" (error)="imageFailed(reference)">
+              <p *ngIf="imageUnavailable(reference)" class="image-fallback muted fine" role="status">This image cannot be embedded. View its source instead.</p>
+              <figcaption>{{reference.caption}} <a [href]="reference.sourceUrl" target="_blank" rel="noopener noreferrer">Source ↗</a></figcaption>
+            </figure>
+            <p class="muted fine" *ngIf="!task.references.length">No reference images.</p>
+          </section>
+        </aside>
+      </div>
+    </ng-container>
   </ng-container>
 </main>
+
+<ng-template #taskForm>
+  <section class="panel form-panel" aria-labelledby="task-form-title">
+    <h2 id="task-form-title">{{editingBrief ? 'Edit task brief' : 'New task'}}</h2>
+    <form (ngSubmit)="editingBrief ? updateTask() : createTask()">
+      <div class="grid-2">
+        <label>Title<input name="title" [(ngModel)]="draft.title" required maxlength="200"></label>
+        <label>Priority<select name="priority" [(ngModel)]="draft.priority"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option></select></label>
+        <label>Type<select name="type" [(ngModel)]="draft.type" [disabled]="editingBrief"><option value="furnish">Furnish a build</option><option value="tile">Make tiles</option></select></label>
+        <label *ngIf="draft.type === 'furnish'">Source build<select name="source" [(ngModel)]="draft.sourceBuildId" [disabled]="editingBrief"><option *ngFor="let build of builds" [value]="build.id">{{build.name}}</option></select></label>
+      </div>
+      <label>Brief<textarea name="description" [(ngModel)]="draft.description" required maxlength="10000"></textarea></label>
+      <label>Requirements and acceptance checklist<textarea name="requirements" [(ngModel)]="draft.requirements" maxlength="10000" placeholder="Dimensions, orientations, anything reviewers should check"></textarea></label>
+      <fieldset *ngFor="let reference of draft.references; let i = index">
+        <legend>Reference {{i + 1}} <button type="button" class="link danger" (click)="removeReference(i)" [disabled]="busy">Remove</button></legend>
+        <div class="grid-2">
+          <label>HTTPS image URL<input type="url" [name]="'image-' + i" [(ngModel)]="reference.imageUrl" required></label>
+          <label>HTTPS source page<input type="url" [name]="'source-' + i" [(ngModel)]="reference.sourceUrl" required></label>
+          <label>Image description<input [name]="'alt-' + i" [(ngModel)]="reference.alt" required maxlength="500"></label>
+          <label>Caption<input [name]="'caption-' + i" [(ngModel)]="reference.caption" maxlength="500"></label>
+        </div>
+      </fieldset>
+      <div class="form-actions">
+        <button type="button" class="link" (click)="addReference()" [disabled]="busy || draft.references.length >= 12">+ Add reference image</button>
+        <span class="spacer"></span>
+        <button type="button" class="button" (click)="cancelTaskForm()" [disabled]="busy">Cancel</button>
+        <button class="button primary" [disabled]="busy || !draft.title.trim() || !draft.description.trim() || (draft.type === 'furnish' && !draft.sourceBuildId)">{{editingBrief ? 'Save brief' : 'Create task'}}</button>
+      </div>
+    </form>
+  </section>
+</ng-template>

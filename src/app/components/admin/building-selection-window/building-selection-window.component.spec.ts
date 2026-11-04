@@ -37,7 +37,7 @@ describe('Project-list homepage', () => {
     fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
     expect(api.projects).not.toHaveBeenCalled();
     expect(fixture.nativeElement.textContent).toContain('Sign in with Google');
-    expect(fixture.nativeElement.textContent).toContain('Create Empty Canvas');
+    expect(fixture.nativeElement.textContent).toContain('New building');
   });
 
   it('shows routed project links after sign-in and clears them on sign-out', async () => {
@@ -45,7 +45,7 @@ describe('Project-list homepage', () => {
     fixture.detectChanges();
     user.next({ uid: 'user' });
     await fixture.whenStable(); fixture.detectChanges();
-    const link: HTMLAnchorElement = fixture.nativeElement.querySelector('.project-footer a');
+    const link: HTMLAnchorElement = fixture.nativeElement.querySelector('a.project-row');
     expect(link.getAttribute('href')).toBe('/projects/project');
     user.next(null);
     fixture.detectChanges();

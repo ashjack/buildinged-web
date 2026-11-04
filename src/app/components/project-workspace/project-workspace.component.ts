@@ -31,6 +31,7 @@ export class ProjectWorkspaceComponent implements OnInit, OnDestroy {
   statusFilter = 'pending';
   draft = emptyTask();
   editingBrief = false;
+  showTaskForm = false;
   memberEmail = '';
   memberRole: 'reviewer' | 'contributor' = 'contributor';
   buildName = '';
@@ -113,8 +114,14 @@ export class ProjectWorkspaceComponent implements OnInit, OnDestroy {
     void this.run(async () => {
       const task = await this.api.request<ProjectTask>('POST', `/projects/${this.project!.id}/tasks`, this.draft);
       this.draft = emptyTask();
+      this.showTaskForm = false;
       await this.router.navigate(['/projects', this.project!.id, 'tasks', task.id]);
     });
+  }
+  cancelTaskForm(): void {
+    this.editingBrief = false;
+    this.showTaskForm = false;
+    this.draft = { ...emptyTask(), sourceBuildId: this.builds[0]?.id || '' };
   }
   editBrief(): void {
     if (!this.task) return;
