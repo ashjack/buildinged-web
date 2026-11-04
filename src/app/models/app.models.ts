@@ -74,6 +74,7 @@ export interface Tilepack {
     name: string;
     url: string;
     enabled: boolean;
+    version?: string;
 }
 
 //Building File Specific

@@ -1,0 +1,62 @@
+<header class="topbar">
+  <div class="shell bar">
+    <a class="brand" routerLink="/">BuildingEd</a>
+    <span class="crumb">Admin</span>
+    <span class="user">{{auth.user?.displayName || 'Signed in'}}</span>
+  </div>
+</header>
+
+<main class="shell">
+  <div class="page-head">
+    <div>
+      <h1>Tile packs</h1>
+      <p class="lede">Packs listed here are loaded by the editor from <code>tilepacks.json</code> in the storage bucket.</p>
+    </div>
+    <button class="button primary" *ngIf="!showCreate" (click)="showCreate = true" [disabled]="!!uploadingKey">New tile pack</button>
+  </div>
+
+  <p *ngIf="error" class="notice error" role="alert">{{error}}</p>
+  <p *ngIf="notice" class="notice" role="status">{{notice}} <button class="link" (click)="notice = ''">Dismiss</button></p>
+
+  <form *ngIf="showCreate" class="create" (ngSubmit)="createPack()">
+    <div class="fields">
+      <label>Name<input name="name" [ngModel]="newName" (ngModelChange)="onNameChange($event)" maxlength="80" required placeholder="My Tiles"></label>
+      <label>Folder<input name="id" [ngModel]="newId" (ngModelChange)="onIdChange($event)" maxlength="48" required placeholder="my-tiles"></label>
+      <label class="file">Zip<input type="file" accept=".zip,application/zip" (change)="onNewFile($any($event.target))" required></label>
+    </div>
+    <p class="hint" [class.error]="newId && !newIdValid">
+      <ng-container *ngIf="!newId || newIdValid">Uploaded to <code>{{newId || 'folder'}}/{{newId || 'folder'}}.zip</code>. The zip must contain <code>Tiles/2x/*.png</code> sheets.</ng-container>
+      <ng-container *ngIf="newId && !newIdValid">Use lowercase letters, numbers, dashes or underscores.</ng-container>
+    </p>
+    <div class="tools">
+      <button class="button primary" type="submit" [disabled]="!!uploadingKey || !newFile || !newName.trim() || !newIdValid">
+        {{uploadingKey === newPackKey ? 'Uploading ' + (progress * 100 | number:'1.0-0') + '%' : 'Create pack'}}
+      </button>
+      <button class="button" type="button" (click)="cancelCreate()" [disabled]="!!uploadingKey">Cancel</button>
+    </div>
+    <div class="bar-track" *ngIf="uploadingKey === newPackKey"><span [style.width.%]="progress * 100"></span></div>
+  </form>
+
+  <section class="packs">
+    <div class="section-head">
+      <h2>{{packs.length}} {{packs.length === 1 ? 'pack' : 'packs'}}</h2>
+      <button class="link" (click)="load()" [disabled]="loading || !!uploadingKey">Refresh</button>
+    </div>
+
+    <p *ngIf="loading && !packs.length" class="muted">Loading…</p>
+    <ul class="list" *ngIf="packs.length">
+      <li class="item" *ngFor="let pack of packs">
+        <div class="item-main">
+          <strong>{{pack.name}}</strong>
+          <span class="muted">{{pack.id || '—'}} · {{pack.format}} · {{formatSize(pack.size)}}<ng-container *ngIf="pack.updatedAt"> · updated {{pack.updatedAt | date:'mediumDate'}}</ng-container></span>
+          <div class="bar-track" *ngIf="uploadingKey === pack.id"><span [style.width.%]="progress * 100"></span></div>
+        </div>
+        <span class="status" [attr.data-status]="pack.exists ? 'available' : 'rejected'">{{pack.exists ? 'Live' : 'Missing'}}</span>
+        <input #file type="file" accept=".zip,application/zip" hidden (change)="replace(pack, file)">
+        <button class="button compact" (click)="file.click()" [disabled]="!!uploadingKey || !pack.id">
+          {{uploadingKey === pack.id ? (progress * 100 | number:'1.0-0') + '%' : 'Upload zip'}}
+        </button>
+      </li>
+    </ul>
+  </section>
+</main>

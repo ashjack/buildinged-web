@@ -2,7 +2,8 @@
     <div class="loading-box">
         <div class="loader"></div>
         <h3 style="margin-top: 10px;">Downloading <b>{{currentPackName || 'tiles'}}</b>...</h3>
+        <p *ngIf="detail">{{detail}}</p>
         <p *ngIf="currentSheetName">Tileset: {{currentSheetName}}</p>
-        <p>{{processedTiles}}/{{totalTiles}}</p>
+        <p *ngIf="totalTiles">{{processedTiles}}/{{totalTiles}}</p>
     </div>
 </div>

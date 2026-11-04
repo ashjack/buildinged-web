@@ -9,6 +9,7 @@
         <button class="link" *ngIf="(openBuilding$ | async) || hasStandaloneRecovery" (click)="resumeEditor()">Resume editor</button>
         <ng-container *ngIf="auth.user$ | async as user; else googleLogin">
           <span class="user">{{user.displayName || 'Signed in'}}</span>
+          <a class="link" *ngIf="isAdmin(user.uid)" routerLink="/admin">Admin</a>
           <button class="link" (click)="signOut()">Sign out</button>
         </ng-container>
         <ng-template #googleLogin><button class="button" (click)="auth.signIn()" [disabled]="auth.busy">Sign in with Google</button></ng-template>

@@ -4,10 +4,11 @@ import { DomSanitizer, SafeResourceUrl } from "@angular/platform-browser";
 import { Store } from "@ngrx/store";
 import { Observable, Subject, from, take, takeUntil } from "rxjs";
 import { PngTile, DbService } from "../services/db.service";
+import { parseTileName } from "../utils/sheet-atlas";
 import { FurnitureService } from "../services/furniture.service";
 import { GridService } from "../services/grid.service";
 import { RoomService } from "../services/room.service";
-import { TileService } from "../services/tile.service";
+import { TileService, TILEPACK_MANIFEST_URL } from "../services/tile.service";
 import * as fromRoot from '../app.reducers';
 import ToolDraw from "../tools/tool-draw";
 import ToolDrawRoom from "../tools/tool-draw-room";
@@ -109,12 +110,11 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     //Get tilesheets
 
     
-    this.http.get('assets/tilepacks.json').subscribe((data: any) => {
-      for (let i = 0; i < data.length; i++) {
-        const tilepack = data[i].Url;
-        const packName = data[i].Name;
-        this.tileService.tilepacks.push({ url: tilepack, name: packName, enabled: false });
-        console.log(tilepack);
+    this.http.get<any[]>(TILEPACK_MANIFEST_URL, { headers: { 'Cache-Control': 'no-cache' } }).subscribe((data) => {
+      for (const entry of data || []) {
+        if (!entry?.Url || !entry?.Name) continue;
+        this.tileService.tilepacks.push({ url: entry.Url, name: entry.Name, enabled: false,
+          version: entry.Version == null ? undefined : String(entry.Version) });
       }
 
       if(!localStorage.getItem('Vanilla'))
@@ -193,6 +193,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     })
 
     this.gridService.tileFetched.pipe(takeUntil(this.unsubscribe)).subscribe(() => this.requestRedraw());
+    this.db?.sheetsChanged?.pipe(takeUntil(this.unsubscribe)).subscribe(sheets => this.forgetSheets(sheets));
   }
 
   ngAfterViewInit() {
@@ -531,7 +532,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     const tileImage = this.cacheService.get(tileName);
     if(!tileImage)
     {
-      this.loadTileImage(tileName, tile);
+      this.loadTileImage(tileName);
     }
     else
     {
@@ -550,23 +551,24 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     this.redrawFrame = this.zone ? this.zone.runOutsideAngular(schedule) : schedule();
   }
 
-  private loadTileImage(tileName: string, src: string): void {
-    if (this.pendingTileImages.has(tileName)) return;
+  private loadTileImage(tileName: string): void {
+    if (this.pendingTileImages.has(tileName) || !this.db) return;
     this.pendingTileImages.add(tileName);
-    const load = () => {
-      const image = new Image();
-      image.src = src;
-      // Decode off the main thread so the first drawImage doesn't stall a frame.
-      const ready = typeof image.decode === 'function'
-        ? image.decode()
-        : new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = reject; });
-      ready.then(() => {
-        this.pendingTileImages.delete(tileName);
-        this.cacheService.set(tileName, image);
-        this.requestRedraw();
-      }, () => { /* Leave broken images marked pending so they aren't re-decoded every frame. */ });
-    };
+    const load = () => this.db.getTileBitmap(tileName).then(bitmap => {
+      // Missing tiles stay pending (so they aren't looked up every frame) until their sheet changes.
+      if (!bitmap || !this.pendingTileImages.delete(tileName)) return;
+      this.cacheService.set(tileName, bitmap);
+      this.requestRedraw();
+    }, error => console.warn(`Could not load tile ${tileName}:`, error));
     if (this.zone) this.zone.runOutsideAngular(load); else load();
+  }
+
+  private forgetSheets(sheets: string[]): void {
+    const changed = new Set(sheets);
+    const affected = (name: string) => changed.has(parseTileName(name)?.sheet ?? '');
+    [...this.pendingTileImages].filter(affected).forEach(name => this.pendingTileImages.delete(name));
+    this.cacheService.keys().filter(affected).forEach(name => this.cacheService.delete(name));
+    this.requestRedraw();
   }
 
   drawTileOverlays() {

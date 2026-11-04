@@ -60,7 +60,7 @@ describe('Curated furnishing catalog', () => {
         expect(() => parseFurnitureGroups('}')).toThrowError(/Unexpected/);
     });
     it('checks availability per actual orientation, refreshes it after downloads and leaves the document unchanged', async () => {
-        const downloaded = new Set<string>(), db = { getTile: async (name: string) => downloaded.has(name) ? { name } : null };
+        const downloaded = new Set<string>(), db = { hasTile: async (name: string) => downloaded.has(name) };
         const service = new AutoFurnishingAnalysisService({ get: () => of(source) } as any, db as any);
         const building = readBuildingFile(new DOMParser().parseFromString(nativeBuildingXml, 'text/xml'));
         const before = JSON.stringify(building), first = await service.prepare(building);

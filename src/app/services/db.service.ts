@@ -1,7 +1,10 @@
 // db.ts
 import { Injectable } from '@angular/core';
 import Dexie, { Table } from 'dexie';
+import { Subject } from 'rxjs';
+import { SheetAtlas } from '../utils/sheet-atlas';
 
+/** A single tile, cut from its sheet on demand. `url` is an object URL owned by the tile cache. */
 export interface PngTile {
   name: string;
   url: string;
@@ -10,8 +13,17 @@ export interface PngTile {
 
 export interface Tileset {
   name: string;
-  url: string;
   packName: string;
+  columns: number;
+  rows: number;
+  /** Where the sheet came from (zip entry path or sheet URL). */
+  url?: string;
+}
+
+/** Whole tilesheet PNG, kept apart from `tilesets` so listing sheets never loads image data. */
+export interface SheetImage {
+  name: string;
+  blob: Blob;
 }
 
 export interface Tilepack {
@@ -23,20 +35,40 @@ export interface Tilepack {
   providedIn: 'root',
 })
 export class DbService extends Dexie {
-  pngTiles!: Table<PngTile, number>;
-  tilesets!: Table<Tileset, number>;
+  tilesets!: Table<Tileset, string>;
+  sheetImages!: Table<SheetImage, string>;
   tilepacks!: Table<Tilepack, boolean>;
+
+  /** Emits sheet names whose stored image was added, replaced or removed. */
+  readonly sheetsChanged = new Subject<string[]>();
+  private readonly atlas = new SheetAtlas({
+    getSheetInfo: name => this.tilesets.get(name),
+    getSheetBlob: async name => (await this.sheetImages.get(name))?.blob,
+  });
 
   constructor() {
     super('tilesets');
     this.version(4).stores({
-
       pngTiles: '&name, url, tileset',
       tilesets: '&name, url, packName',
       tilepacks: '&name, enabled',
     });
-    //
-    
+    // Tiles used to be stored one data URL per row; sheets are now stored whole. Old caches are dropped and re-downloaded.
+    this.version(5).stores({
+      pngTiles: null,
+      tilesets: '&name, packName',
+      sheetImages: '&name',
+      tilepacks: '&name, enabled',
+    }).upgrade(tx => tx.table('tilesets').clear());
+    // Dexie closes for good when the database is deleted (e.g. from DevTools). Reopen so tiles can be re-downloaded without a reload.
+    this.on('versionchange', (event: IDBVersionChangeEvent) => {
+      if (!event.newVersion) {
+        this.close();
+        this.open().catch(error => console.error('Could not reopen the tile database:', error));
+      }
+    });
+    this.sheetsChanged.subscribe(sheets => this.atlas.invalidate(sheets));
+
     this.open(); // <---- Missing in OP
   }
 
@@ -78,21 +110,14 @@ export class DbService extends Dexie {
   }
 
   //Tilesets
-  async addTileset(name: string, url: string, packName: string) {    
-    const tileset = await this.tilesets.where({
-      name: name
-    })
-    .toArray();
-
-    if (tileset.length > 0) {
-      return;
-    }
-
-    await this.tilesets.add({
-      name,
-      url,
-      packName
+  /** Stores whole sheets (metadata and image) in one transaction. */
+  async putSheets(sheets: { tileset: Tileset; blob: Blob }[]) {
+    if (!sheets.length) return;
+    await this.transaction('rw', this.tilesets, this.sheetImages, async () => {
+      await this.sheetImages.bulkPut(sheets.map(sheet => ({ name: sheet.tileset.name, blob: sheet.blob })));
+      await this.tilesets.bulkPut(sheets.map(sheet => sheet.tileset));
     });
+    this.sheetsChanged.next(sheets.map(sheet => sheet.tileset.name));
   }
 
   async getTileset(name: string) {
@@ -108,80 +133,49 @@ export class DbService extends Dexie {
   }
 
   async hasTileset(name: string) {
-    const tileset = await this.tilesets.where({
-      name: name
-    })
-    .toArray();
+    return (await this.tilesets.where('name').equals(name).count()) > 0;
+  }
 
-    return tileset.length > 0;
+  /** Names from the list that are already stored. */
+  async existingTilesets(names: string[]): Promise<Set<string>> {
+    const keys = await this.tilesets.where('name').anyOf(names).primaryKeys();
+    return new Set(keys as string[]);
+  }
+
+  async hasPackTilesets(packName: string) {
+    return (await this.tilesets.where('packName').equals(packName).count()) > 0;
   }
 
   //Tiles
-  async addTile(name: string, url: string, tileset: string) {
-
-    const tile = await this.pngTiles.where({
-      name: name
-    }).toArray();
-
-    if (tile.length > 0) {
-      return;
-    }
-
-    await this.pngTiles.add({
-      name,
-      url,
-      tileset
-    });
+  /** Whether a tile exists, without loading any image data. */
+  hasTile(name: string): Promise<boolean> {
+    return this.atlas.hasTile(name);
   }
 
-  async bulkUpsertTiles(tiles: PngTile[]) {
-    if (!tiles.length) {
-      return;
-    }
-
-    await this.pngTiles.bulkPut(tiles);
+  /** The tile as a bitmap for canvas drawing. */
+  getTileBitmap(name: string): Promise<ImageBitmap | null> {
+    return this.atlas.getTileBitmap(name);
   }
 
-  async getTile(name: string) {
-    const tile =  await this.pngTiles
-    .where({
-      name: name
-    })
-      .toArray();
-
-      if(tile.length === 0) {
-        return null;
-      }
-    return tile[0];
+  async getTile(name: string): Promise<PngTile | null> {
+    const url = await this.atlas.getTileUrl(name);
+    return url ? { name, url, tileset: name.replace(/_\d+(\.png)?$/i, '') } : null;
   }
 
-  async getTiles(tilesetName: string) {
-    return await this.pngTiles
-    .where({
-      tileset: tilesetName
-    })
-      .toArray();
+  async getTiles(tilesetName: string): Promise<PngTile[]> {
+    const names = await this.atlas.getTileNames(tilesetName);
+    const tiles = await Promise.all(names.map(async name => ({ name, url: await this.atlas.getTileUrl(name), tileset: tilesetName })));
+    return tiles.filter((tile): tile is PngTile => !!tile.url);
   }
 
   async clearTiles(tilepackName: string) {
   try {
-    // Retrieve the matching tilesets
-    const matchingTilesets = await this.tilesets
-      .where('packName')
-      .equals(tilepackName)
-      .toArray();
-
-    // Retrieve the names of the matching tilesets
-    const tilesetNames = matchingTilesets.map(tileset => tileset.name);
-
-    // Delete tiles from pngTiles where tileset matches the names of the matching tilesets
-    await Promise.all(tilesetNames.map(name => this.pngTiles.where('tileset').equals(name).delete()));
-
-    // Delete matching tilesets from the tilesets table
-    await this.tilesets
-      .where('name')
-      .anyOf(tilesetNames)
-      .delete();
+    const tilesetNames = await this.tilesets.where('packName').equals(tilepackName).primaryKeys() as string[];
+    await this.transaction('rw', this.tilesets, this.sheetImages, async () => {
+      await this.sheetImages.bulkDelete(tilesetNames);
+      await this.tilesets.bulkDelete(tilesetNames);
+    });
+    this.sheetsChanged.next(tilesetNames);
   } catch (error) {
     console.error('Error clearing tiles:', error);
     throw error; // Propagate the error

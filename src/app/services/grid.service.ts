@@ -1,9 +1,10 @@
 import { Injectable } from "@angular/core";
 import { SvgObject, SvgObjectOverlay, SvgTile } from "../models/app.models";
-import { DbService, PngTile } from "./db.service";
+import { DbService } from "./db.service";
 import { SafeResourceUrl } from "@angular/platform-browser";
 import { CacheService } from "./cache.service";
 import { Subject } from 'rxjs';
+import { parseTileName } from "../utils/sheet-atlas";
 
 @Injectable({
     providedIn: 'root',
@@ -30,9 +31,9 @@ export class GridService {
     objects: SvgObject[] = [];
     objectOverlays: SvgObjectOverlay[] = [];
 
-    private readonly fetchedTiles = new Map<string, string>();
+    private readonly fetchedTiles = new Set<string>();
     private readonly fetchingTiles = new Set<string>();
-    /** Emits a tile name once its image data has been read from IndexedDB. */
+    /** Emits a tile name once it is known to be available in IndexedDB. */
     readonly tileFetched = new Subject<string>();
 
     private rebuilding = false;
@@ -59,7 +60,10 @@ export class GridService {
         try { render(); } finally { this.objectUid = undefined; }
     }
 
-    constructor(private db: DbService, private cacheService: CacheService) { }
+    constructor(private db: DbService, private cacheService: CacheService) {
+        // Unit tests construct this with a bare object in place of the database.
+        this.db?.sheetsChanged?.subscribe(sheets => this.forgetSheets(sheets));
+    }
 
 
     hideTile(x: number, y: number, level: number, layer: string)
@@ -308,30 +312,29 @@ export class GridService {
   }
 
   getIndividualTile(name: string, origin = 'undefined'): SafeResourceUrl {
-  
-    // const tileName = name;
-    // const tileUrl = localStorage.getItem(tileName);
-    // return tileUrl!;
-
-   if(!name)
-   {
-     return 'NULL';
-   }
-   
-    const existingTile = this.fetchedTiles.get(name);
-    if (existingTile) return existingTile;
+    if (!name) return 'NULL';
+    // Image data is read separately by the canvas; this only reports whether the tile is available yet.
+    if (this.fetchedTiles.has(name)) return name;
     if (this.fetchingTiles.has(name)) return 'AWAITING';
 
     this.fetchingTiles.add(name);
-    this.db.getTile(name).then((tile: PngTile | null) => {
-      if (!tile?.url) return;
-      this.fetchedTiles.set(name, tile.url);
-      this.fetchingTiles.delete(name);
+    this.db.hasTile(name).then(found => {
+      // Missing tiles stay pending until their sheet is downloaded (see sheetsChanged).
+      if (!found || !this.fetchingTiles.delete(name)) return;
+      this.fetchedTiles.add(name);
       this.tileFetched.next(name);
-    });
+    }, () => this.fetchingTiles.delete(name));
 
     return '';
    }
+
+  private forgetSheets(sheets: string[]): void {
+    const changed = new Set(sheets);
+    const affected = (name: string) => changed.has(parseTileName(name)?.sheet ?? '');
+    const names = [...this.fetchedTiles, ...this.fetchingTiles].filter(affected);
+    names.forEach(name => { this.fetchedTiles.delete(name); this.fetchingTiles.delete(name); });
+    if (names.length) this.tileFetched.next(names[0]);
+  }
 
     getSelectedLevel(): number {
       return parseInt(localStorage.getItem('selectedLevel') || '0');

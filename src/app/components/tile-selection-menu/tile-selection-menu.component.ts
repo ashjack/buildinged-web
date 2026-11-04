@@ -33,7 +33,7 @@ export class TileSelectionMenuComponent implements OnInit, OnDestroy, AfterViewI
   private anchor = 0;
   @ViewChild('layerList') layerList?: ElementRef<HTMLElement>;
   private subscriptions: { unsubscribe(): void }[] = [];
-  private tileSubscription?: Subscription;
+  private tileRequest = 0;
   get cellWidth(): number { return (128 + (this.autoSwitchLayer ? 16 : 0)) * this.zoom + 2; }
   get cellHeight(): number { return 256 * this.zoom + 2 + (this.autoSwitchLayer ? 16 : 0); }
   // Native layer stack, displayed from top to bottom.
@@ -67,7 +67,7 @@ export class TileSelectionMenuComponent implements OnInit, OnDestroy, AfterViewI
   }
   ngOnDestroy(): void {
     this.subscriptions.forEach(subscription => subscription.unsubscribe());
-    this.tileSubscription?.unsubscribe();
+    this.tileRequest++;
   }
   getFilteredTilesets(): string[] {
     return this.tilesets.filter(name => name.toLowerCase().includes(this.searchTerm.trim().toLowerCase()));
@@ -80,20 +80,22 @@ export class TileSelectionMenuComponent implements OnInit, OnDestroy, AfterViewI
     this.setSelectedTileset(previous[previous.length - 1] || visible[0] || '');
   }
   setSelectedTileset(name: string): void {
-    this.tileSubscription?.unsubscribe();
+    const request = ++this.tileRequest;
     this.selectedTileset = name;
     this.tiles = [];
     this.selectedTiles.clear();
     this.anchor = 0;
     if (!name) return;
     localStorage.setItem('selectedTileset', name);
-    this.tileSubscription = liveQuery(() => this.db.getTiles(name)).subscribe(tiles => this.zone.run(() => {
+    // Thumbnails are cut from the stored sheet on demand; the tilesets liveQuery above re-runs this when sheets change.
+    this.db.getTiles(name).then(tiles => this.zone.run(() => {
+      if (request !== this.tileRequest) return;
       // Keep original eight-column sheet coordinates, including any missing indices.
       const indexed = tiles.map(tile => ({ tile, index: Number(tile.name.match(/_([0-9]+)\.png$/)?.[1]) }));
       const count = Math.max(0, ...indexed.filter(value => Number.isFinite(value.index)).map(value => value.index + 1));
       this.tiles = Array(Math.ceil(count / 8) * 8).fill(undefined);
       indexed.forEach(({ tile, index }) => { if (Number.isFinite(index)) this.tiles[index] = tile; });
-    }));
+    }), error => console.error(`Could not load tiles for ${name}:`, error));
   }
   getSelectedTile(): string { return localStorage.getItem('selectedTile') || 'walls_exterior_house_01_0.png'; }
   getSelectedLayer(): string { return localStorage.getItem('selectedLayer') || 'Walls'; }

@@ -19,13 +19,17 @@ try {
   }
   const apiBaseUrl = process.env.BUILDINGED_API_URL ||
     'https://us-central1-buildinged-online.cloudfunctions.net/workspaceApi';
-  const url = new URL(apiBaseUrl);
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' &&
-      ['localhost', '127.0.0.1'].includes(url.hostname))) {
-    throw new Error('BUILDINGED_API_URL must use HTTPS (HTTP is allowed only for local emulators).');
+  const adminApiBaseUrl = process.env.BUILDINGED_ADMIN_API_URL ||
+    'https://us-central1-buildinged-online.cloudfunctions.net/adminApi';
+  for (const value of [apiBaseUrl, adminApiBaseUrl]) {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' && !(url.protocol === 'http:' &&
+        ['localhost', '127.0.0.1'].includes(url.hostname))) {
+      throw new Error('BUILDINGED_API_URL and BUILDINGED_ADMIN_API_URL must use HTTPS (HTTP is allowed only for local emulators).');
+    }
   }
   fs.mkdirSync(path.dirname(output), { recursive: true });
-  fs.writeFileSync(output, JSON.stringify({ firebase, apiBaseUrl }, null, 2) + '\n');
+  fs.writeFileSync(output, JSON.stringify({ firebase, apiBaseUrl, adminApiBaseUrl }, null, 2) + '\n');
   console.log('Generated ignored Firebase browser configuration. No configuration values were logged.');
 } catch (error) {
   console.error(error.message);

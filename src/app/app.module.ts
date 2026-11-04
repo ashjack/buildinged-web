@@ -28,12 +28,14 @@ import { AutoFurnishingDialogComponent } from './components/auto-furnishing-dial
 import { AuthService } from './services/auth.service';
 import { EditorComponent } from './components/editor/editor.component';
 import { ProjectWorkspaceComponent } from './components/project-workspace/project-workspace.component';
+import { TileAdminComponent } from './components/tile-admin/tile-admin.component';
 
 @NgModule({
   declarations: [
     AutoFurnishingDialogComponent,
     AppComponent,
     EditorComponent,
+    TileAdminComponent,
     ProjectWorkspaceComponent,
     MenuComponent,
     ViewportCanvasComponent,

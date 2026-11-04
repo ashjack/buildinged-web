@@ -46,17 +46,15 @@ import { TogglePopup } from "src/app/app.actions";
     }
 
     downloadPack(name: string, redownload = true) {
+        const selectedPack = this.tileService.tilepacks.find(x => x.name == name);
 
         if(redownload)
         {
-            this.db.clearTiles(name).then(() => {
-                localStorage.setItem(name, '1');
-                const selectedPack = this.tileService.tilepacks.find(x => x.name == name);
-                if (selectedPack) {
-                    this.tileService.processTilepacks([selectedPack], 0);
-                }
-                return;
-            })
+            localStorage.setItem(name, '1');
+            if (selectedPack) {
+                selectedPack.enabled = true;
+                void this.tileService.redownloadTilepack(selectedPack);
+            }
         }
         else
         {
@@ -72,9 +70,8 @@ import { TogglePopup } from "src/app/app.actions";
             }
 
             localStorage.setItem(name, '1');
-            const selectedPack = this.tileService.tilepacks.find(x => x.name == name);
             if (selectedPack) {
-                this.tileService.processTilepacks([selectedPack], 0);
+                void this.tileService.processTilepacks([selectedPack], 0);
             }
         }
     }

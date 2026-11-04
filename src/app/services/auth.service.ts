@@ -7,6 +7,7 @@ import type { Auth, User } from 'firebase/auth';
 interface BrowserConfig {
   firebase: FirebaseOptions;
   apiBaseUrl: string;
+  adminApiBaseUrl?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -24,6 +25,10 @@ export class AuthService {
   get apiBaseUrl(): string {
     if (!this.config) throw new Error('Firebase configuration is unavailable.');
     return this.config.apiBaseUrl.replace(/\/$/, '');
+  }
+  get adminApiBaseUrl(): string {
+    if (!this.config) throw new Error('Firebase configuration is unavailable.');
+    return (this.config.adminApiBaseUrl || this.apiBaseUrl.replace(/\/workspaceApi$/, '/adminApi')).replace(/\/$/, '');
   }
 
   async initialize(): Promise<void> {

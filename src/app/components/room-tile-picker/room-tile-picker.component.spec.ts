@@ -43,6 +43,8 @@ describe('Native room tile picker and library', () => {
     it('opens a category-specific thumbnail picker with the current entry, None, zoom and double-click selection', async () => {
         const { fixture, rooms, picker } = setup();
         rooms.chooseTile(); await fixture.whenStable(); fixture.detectChanges();
+        // Thumbnail lookups are batched into the next task, outside change detection.
+        await new Promise(resolve => setTimeout(resolve)); await fixture.whenStable();
         expect(picker.picker.nativeElement.open).toBeTrue(); expect(picker.choices.length).toBe(2);
         expect(picker.choice!.category).toBe('floors'); expect(picker.thumbnail(picker.choice)).toBe(image);
         picker.scale = 1.5; fixture.detectChanges();

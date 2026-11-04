@@ -1,10 +1,11 @@
-import { Component, ElementRef, EventEmitter, Output, ViewChild } from '@angular/core';
+import { Component, ElementRef, EventEmitter, NgZone, Optional, Output, ViewChild } from '@angular/core';
 import { TileEntry } from '../../models/app.models';
 import { BuildingService } from '../../services/building.service';
 import { DbService, PngTile } from '../../services/db.service';
 import { RoomTileLibraryService } from '../../services/room-tile-library.service';
 import { ROOM_MATERIALS } from '../../utils/room-definitions';
 import { cloneRoomEntry, roomEntryDisplay, roomEntryFromTile, roomEntryKey, ROOM_TILE_ENUMS } from '../../utils/room-tile-entries';
+import { TileThumbnails } from '../../utils/tile-thumbnails';
 
 @Component({ selector: 'app-room-tile-picker', templateUrl: './room-tile-picker.component.html', styleUrls: ['./room-tile-picker.component.scss'] })
 export class RoomTilePickerComponent {
@@ -157,10 +158,13 @@ export class RoomTilePickerComponent {
         buttons[next].focus();
         this.selectExpert(this.categoryEntries[Math.floor(next / this.expertEnums.length)], this.expertEnums[next % this.expertEnums.length], event as unknown as MouseEvent);
     }
-    private images = new Map<string, string>();
+    private images: TileThumbnails;
     private sheetRequest = 0;
     private pickerRequest = 0;
-    constructor(private buildings: BuildingService, private db: DbService, private library: RoomTileLibraryService) { }
+    constructor(private buildings: BuildingService, private db: DbService, private library: RoomTileLibraryService,
+        @Optional() zone?: NgZone) {
+        this.images = new TileThumbnails(db, zone);
+    }
 
     async open(category: string, label: string, roomName: string, initial: TileEntry | null): Promise<void> {
         const request = ++this.pickerRequest;
@@ -202,12 +206,7 @@ export class RoomTilePickerComponent {
     thumbnail(entry: TileEntry | null | undefined): string { return this.image(roomEntryDisplay(entry)); }
     image(tile: string): string {
         if (!tile || tile === 'None') return 'assets/icons/none-tile.png';
-        const name = tile.replace(/\.png$/i, '') + '.png';
-        if (!this.images.has(name)) {
-            this.images.set(name, 'assets/icons/missing-tile.png');
-            this.db.getTile(name).then(result => { if (result) this.images.set(name, result.url); }).catch(() => {});
-        }
-        return this.images.get(name)!;
+        return this.images.get(tile.replace(/\.png$/i, '') + '.png');
     }
     choose(): void {
         if (this.loading || this.error) return;

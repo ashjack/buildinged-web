@@ -24,7 +24,7 @@ describe('First usable auto furnishing workflow', () => {
         }));
         h = documentHarness(building); available = true;
         const analysis = new AutoFurnishingAnalysisService({ get: () => of(source) } as any,
-            { getTile: async () => available ? {} : undefined } as any);
+            { hasTile: async () => available } as any);
         service = new AutoFurnishingService(analysis, h.store as any);
     });
     afterEach(() => h.destroy());
@@ -199,7 +199,7 @@ describe('First usable auto furnishing workflow', () => {
         const building = furnishingBuilding(); building.rooms[0] = { ...building.rooms[0], Name: 'kitchen', InternalName: 'kitchen' };
         h.store.dispatch(new SetBuilding(building));
         const filtered = new AutoFurnishingAnalysisService({ get: () => of(source) } as any,
-            { getTile: async (name: string) => name.startsWith('fixtures_counters_01_01') || name === 'fixtures_counters_01_009.png' ? null : {} } as any);
+            { hasTile: async (name: string) => !(name.startsWith('fixtures_counters_01_01') || name === 'fixtures_counters_01_009.png') } as any);
         const styled = new AutoFurnishingService(filtered, h.store as any), session = await styled.inspect();
         const preview = await styled.generate(session, [session.preparation.analysis.rooms[0].id], 'missing-set', undefined, 'alternate-residential');
         expect(preview.plans[0].status).toBe('partial');

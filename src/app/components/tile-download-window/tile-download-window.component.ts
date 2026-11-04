@@ -16,6 +16,7 @@ import { TileDownloadProgress, TileService } from "src/app/services/tile.service
     processedTiles: number;
     currentPackName: string = '';
     currentSheetName: string = '';
+    detail: string = '';
     loading: boolean = false;
 
   ngOnInit(): void {
@@ -27,6 +28,7 @@ import { TileDownloadProgress, TileService } from "src/app/services/tile.service
       this.processedTiles = progress.processedTiles;
       this.currentPackName = progress.currentPackName ?? '';
       this.currentSheetName = progress.currentSheetName ?? '';
+      this.detail = progress.detail ?? '';
     });
   }
 }

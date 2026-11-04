@@ -1,20 +1,17 @@
 import { Injectable } from "@angular/core";
 
+/** Decoded tile images for canvas drawing, keyed by tile name. */
 @Injectable({
     providedIn: 'root',
 })
 export class CacheService {
-    private cache: Map<string, HTMLImageElement>;
+    private cache = new Map<string, CanvasImageSource>();
 
-    constructor() { 
-        this.cache = new Map<string, HTMLImageElement>();
-    }
-
-    get(key: string): HTMLImageElement | null {
+    get(key: string): CanvasImageSource | null {
         return this.cache.get(key) ?? null;
     }
 
-    set(key: string, value: HTMLImageElement): void {
+    set(key: string, value: CanvasImageSource): void {
         this.cache.set(key, value);
     }
 
@@ -22,7 +19,17 @@ export class CacheService {
         return this.cache.has(key);
     }
 
+    keys(): string[] {
+        return [...this.cache.keys()];
+    }
+
+    delete(key: string): void {
+        const image = this.cache.get(key);
+        this.cache.delete(key);
+        if (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap) image.close();
+    }
+
     clear(): void {
-        this.cache.clear();
+        this.keys().forEach(key => this.delete(key));
     }
 }

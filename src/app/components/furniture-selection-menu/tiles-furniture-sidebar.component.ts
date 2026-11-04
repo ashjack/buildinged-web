@@ -14,6 +14,7 @@ import { NATIVE_ZOOM_FACTORS } from '../../utils/native-camera';
 import { isolatePanelKey } from '../../utils/editor-shortcuts';
 import { roomEntryKey, cloneRoomEntry } from '../../utils/room-tile-entries';
 import { BuildingMaterialField } from '../../utils/object-materials';
+import { TileThumbnails } from '../../utils/tile-thumbnails';
 
 interface MaterialCategory {
   category: string; label: string; wall?: string;
@@ -51,12 +52,14 @@ export class TilesFurnitureSidebarComponent implements OnInit, OnChanges, OnDest
   groups: { name: string; entries: (TileEntry | null)[] }[] = [];
   building: Building | undefined;
   private defaults: TileEntry[] = [];
-  private images = new Map<string, string>();
+  private images: TileThumbnails;
   private subscriptions = new Subscription();
   private destroyed = false;
   error = '';
   constructor(private store: Store<fromRoot.State>, private buildings: BuildingService, private library: RoomTileLibraryService,
-    private db: DbService, private grid: GridService, public settings: ToolSettingsService, private zone: NgZone) { }
+    private db: DbService, private grid: GridService, public settings: ToolSettingsService, private zone: NgZone) {
+    this.images = new TileThumbnails(db, zone);
+  }
   ngOnChanges(): void {
     if (!this.category) this.category = localStorage.getItem('tilesFurnitureCategory') ||
       (this.tool === 'tool-stairs' ? 'stairs' : this.tool === 'tool-door' ? 'doors' : this.tool === 'tool-window' ? 'windows' : this.tool === 'tool-furniture' ? 'furniture' : 'exterior_walls');
@@ -68,7 +71,7 @@ export class TilesFurnitureSidebarComponent implements OnInit, OnChanges, OnDest
       this.defaults = [...defaults, ...custom]; this.rebuild();
     }).catch(() => { this.error = 'Could not load default tiles.'; });
   }
-  ngOnDestroy(): void { this.destroyed = true; this.subscriptions.unsubscribe(); }
+  ngOnDestroy(): void { this.destroyed = true; this.images.dispose(); this.subscriptions.unsubscribe(); }
   selectCategory(category: string): void {
     this.category = category; localStorage.setItem('tilesFurnitureCategory', category); this.rebuild();
   }
@@ -95,12 +98,7 @@ export class TilesFurnitureSidebarComponent implements OnInit, OnChanges, OnDest
   image(entry: TileEntry | null): string {
     const tile = this.display(entry);
     if (tile === 'None') return 'assets/icons/none-tile.png';
-    const name = tile.replace(/\.png$/, '') + '.png';
-    if (!this.images.has(name)) {
-      this.images.set(name, 'assets/icons/missing-tile.png');
-      this.db.getTile(name).then(result => { if (result && !this.destroyed) this.zone.run(() => this.images.set(name, result.url)); }).catch(() => {});
-    }
-    return this.images.get(name)!;
+    return this.images.get(tile.replace(/\.png$/, '') + '.png');
   }
   get selectedEntry(): TileEntry | null {
     const category = this.categories.find(item => item.category === this.category);

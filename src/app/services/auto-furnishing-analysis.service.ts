@@ -21,7 +21,7 @@ export class AutoFurnishingAnalysisService {
         const catalog = await this.loadCatalog();
         // Check downloaded sprites on every preparation: a tilepack may have changed since the previous call.
         const names = [...new Set(catalog.items.flatMap(item => item.requiredTiles))];
-        const tiles = await Promise.all(names.map(async name => [name, !!(await this.db.getTile(name))] as const));
+        const tiles = await Promise.all(names.map(async name => [name, await this.db.hasTile(name)] as const));
         const available = new Map(tiles);
         const availability = catalog.items.flatMap(item => item.variants.map(variant => {
             const definition = item.definition.entries.find(entry => entry.orient === variant.orient)!;

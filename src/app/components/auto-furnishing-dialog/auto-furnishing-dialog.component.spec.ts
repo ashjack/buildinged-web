@@ -18,7 +18,7 @@ describe('Auto furnishing dialog', () => {
     beforeAll(async () => source = await (await fetch('/assets/BuildingFurniture.txt')).text());
     beforeEach(() => {
         h = documentHarness(furnishingBuilding());
-        const db = { getTile: async () => ({ url: '' }) };
+        const db = { getTile: async () => ({ url: '' }), hasTile: async () => true };
         TestBed.configureTestingModule({ declarations: [AutoFurnishingDialogComponent], imports: [CommonModule, FormsModule],
             providers: [{ provide: Store, useValue: h.store }, { provide: GridService, useValue: h.grid }, { provide: DbService, useValue: db },
                 { provide: AutoFurnishingAnalysisService, useValue: new AutoFurnishingAnalysisService({ get: () => of(source) } as any, db as any) },

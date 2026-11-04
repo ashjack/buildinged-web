@@ -5,9 +5,12 @@ import { ProjectWorkspaceComponent } from './components/project-workspace/projec
 import { EditorComponent } from './components/editor/editor.component';
 import { ProjectGuard } from './services/project.guard';
 import { EditorGuard } from './services/editor.guard';
+import { AdminGuard } from './services/admin.guard';
+import { TileAdminComponent } from './components/tile-admin/tile-admin.component';
 
 const routes: Routes = [
   { path: '', component: BuildingSelectionWindowComponent, pathMatch: 'full' },
+  { path: 'admin', component: TileAdminComponent, canActivate: [AdminGuard] },
   { path: 'projects', redirectTo: '', pathMatch: 'full' },
   { path: 'projects/:projectId', component: ProjectWorkspaceComponent, canActivate: [ProjectGuard] },
   { path: 'projects/:projectId/tasks/:taskId', component: ProjectWorkspaceComponent, canActivate: [ProjectGuard] },
