@@ -11,6 +11,7 @@ import { GridService } from '../../services/grid.service';
 import { RoomTileLibraryService } from '../../services/room-tile-library.service';
 import { ToolSettingsService } from '../../services/tool-settings.service';
 import { NATIVE_ZOOM_FACTORS } from '../../utils/native-camera';
+import { isolatePanelKey } from '../../utils/editor-shortcuts';
 import { roomEntryKey, cloneRoomEntry } from '../../utils/room-tile-entries';
 import { BuildingMaterialField } from '../../utils/object-materials';
 
@@ -38,6 +39,7 @@ export const OBJECT_MATERIALS: MaterialCategory[] = [
 
 @Component({ selector: 'app-tiles-furniture-sidebar', templateUrl: './tiles-furniture-sidebar.component.html', styleUrls: ['./tiles-furniture-sidebar.component.scss'] })
 export class TilesFurnitureSidebarComponent implements OnInit, OnChanges, OnDestroy {
+  readonly isolatePanelKey = isolatePanelKey;
   @Input() tool = '';
   readonly categories = OBJECT_MATERIALS;
   readonly zooms = NATIVE_ZOOM_FACTORS;

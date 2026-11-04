@@ -1,4 +1,4 @@
-<aside aria-label="Tiles and Furniture" (keydown)="$event.stopPropagation()" (keyup)="$event.stopPropagation()">
+<aside aria-label="Tiles and Furniture" (keydown)="isolatePanelKey($event)" (keyup)="$event.stopPropagation()">
   <h2>Tiles and Furniture</h2>
   <div class="category-list" role="listbox" aria-label="Tile and furniture categories">
     <button *ngFor="let item of categories" role="option" [attr.aria-selected]="category === item.category" [class.active]="category === item.category" (click)="selectCategory(item.category)">{{item.label}}</button>

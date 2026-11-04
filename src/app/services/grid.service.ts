@@ -30,8 +30,10 @@ export class GridService {
     objects: SvgObject[] = [];
     objectOverlays: SvgObjectOverlay[] = [];
 
-    fetchedTiles: PngTile[] = [];
-    fetchingTiles: string[] = [];
+    private readonly fetchedTiles = new Map<string, string>();
+    private readonly fetchingTiles = new Set<string>();
+    /** Emits a tile name once its image data has been read from IndexedDB. */
+    readonly tileFetched = new Subject<string>();
 
     private rebuilding = false;
     private objectUid: string | undefined;
@@ -316,35 +318,19 @@ export class GridService {
      return 'NULL';
    }
    
-    const existingTile = this.fetchedTiles.find((tile: PngTile) => {return tile.name === name;});
-     if(existingTile)
-     {
-       this.fetchingTiles = this.fetchingTiles.filter((tile: string) => {return tile !== name;});
-       return existingTile.url!;
-     }
+    const existingTile = this.fetchedTiles.get(name);
+    if (existingTile) return existingTile;
+    if (this.fetchingTiles.has(name)) return 'AWAITING';
 
-     if(this.fetchingTiles.includes(name))
-   {
-     return 'AWAITING';
-   }
-    
-   this.fetchingTiles.push(name);
+    this.fetchingTiles.add(name);
+    this.db.getTile(name).then((tile: PngTile | null) => {
+      if (!tile?.url) return;
+      this.fetchedTiles.set(name, tile.url);
+      this.fetchingTiles.delete(name);
+      this.tileFetched.next(name);
+    });
 
-     this.db.getTile(name).then((tile: PngTile | null) => {
-       if(tile)
-       {
-         if(!this.fetchedTiles.find((tile: PngTile) => {return tile.name === name;}))
-         {
-
-           this.fetchedTiles.push(tile);
-           return tile.url!;
-         }
-       }
-
-       return 'NULL 2';
-     });
-
-     return '';
+    return '';
    }
 
     getSelectedLevel(): number {

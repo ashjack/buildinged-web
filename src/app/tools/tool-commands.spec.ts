@@ -16,6 +16,7 @@ import ToolRoof from './tool-roof';
 import ToolDoor from './tool-door';
 import ToolWindow from './tool-window';
 import ToolDraw from './tool-draw';
+import { isolatePanelKey } from '../utils/editor-shortcuts';
 
 function setup() {
     const building = readBuildingFile(new DOMParser().parseFromString(nativeBuildingXml, 'text/xml'));
@@ -312,11 +313,37 @@ describe('Tool edit commands', () => {
         expect(scene.state.value.past.length).toBe(0);
         scene.view.handleKeyDown(targetedKey(document.createElement('canvas'), 'z', { metaKey: true, shiftKey: true }));
         expect(scene.state.value.past.length).toBe(1);
+        const checkbox = document.createElement('input'); checkbox.type = 'checkbox';
+        scene.view.handleKeyDown(targetedKey(checkbox, 'z', { ctrlKey: true }));
+        expect(scene.state.value.past.length).toBe(0);
+        scene.view.handleKeyDown(targetedKey(checkbox, 'y', { ctrlKey: true }));
+        expect(scene.state.value.past.length).toBe(1);
         scene.doors.placeDoor(0, 0, 0, 'W'); scene.view.currentHoverObject = scene.grid.objects[0];
         scene.view.handleKeyDown(targetedKey(document.createElement('textarea'), 'Delete'));
         expect(scene.grid.objects.length).toBe(1);
         scene.view.handleKeyDown(targetedKey(document.createElement('canvas'), 'Delete'));
         expect(scene.grid.objects.length).toBe(0);
         scene.destroy();
+    });
+
+    it('lets history shortcuts out of isolated panels and focuses the canvas on click', () => {
+        const panel = document.createElement('aside'), button = document.createElement('button'), search = document.createElement('input');
+        panel.append(button, search); document.body.append(panel);
+        const reached: string[] = [];
+        const listener = (event: KeyboardEvent) => reached.push(event.key);
+        document.addEventListener('keydown', listener);
+        panel.addEventListener('keydown', isolatePanelKey);
+        button.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
+        button.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+        search.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
+        expect(reached).toEqual(['z']);
+        document.removeEventListener('keydown', listener); panel.remove();
+
+        const scene = setup(), canvas = scene.view.canvasElement.nativeElement as HTMLCanvasElement;
+        canvas.tabIndex = -1; document.body.append(canvas, panel); button.focus();
+        spyOn(scene.view, 'drawCanvas').and.stub();
+        scene.view.onMouseDown(new MouseEvent('mousedown', { button: 0, buttons: 1 }));
+        expect(document.activeElement).toBe(canvas);
+        scene.view.cancelGesture(); canvas.remove(); panel.remove(); scene.destroy();
     });
 });

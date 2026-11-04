@@ -1,5 +1,5 @@
 import { HttpClient } from "@angular/common/http";
-import { AfterViewInit, Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from "@angular/core";
+import { AfterViewInit, Component, ElementRef, HostListener, NgZone, OnDestroy, OnInit, Optional, ViewChild } from "@angular/core";
 import { DomSanitizer, SafeResourceUrl } from "@angular/platform-browser";
 import { Store } from "@ngrx/store";
 import { Observable, Subject, from, take, takeUntil } from "rxjs";
@@ -40,6 +40,8 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     rowArray = Array(20).fill(0).map((x,i)=>i);
     colArray = Array(20).fill(0).map((x,i)=>i);
 
+  private redrawFrame?: number;
+  private readonly pendingTileImages = new Set<string>();
     fetchedTiles: PngTile[] = [];
   fetchingTiles: string[] = [];
   selectedTile: string = 'walls_interior_house_01_0.png';
@@ -91,7 +93,8 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     private doorService: DoorService,
     private windowService: WindowService,
     private roofService: RoofService,
-    public toolSettings: ToolSettingsService = new ToolSettingsService())
+    public toolSettings: ToolSettingsService = new ToolSettingsService(),
+    @Optional() private zone?: NgZone)
   { 
     this.selectedTool$ = store.select(fromRoot.getCurrentTool);
     this.scheduleRedraw$ = store.select(fromRoot.getRedrawSchedule);
@@ -188,10 +191,9 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
         this.store.dispatch(new ScheduleRedraw(false));
       }
     })
+
+    this.gridService.tileFetched.pipe(takeUntil(this.unsubscribe)).subscribe(() => this.requestRedraw());
   }
-
-  
-
 
   ngAfterViewInit() {
     const canvas: HTMLCanvasElement = this.canvasElement.nativeElement;
@@ -215,6 +217,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   ngOnDestroy(): void {
+    if (this.redrawFrame !== undefined) cancelAnimationFrame(this.redrawFrame);
     this.stopPanning();
     this.resizeObserver?.disconnect();
     this.selectedTool.cancel();
@@ -433,6 +436,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
 
   drawCanvas() {
     if (!this.ctx) return;
+    if (this.redrawFrame !== undefined) { cancelAnimationFrame(this.redrawFrame); this.redrawFrame = undefined; }
     this.constrainViewport();
     //Clear canvas
     this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
@@ -525,15 +529,9 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     y = (canvasY - this.yOffset - size * 2) * this.zoom;
 
     const tileImage = this.cacheService.get(tileName);
-    if(!tileImage || tileImage == null || tileImage == undefined)
+    if(!tileImage)
     {
-      const newTileImage = new Image();
-      newTileImage.src = tile;
-      newTileImage.onload = () => {
-        this.cacheService.set(tileName, newTileImage);
-        // Redraw using the current layer visibility and camera after the image loads.
-        this.store.dispatch(new ScheduleRedraw(true));
-      }
+      this.loadTileImage(tileName, tile);
     }
     else
     {
@@ -542,6 +540,33 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
       ctx.drawImage(tileImage,x, y, size * this.zoom, size * 2 * this.zoom);
       ctx.restore();
     }
+  }
+
+  /** Coalesces asynchronous redraw requests (e.g. tiles finishing loading) into one draw per frame. */
+  requestRedraw(): void {
+    if (this.redrawFrame !== undefined) return;
+    const schedule = () => requestAnimationFrame(() => { this.redrawFrame = undefined; this.drawCanvas(); });
+    // Canvas-only work: no need to trigger Angular change detection every frame.
+    this.redrawFrame = this.zone ? this.zone.runOutsideAngular(schedule) : schedule();
+  }
+
+  private loadTileImage(tileName: string, src: string): void {
+    if (this.pendingTileImages.has(tileName)) return;
+    this.pendingTileImages.add(tileName);
+    const load = () => {
+      const image = new Image();
+      image.src = src;
+      // Decode off the main thread so the first drawImage doesn't stall a frame.
+      const ready = typeof image.decode === 'function'
+        ? image.decode()
+        : new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = reject; });
+      ready.then(() => {
+        this.pendingTileImages.delete(tileName);
+        this.cacheService.set(tileName, image);
+        this.requestRedraw();
+      }, () => { /* Leave broken images marked pending so they aren't re-decoded every frame. */ });
+    };
+    if (this.zone) this.zone.runOutsideAngular(load); else load();
   }
 
   drawTileOverlays() {
@@ -1050,6 +1075,8 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   @HostListener('mousedown', ['$event']) onMouseDown(event: MouseEvent){
+    // preventDefault below suppresses the browser's focus change, so move focus off any panel control explicitly.
+    this.canvasElement?.nativeElement.focus?.({ preventScroll: true });
     if (event.button === 1) {
       event.preventDefault();
       this.isPanning = true;

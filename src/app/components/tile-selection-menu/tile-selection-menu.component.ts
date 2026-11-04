@@ -7,6 +7,7 @@ import { DbService, PngTile } from '../../services/db.service';
 import { GridService } from '../../services/grid.service';
 import { ToolSettingsService } from '../../services/tool-settings.service';
 import { NATIVE_ZOOM_FACTORS } from '../../utils/native-camera';
+import { isolatePanelKey } from '../../utils/editor-shortcuts';
 
 @Component({
   selector: 'app-tile-selection-menu',
@@ -14,6 +15,7 @@ import { NATIVE_ZOOM_FACTORS } from '../../utils/native-camera';
   styleUrls: ['./tile-selection-menu.component.scss']
 })
 export class TileSelectionMenuComponent implements OnInit, OnDestroy, AfterViewInit {
+  readonly isolatePanelKey = isolatePanelKey;
   constructor(private db: DbService, public settings: ToolSettingsService,
     public grid: GridService, private store: Store<fromRoot.State>, private zone: NgZone) { }
   tab: 'tilesets' | 'furniture' = 'tilesets';

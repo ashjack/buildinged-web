@@ -1,4 +1,4 @@
-<aside aria-label="Tile mode sidebar" (keydown)="$event.stopPropagation()" (keyup)="$event.stopPropagation()">
+<aside aria-label="Tile mode sidebar" (keydown)="isolatePanelKey($event)" (keyup)="$event.stopPropagation()">
   <section class="layers-dock" aria-label="Layers">
     <h2>Layers</h2>
     <label class="slider">Opacity: <input type="range" min="0" max="100" [ngModel]="opacity" (ngModelChange)="setOpacity(+$event)" aria-label="Layer opacity"></label>
