@@ -12,6 +12,7 @@ import { RoofOption } from '../services/roof-patterns';
 import { ROOF_TOOL_GROUPS, roofOptionIcon, roofToolGroup, RoofToolGroup } from '../utils/roof-toolbar';
 import { MAX_BUILDING_FLOORS } from '../utils/floor-edits';
 import { historyShortcut } from '../utils/editor-shortcuts';
+import { Router } from '@angular/router';
 
 @Component({
   selector: 'app-menu',
@@ -36,7 +37,8 @@ export class MenuComponent {
     private buildingService: BuildingService,
     private roomService: RoomService,
     private gridService: GridService,
-    public roofs: RoofService
+    public roofs: RoofService,
+    private router: Router
   ) { }
 
   setTool(tool: string)
@@ -97,6 +99,10 @@ export class MenuComponent {
   }
 
   openFileUpload(): void {
+    if (this.router.url.includes('/variants/')) {
+      window.alert('Open files in the standalone editor, not inside a project variant.');
+      return;
+    }
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.accept = '.tbx';
@@ -153,7 +159,7 @@ export class MenuComponent {
   }
 
   openMainMenu(): void {
-    this.store.dispatch(new TogglePopup('main-menu', true));
+    void this.router.navigate(['/']);
   }
 
 }

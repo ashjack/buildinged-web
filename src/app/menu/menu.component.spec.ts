@@ -20,13 +20,14 @@ import { RoomTilePickerComponent } from '../components/room-tile-picker/room-til
 import { DbService } from '../services/db.service';
 import { AutoFurnishingDialogComponent } from '../components/auto-furnishing-dialog/auto-furnishing-dialog.component';
 import { AutoFurnishingService } from '../services/auto-furnishing.service';
+import { RouterTestingModule } from '@angular/router/testing';
 
 describe('Native toolbar controls', () => {
     let h: ReturnType<typeof documentHarness>;
     beforeEach(() => {
         localStorage.clear();
         h = documentHarness(readBuildingFile(new DOMParser().parseFromString(nativeBuildingXml, 'text/xml')));
-        TestBed.configureTestingModule({ declarations: [MenuComponent, RoomsDialogComponent, RoomTilePickerComponent, AutoFurnishingDialogComponent], imports: [CommonModule, FormsModule, NoopAnimationsModule, BsDropdownModule.forRoot()],
+        TestBed.configureTestingModule({ declarations: [MenuComponent, RoomsDialogComponent, RoomTilePickerComponent, AutoFurnishingDialogComponent], imports: [CommonModule, FormsModule, RouterTestingModule, NoopAnimationsModule, BsDropdownModule.forRoot()],
             providers: [{ provide: Store, useValue: h.store }, { provide: BuildingService, useValue: h.buildings },
                 { provide: AutoFurnishingService, useValue: {} },
                 { provide: DbService, useValue: { getTile: async () => null, getTilesets: async () => [], getTiles: async () => [] } },

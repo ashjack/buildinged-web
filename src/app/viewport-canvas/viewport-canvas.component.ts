@@ -211,7 +211,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     }
 
     this.drawCanvas();
-    this.loadBuildingXmlFromLocalStorage();
+    if (!this.buildingService.building) this.loadBuildingXmlFromLocalStorage();
   }
 
   ngOnDestroy(): void {

@@ -1,7 +1,21 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
+import { BuildingSelectionWindowComponent } from './components/admin/building-selection-window/building-selection-window.component';
+import { ProjectWorkspaceComponent } from './components/project-workspace/project-workspace.component';
+import { EditorComponent } from './components/editor/editor.component';
+import { ProjectGuard } from './services/project.guard';
+import { EditorGuard } from './services/editor.guard';
 
-const routes: Routes = [];
+const routes: Routes = [
+  { path: '', component: BuildingSelectionWindowComponent, pathMatch: 'full' },
+  { path: 'projects', redirectTo: '', pathMatch: 'full' },
+  { path: 'projects/:projectId', component: ProjectWorkspaceComponent, canActivate: [ProjectGuard] },
+  { path: 'projects/:projectId/tasks/:taskId', component: ProjectWorkspaceComponent, canActivate: [ProjectGuard] },
+  { path: 'projects/:projectId/variants/:variantId/edit', component: EditorComponent,
+    canActivate: [ProjectGuard, EditorGuard], canDeactivate: [EditorGuard] },
+  { path: 'editor', component: EditorComponent, canDeactivate: [EditorGuard] },
+  { path: '**', redirectTo: '' }
+];
 
 @NgModule({
   imports: [RouterModule.forRoot(routes)],

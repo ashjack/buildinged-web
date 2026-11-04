@@ -1,0 +1,26 @@
+<div class="project-editor-bar" *ngIf="session.contribution as item">
+  <a [routerLink]="['/projects', item.projectId, 'tasks', item.taskId]">Back to task</a>
+  <strong>{{item.name}}</strong>
+  <span>Variant of {{item.originalBuildId}} · {{item.status}}</span>
+  <span role="status">{{session.busy ? 'Saving...' : session.dirty ? 'Unsaved changes' : 'Saved revision ' + item.revision}}</span>
+  <button (click)="session.save()" [disabled]="!session.editable || session.busy">Save draft</button>
+  <button (click)="session.submit()" [disabled]="!session.editable || session.busy">Submit for review</button>
+  <button (click)="reload()" [disabled]="session.busy">Reload cloud copy</button>
+</div>
+<p class="project-editor-notice" role="status" *ngIf="session.message">{{session.message}}</p>
+<p class="project-editor-notice error" role="alert" *ngIf="error || session.error">{{error || session.error}} <a routerLink="/">Projects</a></p>
+<div *ngIf="ready && (!session.contribution || session.editable)">
+  <app-tile-download-window></app-tile-download-window>
+  <app-tileset-list-window></app-tileset-list-window>
+  <div [attr.inert]="session.busy ? '' : null">
+    <app-menu></app-menu>
+    <div class="editor-workspace">
+      <app-tool-options></app-tool-options>
+      <app-viewport-canvas></app-viewport-canvas>
+      <app-tile-selection-menu *ngIf="(selectedTool$|async) == 'tool-tile' || (selectedTool$|async) == 'tool-select-tiles'"></app-tile-selection-menu>
+      <app-roof-selection-menu *ngIf="(selectedTool$|async) == 'tool-roof'"></app-roof-selection-menu>
+      <app-tiles-furniture-sidebar *ngIf="!['tool-tile', 'tool-select-tiles'].includes((selectedTool$|async) || '')" [tool]="(selectedTool$|async) || ''"></app-tiles-furniture-sidebar>
+    </div>
+  </div>
+</div>
+<p class="project-editor-notice" *ngIf="ready && session.contribution && !session.editable">This submission is locked for review. Download its TBX from the task page to inspect it in the standalone editor.</p>

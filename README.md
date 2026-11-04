@@ -4,7 +4,70 @@ This project was generated with [Angular CLI](https://github.com/angular/angular
 
 ## Development server
 
-Run `ng serve` for a dev server. Navigate to `http://localhost:4200/`. The application will automatically reload if you change any of the source files.
+Run `npm start` for a dev server. Navigate to `http://localhost:4200/`. The application will automatically reload if you change any of the source files.
+
+## Google sign-in and project workspaces
+
+Google is the only supported login provider. Standalone TBX creation, import and
+export remain available without signing in. Signed-in users can create projects;
+the creator becomes the owner. Owners can invite contributors/reviewers by Google
+account email or make their project public to all signed-in users. Invitees must
+have signed in once before being added.
+
+The homepage links to routed project workspaces. Shared tasks have no individual
+assignee. Furnishing starts a private variant pinned to the task's original build
+revision. **Save draft** stores a new variant revision, never the original.
+**Submit for review** locks the submission; owners/reviewers can approve, request
+changes or reject it. Approval completes the task. Reopening permits another
+round of contributions without deleting previously approved work.
+
+Tile tasks display a brief, acceptance requirements and externally embedded HTTPS
+reference images, with source links and an embedding-failure message. Tile work is
+created outside this editor and submitted via an HTTPS deliverable link in this
+first release; reference images are never uploaded or proxied.
+
+### Local Firebase configuration
+
+Keep the Firebase web initialization snippet in the ignored `firebase.md`.
+`npm run configure:firebase` extracts only the six required browser configuration
+fields into the ignored `src/assets/firebase-config.json`. `npm start` and
+`npm run build` run this automatically. Do not commit either file, `.env` files,
+server credentials, or generated build output.
+
+This browser configuration is necessarily delivered to browsers and is **not a
+server secret**. Project protection comes from server-side token verification and
+project permissions, not hiding the Firebase web API key. Restrict the web API key
+and authorized domains in Google Cloud/Firebase as appropriate. Never place a
+service-account key in the browser configuration; the generator rejects
+server-credential markers. Analytics is not initialized.
+
+In Firebase Authentication, enable **Google**, configure its support email and add
+your development/production hostnames to **Authorized domains** (including
+`localhost` for development). Other sign-in providers must remain disabled.
+
+The default API URL targets the existing project's `workspaceApi` function. To
+override it locally, set a PowerShell environment variable before configuration:
+
+```powershell
+$env:BUILDINGED_API_URL = 'https://REGION-PROJECT.cloudfunctions.net/workspaceApi'
+npm start
+```
+
+Each request obtains a Firebase ID token. Backend setup, storage permissions,
+deployment and legacy migration are documented in
+[the functions README](../buildinged-functions/README.md).
+
+Local draft recovery is scoped by Firebase user, project and variant. Stale cloud
+saves return a conflict rather than overwriting newer work. On conflict, export
+the local TBX before using **Reload cloud copy**. The recovery cache is browser
+storage, not encrypted storage: do not use a shared browser profile for private
+project work. Cloud saving is explicit in this release, not background autosave.
+Submitted variants are locked; download their TBX from the task page for
+standalone inspection.
+
+The pre-existing Thames Valley entities are not automatically migrated or exposed
+through the new workspace. The migration utility must be reviewed and deliberately
+run by a project administrator.
 
 ## Code scaffolding
 
@@ -32,6 +95,12 @@ An occupied border produces an error so rooms are not silently discarded.
 TBX tests cover native CSV layout, tile and furniture references, metadata
 round-trips, template offsets, legacy grid recovery, and editing/export integration.
 Run them with `npm test -- --watch=false --browsers=ChromeHeadless`.
+
+Workspace regression tests can be run alongside document/editor regressions:
+
+```powershell
+npm test -- --watch=false --browsers=ChromeHeadless --include='src\app\services\editor-session.service.spec.ts' --include='src\app\components\editor\editor.component.spec.ts' --include='src\app\components\project-workspace\project-workspace.component.spec.ts' --include='src\app\components\admin\building-selection-window\building-selection-window.component.spec.ts' --include='src\app\menu\menu.component.spec.ts' --include='src\app\services\document-integration.spec.ts' --include='src\app\services\building.service.spec.ts'
+```
 
 ## Editing document
 

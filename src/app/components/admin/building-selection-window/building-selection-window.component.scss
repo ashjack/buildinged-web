@@ -23,6 +23,7 @@ nav { gap: 3px; }
 nav a, nav button { padding: 6px 11px; font-size: 12px; font-weight: 600; border: 0; background: none; color: var(--muted); }
 nav .active { background: var(--surface); color: var(--accent); border-radius: 8px; }
 .utilities { margin-left: auto; gap: 12px; white-space: nowrap; font-size: 11px; }
+.utilities { flex-wrap: wrap; justify-content: flex-end; }
 .utilities .symbol { font-size: 16px; }
 .avatar { display: grid; place-items: center; width: 32px; height: 32px; background: var(--line); border: 1px solid #9c8f7f4d; border-radius: 50%; color: var(--accent); }
 main.shell { flex: 1; padding-top: 40px; padding-bottom: 40px; display: flex; flex-direction: column; gap: 38px; }
@@ -77,6 +78,9 @@ input::placeholder { color: var(--outline); }
 .search input { width: 155px; border: 0; background: transparent; padding: 6px; }
 .filter-pill { background: #333537; color: var(--accent); border: 3px solid #1a1c1e; outline: 1px solid var(--line); border-radius: 8px; padding: 3px 10px; white-space: nowrap; }
 .projects-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+.project-create { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 20px; }
+.project-create h3 { width: 100%; }
+.project-create label { display: flex; flex-direction: column; gap: 4px; }
 .project-card { display: flex; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
 .project-art { position: relative; width: 36%; flex-shrink: 0; background: repeating-linear-gradient(35deg, transparent 0 30px, #f2be7108 31px 32px), #222c26; }
 .project-art img { width: 100%; height: 100%; object-fit: cover; opacity: .8; position: absolute; inset: 0; }
@@ -126,4 +130,5 @@ a:hover, footer button:hover { color: var(--accent); }
 @media (max-width: 1050px) { .topbar { gap: 12px; } nav a, nav button { padding: 6px 8px; font-size: 11px; } .utilities { gap: 8px; } .utilities > a { display: none; } .metrics { gap: 8px; } }
 @media (max-width: 767px) { .shell { padding-left: 20px; padding-right: 20px; } nav { display: none; } .utilities > a { display: inline; } main.shell { padding-top: 24px; gap: 28px; } .hero { flex-direction: column; align-items: stretch; padding: 24px; gap: 20px; } h1 { font-size: 26px; } .actions, .projects-grid { grid-template-columns: 1fr; } .action-card { min-height: 280px; } .presets button { font-size: 11px; } .section-heading { align-items: flex-start; flex-wrap: wrap; } .templates-grid, .buildings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .project-card { min-height: 250px; } footer .shell { flex-direction: column; text-align: center; gap: 12px; } .project-info { padding: 16px; } }
 @media (max-width: 420px) { .shell { padding-left: 16px; padding-right: 16px; } .utilities > a { display: none; } .project-card { flex-direction: column; } .project-art { width: 100%; height: 150px; } .filter-pill { display: none; } .search input { width: 185px; } .buildings-grid { grid-template-columns: 1fr; } }
+@media (max-width: 767px) { .topbar { flex-wrap: wrap; padding-top: 12px; padding-bottom: 12px; } .utilities { white-space: normal; } }
 @media (prefers-reduced-motion: reduce) { .dashboard { scroll-behavior: auto; } button, .primary { transition: none; } }

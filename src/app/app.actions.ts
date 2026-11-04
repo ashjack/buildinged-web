@@ -11,6 +11,8 @@ import { FurnishingAddition } from './utils/furnishing-edits';
 export enum ActionTypes {
     ApplyFurnishing = '[Building] Auto furnish rooms',
     SetBuilding = '[Building] Set Building',
+    ClearBuilding = '[Building] Clear Building',
+    SetDocumentLocked = '[Building] Set Document Locked',
     AddObject = '[Building] Add Object',
     UpdateObject = '[Building] Update Object',
     RemoveObject = '[Building] Remove Object',
@@ -39,6 +41,14 @@ export enum ActionTypes {
 }
 
 //Building
+export class ClearBuilding implements Action {
+    readonly type = ActionTypes.ClearBuilding;
+}
+export class SetDocumentLocked implements Action {
+    readonly type = ActionTypes.SetDocumentLocked;
+    constructor(public locked: boolean) { }
+}
+
 export class SetBuilding implements Action {
     readonly type = ActionTypes.SetBuilding;
 
@@ -194,6 +204,8 @@ export type ActionsUnion =
     SetSelectedFurniture |
     ScheduleRedraw |
     SetBuilding |
+    ClearBuilding |
+    SetDocumentLocked |
     AddObject |
     UpdateObject |
     RemoveObject |

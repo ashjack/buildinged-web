@@ -1,4 +1,4 @@
-import { Injectable } from "@angular/core";
+import { Injectable, Optional } from "@angular/core";
 import { Building, Furniture, FurnitureTileEntry, Tile, TileEntry } from "../models/app.models";
 import { DbService } from "./db.service";
 import { TileService } from "./tile.service";
@@ -12,6 +12,7 @@ import { firstValueFrom, take } from "rxjs";
 import { readBuildingFile, writeBuildingFile, TBX_VERSION } from "../utils/tbx-format";
 import { emptyIndexGrid, readIndexGrid, writeIndexGrid } from "../utils/tbx-grid";
 import { generateBuildingSquares } from "./native-squares";
+import { DocumentCacheTarget, EditorSessionService } from './editor-session.service';
 
 interface BuildingTemplateRoom {
     Name: string;
@@ -68,7 +69,8 @@ export class BuildingService {
         private gridService: GridService,
         private roomService: RoomService,
         private store: Store<fromRoot.State>,
-        private http: HttpClient,) { }
+        private http: HttpClient,
+        @Optional() private session: EditorSessionService | null = null) { }
 
     getBuilding(): Building {
         return this.building;
@@ -471,11 +473,16 @@ export class BuildingService {
         this.store.dispatch(new SetBuilding(building));
     }
 
-    cacheBuilding(building: Building): void {
+    get cacheTarget(): DocumentCacheTarget { return this.session?.cacheTarget || { key: 'buildingXml' }; }
+
+    cacheBuilding(building: Building, target = this.cacheTarget): void {
+        if (target.revision !== undefined && (target.key !== this.cacheTarget.key || target.revision !== this.cacheTarget.revision)) return;
         try {
-            localStorage.setItem('buildingXml', new XMLSerializer().serializeToString(writeBuildingFile(building)));
+            const xml = new XMLSerializer().serializeToString(writeBuildingFile(building));
+            localStorage.setItem(target.key, target.revision === undefined ? xml : JSON.stringify({ xml, revision: target.revision }));
         } catch (error) {
             console.warn('Could not cache the building document.', error);
+            if (this.session?.contribution) this.session.error = 'Could not save a local recovery copy. Export your draft before leaving.';
         }
     }
 
@@ -492,7 +499,7 @@ export class BuildingService {
         document.body.appendChild(link);
         try {
             link.click();
-            localStorage.setItem('buildingXml', xmlString);
+            this.cacheBuilding(building);
         } finally {
             link.remove();
             setTimeout(() => URL.revokeObjectURL(url), 0);

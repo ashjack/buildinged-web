@@ -3,10 +3,10 @@ import { Store } from '@ngrx/store';
 import { Subject, takeUntil } from 'rxjs';
 import * as fromRoot from '../../../app.reducers';
 import { BuildingService } from '../../../services/building.service';
-import { ApiService } from '../../../services/api.service';
-import { TogglePopup } from '../../../app.actions';
-
-interface ProjectBuilding { id: string; Name: string; Contents: string; }
+import { ProjectApiService } from '../../../services/project-api.service';
+import { AuthService } from '../../../services/auth.service';
+import { Project } from '../../../models/project.models';
+import { Router } from '@angular/router';
 
 @Component({
   selector: 'app-building-selection-window',
@@ -16,21 +16,23 @@ interface ProjectBuilding { id: string; Name: string; Contents: string; }
 export class BuildingSelectionWindowComponent implements OnInit, OnDestroy {
   @ViewChild('setupDialog') setupDialog: ElementRef<HTMLDialogElement>;
   readonly openBuilding$ = this.store.select(fromRoot.getBuilding);
-  readonly forceShowWindow$ = this.store.select(fromRoot.isPopupOpen('main-menu'));
   private readonly destroyed$ = new Subject<void>();
   readonly presets = [
     { name: 'Small', width: 16, height: 16 },
     { name: 'House', width: 24, height: 20 },
     { name: 'Store', width: 32, height: 24 }
   ];
-  buildings: ProjectBuilding[] = [];
-  listBuildings = false;
-  showWindow = true;
+  projects: Project[] = [];
+  projectName = '';
+  projectDescription = '';
+  projectVisibility: 'private' | 'public' = 'private';
+  creatingProject = false;
+  hasStandaloneRecovery = false;
   templateNames: string[] = [];
   selectedTemplateName = '';
   showTemplatePicker = false;
   showAllTemplates = false;
-  loadingProjects = true;
+  loadingProjects = false;
   projectError = '';
   error = '';
   busy = false;
@@ -40,12 +42,18 @@ export class BuildingSelectionWindowComponent implements OnInit, OnDestroy {
   height = 20;
 
   constructor(private buildingService: BuildingService, private store: Store<fromRoot.State>,
-              private apiService: ApiService, private changeDetector: ChangeDetectorRef) { }
+              private apiService: ProjectApiService, private changeDetector: ChangeDetectorRef,
+              public auth: AuthService, private router: Router) { }
 
   ngOnInit(): void {
-    void this.getBuildingsByProjectName('ThamesValley');
-    this.openBuilding$.pipe(takeUntil(this.destroyed$)).subscribe(building => {
-      if (building) this.closeWindow();
+    try { this.hasStandaloneRecovery = !!localStorage.getItem('buildingXml'); }
+    catch (error) {
+      this.error = 'Browser storage is unavailable; local drafts cannot be restored.';
+      console.error(this.error, error);
+    }
+    this.auth.user$.pipe(takeUntil(this.destroyed$)).subscribe(user => {
+      this.projects = [];
+      if (user) void this.loadProjects();
     });
     void this.buildingService.getTemplateNames().then(names => {
       this.templateNames = names;
@@ -54,24 +62,42 @@ export class BuildingSelectionWindowComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void { this.destroyed$.next(); this.destroyed$.complete(); }
-  get filteredBuildings(): ProjectBuilding[] {
-    return this.buildings.filter(building => building.Name.toLowerCase().includes(this.search.trim().toLowerCase()));
+  get filteredProjects(): Project[] {
+    return this.projects.filter(project => project.name.toLowerCase().includes(this.search.trim().toLowerCase()));
   }
-  get showProject(): boolean { return 'thames valley'.includes(this.search.trim().toLowerCase()); }
   get validDimensions(): boolean {
     return Number.isInteger(this.width) && Number.isInteger(this.height) &&
       this.width >= 1 && this.width <= 256 && this.height >= 1 && this.height <= 256;
   }
-  async getBuildingsByProjectName(projectName: string): Promise<void> {
+  async loadProjects(): Promise<void> {
+    const uid = this.auth.user?.uid;
+    if (!uid) return;
     this.loadingProjects = true;
     this.projectError = '';
     try {
-      const result = await this.apiService.getBuildingsByProjectName(projectName);
-      this.buildings = Array.isArray(result) ? result : [];
-    } catch {
-      this.projectError = 'Could not load the project buildings. Check your connection and try again.';
+      const result = await this.apiService.projects();
+      if (this.auth.user?.uid === uid) this.projects = result;
+    } catch (error) {
+      this.projectError = error instanceof Error ? error.message : String(error);
     } finally { this.loadingProjects = false; }
   }
+  async createProject(): Promise<void> {
+    if (this.creatingProject || !this.projectName.trim()) return;
+    this.creatingProject = true;
+    this.projectError = '';
+    try {
+      const project = await this.apiService.request<Project>('POST', '/projects', {
+        name: this.projectName, description: this.projectDescription, visibility: this.projectVisibility
+      });
+      await this.router.navigate(['/projects', project.id]);
+    } catch (error) { this.projectError = error instanceof Error ? error.message : String(error); }
+    finally { this.creatingProject = false; }
+  }
+  async signOut(): Promise<void> {
+    try { await this.auth.signOut(); }
+    catch (error) { this.error = error instanceof Error ? error.message : String(error); }
+  }
+  resumeEditor(): void { void this.router.navigate(['/editor']); }
   selectPreset(width: number, height: number): void { this.width = width; this.height = height; }
   openTemplatePicker(name?: string): void {
     if (name) this.selectedTemplateName = name;
@@ -135,14 +161,6 @@ export class BuildingSelectionWindowComponent implements OnInit, OnDestroy {
     await this.buildingService.createBuildingFromXml(new DOMParser().parseFromString(xml, 'text/xml'));
     this.closeWindow();
   }
-  async openProjectBuilding(building: ProjectBuilding): Promise<void> {
-    if (this.busy) return;
-    this.busy = true;
-    this.error = '';
-    try { await this.loadBuilding(building.Contents); }
-    catch (error) { this.reportError(error); }
-    finally { this.busy = false; }
-  }
   private reportError(error: unknown): void { this.error = error instanceof Error ? error.message : String(error); }
-  closeWindow(): void { this.showWindow = false; this.store.dispatch(new TogglePopup('main-menu', false)); }
+  closeWindow(): void { void this.router.navigate(['/editor']); }
 }

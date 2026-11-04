@@ -1,4 +1,4 @@
-import { NgModule } from '@angular/core';
+import { APP_INITIALIZER, NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
 
 import { AppRoutingModule } from './app-routing.module';
@@ -25,11 +25,16 @@ import { RoomsDialogComponent } from './components/rooms-dialog/rooms-dialog.com
 import { RoomTilePickerComponent } from './components/room-tile-picker/room-tile-picker.component';
 import { TilesFurnitureSidebarComponent } from './components/furniture-selection-menu/tiles-furniture-sidebar.component';
 import { AutoFurnishingDialogComponent } from './components/auto-furnishing-dialog/auto-furnishing-dialog.component';
+import { AuthService } from './services/auth.service';
+import { EditorComponent } from './components/editor/editor.component';
+import { ProjectWorkspaceComponent } from './components/project-workspace/project-workspace.component';
 
 @NgModule({
   declarations: [
     AutoFurnishingDialogComponent,
     AppComponent,
+    EditorComponent,
+    ProjectWorkspaceComponent,
     MenuComponent,
     ViewportCanvasComponent,
     TileSelectionMenuComponent,
@@ -56,7 +61,8 @@ import { AutoFurnishingDialogComponent } from './components/auto-furnishing-dial
     BsDropdownModule.forRoot(),
     //StoreModule.forRoot({ reducer: appRed })
   ],
-  providers: [],
+  providers: [{ provide: APP_INITIALIZER, useFactory: (auth: AuthService) => () => auth.initialize(),
+    deps: [AuthService], multi: true }],
   bootstrap: [AppComponent]
 })
 

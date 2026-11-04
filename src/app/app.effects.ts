@@ -24,7 +24,8 @@ export class RootEffects {
 
     cacheDocument$ = createEffect(() => this.store.select(fromRoot.getBuilding).pipe(
         filter((building): building is Building => !!building),
+        map(building => ({ building, target: this.buildings.cacheTarget })),
         debounceTime(200),
-        tap(building => this.buildings.cacheBuilding(building)),
+        tap(({ building, target }) => this.buildings.cacheBuilding(building, target)),
     ), { dispatch: false });
 }

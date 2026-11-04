@@ -15,6 +15,7 @@ export interface State
 {
     building: Building | undefined;
     documentId: number;
+    documentLocked: boolean;
     past: EditCommand[];
     future: EditCommand[];
     historyFloor: number | undefined;
@@ -30,6 +31,7 @@ export interface State
 export const initialState: State = {
     building: undefined,
     documentId: 0,
+    documentLocked: false,
     past: [],
     future: [],
     historyFloor: undefined,
@@ -75,6 +77,12 @@ function commandLabel(action: Actions.ActionsUnion): string {
 
 /** Existing actions are edit commands; snapshots share their unchanged immutable data. */
 export function reducer(state = initialState, action: Actions.ActionsUnion): State {
+    if (action.type === Actions.ActionTypes.ClearBuilding) return { ...initialState, documentId: state.documentId + 1 };
+    if (action.type === Actions.ActionTypes.SetDocumentLocked) return { ...state, documentLocked: action.locked };
+    if (state.documentLocked && ![
+        Actions.ActionTypes.SetBuilding, Actions.ActionTypes.SetCurrentTool, Actions.ActionTypes.SetSelectedFurniture,
+        Actions.ActionTypes.ScheduleRedraw, Actions.ActionTypes.SetTileCount, Actions.ActionTypes.TogglePopup
+    ].includes(action.type)) return state;
     if (action.type === Actions.ActionTypes.Undo || action.type === Actions.ActionTypes.Redo) {
         const undo = action.type === Actions.ActionTypes.Undo;
         const list = undo ? state.past : state.future;
