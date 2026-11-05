@@ -1126,7 +1126,14 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     else if(event.button === 0)
     {
       event.preventDefault();
-      this.endDrag(event, this.currentHoverCoords.x, this.currentHoverCoords.y);
+      if (this.selectedTool instanceof ToolFurniture && this.selectedTool.key !== 'Control') {
+        this.getMousePos(event);
+        const pointer = this.selectedTool.pointerPosition;
+        this.endDrag(event, pointer ? Math.floor(pointer.x) : this.currentHoverCoords.x,
+          pointer ? Math.floor(pointer.y) : this.currentHoverCoords.y);
+      } else {
+        this.endDrag(event, this.currentHoverCoords.x, this.currentHoverCoords.y);
+      }
     }
   }
 
@@ -1171,6 +1178,17 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     const rect = canvas?.getBoundingClientRect();
     const x: number = (Math.round(event.clientX - rect.left) / (rect.right - rect.left) * canvas.width);
     const y: number = (Math.round(event.clientY - rect.top) / (rect.bottom - rect.top) * canvas.height);
+
+    const reference = this.newPositions[0];
+    if (reference && this.selectedTool instanceof ToolFurniture && this.selectedTool.isDragging && this.selectedTool.key !== 'Control') {
+      // Extrapolate the rendered isometric basis: facing does not require a cell under the pointer.
+      const fraction = fractionalCellPosition({ x, y }, reference.point);
+      const pointer = { x: reference.localPoint.x + fraction.x, y: reference.localPoint.y + fraction.y };
+      this.selectedTool.pointerPosition = pointer;
+      this.selectedTool.hoverTile(Math.floor(pointer.x), Math.floor(pointer.y));
+      this.drawCanvas();
+      return;
+    }
 
     let nearestEdgeIndex = -1;
 

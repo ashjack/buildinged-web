@@ -67,6 +67,7 @@ describe('Native square generation', () => {
         expect(tile(tiles, 3, 3, 'Walls')).toBe('outside-SouthEast.png');
         expect(tile(tiles, 2, 2, 'Walls')).toBeUndefined();
         expect(tile(tiles, 1, 1, 'Floor')).toBe('floor-Floor.png');
+        expect(tiles.filter(t => t.layer === 'Walls' && t.y === 1).map(t => t.orient)).toEqual(['NW', 'N', 'W']);
     });
 
     it('uses room identity for shared boundaries and treats emptyoutside# rooms as exterior', () => {

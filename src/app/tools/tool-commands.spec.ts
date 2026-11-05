@@ -53,6 +53,89 @@ function targetedKey(target: HTMLElement, key: string, modifiers: KeyboardEventI
 }
 
 describe('Tool edit commands', () => {
+    for (const [orient, screenX, screenY] of [
+        ['W', 260, 200], ['N', 340, 200], ['E', 340, 240], ['S', 260, 240],
+    ] as const) {
+        it(`previews and places furniture facing ${orient} when dragged beyond the grid edge`, () => {
+            const scene = setup(), view = scene.view, tool = scene.tools[2];
+            const canvas = view.canvasElement.nativeElement as HTMLCanvasElement;
+            canvas.width = 600; canvas.height = 400;
+            spyOn(canvas, 'getBoundingClientRect').and.returnValue(new DOMRect(10, 20, 300, 200));
+            Object.defineProperty(view, 'ctx', { value: canvas.getContext('2d') });
+            spyOn(view, 'drawCanvas').and.stub();
+            const furniture = { entries: ['W', 'N', 'E', 'S'].map((direction, index) => ({
+                ...scene.furniture.entries[0], orient: direction,
+                tiles: [{ ...scene.furniture.entries[0].tiles[0], name: `fridge_01_00${index}.png` }],
+            })) };
+            scene.store.dispatch(new SetSelectedFurniture(furniture, 'W'));
+            const anchor = { x: orient === 'E' ? scene.buildings.building.width - 1 : 0,
+                y: orient === 'S' ? scene.buildings.building.height - 1 : 0 };
+            view.newPositions = [{ localPoint: anchor,
+                point: [{ x: 300, y: 240 }, { x: 340, y: 220 }, { x: 300, y: 200 }, { x: 260, y: 220 }] }];
+            view.selectedTool = tool;
+            view.currentHoverCoords = anchor;
+            tool.beginDrag(anchor.x, anchor.y);
+            const client = { clientX: 10 + screenX / 2, clientY: 20 + screenY / 2 };
+            view.getMousePos(new MouseEvent('mousemove', { ...client, buttons: 1 }));
+            const expected = furniture.entries.find(entry => entry.orient === orient)!.tiles[0].name;
+            expect(tool.tileGhosts.map(tile => [tile.name, tile.x, tile.y])).toEqual([[expected, anchor.x, anchor.y]]);
+            expect(view.currentHoverCoords).toEqual(anchor);
+
+            const release = new MouseEvent('mouseup', { ...client, button: 0 });
+            canvas.dispatchEvent(release); view.onMouseUp(release);
+            const placed = scene.buildings.building.floors[0].objects[0];
+            expect([placed.x, placed.y, placed.orient]).toEqual([anchor.x, anchor.y, orient]);
+            expect(scene.state.value.past.length).toBe(1);
+            scene.store.dispatch(new Undo());
+            expect(scene.buildings.building.floors[0].objects.length).toBe(0);
+            scene.store.dispatch(new Redo());
+            expect(scene.buildings.building.floors[0].objects[0]).toEqual(placed);
+            scene.destroy();
+        });
+    }
+
+    it('uses the release position for furniture facing even without an intervening mouse move', () => {
+        const scene = setup(), view = scene.view, canvas = view.canvasElement.nativeElement as HTMLCanvasElement;
+        canvas.width = canvas.height = 200;
+        spyOn(canvas, 'getBoundingClientRect').and.returnValue(new DOMRect(0, 0, 200, 200));
+        Object.defineProperty(view, 'ctx', { value: canvas.getContext('2d') });
+        spyOn(view, 'drawCanvas').and.stub();
+        view.newPositions = [{ localPoint: { x: 0, y: 0 },
+            point: [{ x: 100, y: 140 }, { x: 140, y: 120 }, { x: 100, y: 100 }, { x: 60, y: 120 }] }];
+        const furniture = { entries: [
+            scene.furniture.entries[0], { ...scene.furniture.entries[0], orient: 'N' },
+        ] };
+        scene.store.dispatch(new SetSelectedFurniture(furniture, 'W'));
+        view.selectedTool = scene.tools[2];
+        view.currentHoverCoords = { x: 0, y: 0 };
+        view.selectedTool.beginDrag(0, 0);
+        const release = new MouseEvent('mouseup', { button: 0, clientX: 140, clientY: 100 });
+        canvas.dispatchEvent(release); view.onMouseUp(release);
+        expect(scene.buildings.building.floors[0].objects[0].orient).toBe('N');
+        scene.destroy();
+    });
+
+    it('keeps off-grid furniture hovering and Ctrl-erasing bound to the available grid', () => {
+        const scene = setup(), view = scene.view, tool = scene.tools[2];
+        const canvas = view.canvasElement.nativeElement as HTMLCanvasElement;
+        canvas.width = canvas.height = 200;
+        spyOn(canvas, 'getBoundingClientRect').and.returnValue(new DOMRect(0, 0, 200, 200));
+        Object.defineProperty(view, 'ctx', { value: canvas.getContext('2d') });
+        spyOn(view, 'drawCanvas').and.stub();
+        view.newPositions = [{ localPoint: { x: 0, y: 0 },
+            point: [{ x: 100, y: 140 }, { x: 140, y: 120 }, { x: 100, y: 100 }, { x: 60, y: 120 }] }];
+        view.selectedTool = tool;
+        const hover = spyOn(tool, 'hoverTile').and.callThrough();
+        const outside = new MouseEvent('mousemove', { clientX: 140, clientY: 100 });
+        view.getMousePos(outside);
+        tool.key = 'Control'; tool.beginDrag(0, 0);
+        view.getMousePos(outside);
+        expect(hover).not.toHaveBeenCalled();
+        expect(tool.pointerPosition).toBeUndefined();
+        expect(scene.state.value.past.length).toBe(0);
+        scene.destroy();
+    });
+
     it('bounds Ctrl-wheel zoom while retaining the world point under a CSS-scaled pointer', () => {
         const scene = setup(), view = scene.view, canvas = view.canvasElement.nativeElement as HTMLCanvasElement;
         spyOn(view, 'drawCanvas').and.stub();

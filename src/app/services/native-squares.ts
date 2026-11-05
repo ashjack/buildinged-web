@@ -310,7 +310,8 @@ export function generateBuildingSquares(building: Building, includeStructure = f
             if (!source?.tile || source.tile === 'None') return;
             const name = source.tile + '.png';
             floorTiles.push({ name, url: name, x: s.x, y: s.y, layer, level, object: p.uid,
-                auto: !p.uid, tag: p.tag });
+                auto: !p.uid, tag: p.tag,
+                ...(['Walls', 'Walls2'].includes(layer) && (p.raw === undefined || p.uid) ? { orient: s.orient } : {}) });
         }));
         result.tiles.push(...floorTiles);
         floor.objects.forEach(o => {

@@ -7,10 +7,10 @@ import { BFurniture, BFurnitureGroup } from '../../models/furniture-window.model
 import { FURNITURE_LAYERS, parseFurnitureDocument } from '../../utils/furniture-catalog-parser';
 import { parseTileName } from '../../utils/sheet-atlas';
 import {
-  BASIC_ORIENTS, FurnitureOrient, SEQUENCES, SequenceName, clearEntry, dropTiles, entryOf, fillSequential, insertAt, move, orientsOf, removeAt, setGrime, setLayer, setTile,
+  BASIC_ORIENTS, FurnitureOrient, SEQUENCES, SHIFT_STEPS, SequenceName, clearEntry, shiftTiles, dropTiles, entryOf, fillSequential, insertAt, move, orientsOf, removeAt, setGrime, setLayer, setTile,
   toggleCorners, updateFurniture, updateGroup, validCategoryLabel,
 } from '../../utils/furniture-editing';
-import { FURNITURE_TILE_MIME, FurnitureCellDrop, FurnitureCellPoint } from './furniture-cell.component';
+import { FURNITURE_TILE_MIME, FurnitureCellDrop, FurnitureCellPoint, furnitureTileDrag } from './furniture-cell.component';
 
 interface Snapshot { groups: BFurnitureGroup[]; group: number; furniture: number; orient: string; }
 interface BrowserTile { name: string; url: string; }
@@ -27,6 +27,7 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
   readonly scales = [.35, .5, .75, 1];
   readonly orientsOf = orientsOf;
   readonly entryOf = entryOf;
+  readonly shiftSteps = SHIFT_STEPS;
 
   groups: BFurnitureGroup[] = [];
   group = 0;
@@ -49,8 +50,10 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
   renaming: number | null = null;
   renameText = '';
   @ViewChild('renameInput') renameInput?: ElementRef<HTMLInputElement>;
+  @ViewChild('furnitureScroll') furnitureScroll?: ElementRef<HTMLElement>;
 
   tilesets: string[] = [];
+  private sheetSizes = new Map<string, number>();
   tilesetFilter = '';
   tileset = localStorage.getItem('furnitureAdminTileset') || '';
   tiles: BrowserTile[] = [];
@@ -67,6 +70,7 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    furnitureTileDrag.tiles = null;
     this.tileRequest++;
     this.releaseBitmaps(new Set());
   }
@@ -159,7 +163,8 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
     // Leave text fields their own undo.
     const target = event.target as HTMLElement | null;
     if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
-    if (key === 'z' && !event.shiftKey) { event.preventDefault(); this.undo(); }
+    if (key === 'd' && !event.shiftKey) { event.preventDefault(); this.duplicateFurniture(); }
+    else if (key === 'z' && !event.shiftKey) { event.preventDefault(); this.undo(); }
     else if (key === 'y' || (key === 'z' && event.shiftKey)) { event.preventDefault(); this.redo(); }
   }
 
@@ -268,6 +273,24 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
       { furniture: index, orient: 'W' });
   }
 
+  duplicateFurniture(): void {
+    const source = this.current;
+    if (!source) return;
+    const index = this.furniture + 1;
+    // Furniture is immutable, so the copy can share the original's entries.
+    this.commit(updateGroup(this.groups, this.group, g => ({ ...g, furniture: insertAt(g.furniture, index, { ...source }) })),
+      { furniture: index, orient: this.orient });
+    this.scrollToFurniture(index);
+  }
+
+  private scrollToFurniture(index: number): void {
+    // Wait for the new row to render.
+    setTimeout(() => {
+      const row = this.furnitureScroll?.nativeElement.querySelectorAll<HTMLElement>('.furniture-row')[index];
+      row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+  }
+
   removeFurniture(): void {
     const group = this.currentGroup;
     if (!this.current || !group) return;
@@ -282,6 +305,11 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
 
   fillSequential(furniture: number, sequence: SequenceName): void {
     this.editCurrent(item => fillSequential(item, SEQUENCES[sequence]), furniture, this.furniture === furniture ? this.orient : 'W');
+  }
+
+  shiftTiles(furniture: number, offset: number): void {
+    const catalog = { names: this.tilesets, size: (sheet: string) => this.sheetSizes.get(sheet) };
+    this.editCurrent(item => shiftTiles(item, offset, catalog), furniture, this.furniture === furniture ? this.orient : 'W');
   }
 
   clearTiles(): void { this.editCurrent(furniture => clearEntry(furniture, this.orient)); }
@@ -309,7 +337,9 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
 
   async loadTilesets(): Promise<void> {
     try {
-      this.tilesets = (await this.db.getTilesets()).map(tileset => tileset.name).sort((a, b) => a.localeCompare(b));
+      const tilesets = await this.db.getTilesets();
+      this.sheetSizes = new Map(tilesets.map(tileset => [tileset.name, tileset.columns * tileset.rows]));
+      this.tilesets = tilesets.map(tileset => tileset.name).sort((a, b) => a.localeCompare(b));
       if (!this.tilesets.includes(this.tileset)) this.tileset = this.tilesets[0] ?? '';
       if (this.tileset) await this.selectTileset(this.tileset);
     } catch {
@@ -348,10 +378,14 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
       this.anchorTile = tile.name;
     }
     const names = [...this.selectedTiles].sort((a, b) => (parseTileName(a)?.index ?? 0) - (parseTileName(b)?.index ?? 0));
+    furnitureTileDrag.tiles = names;
     event.dataTransfer?.setData(FURNITURE_TILE_MIME, JSON.stringify(names));
     event.dataTransfer?.setData('text/plain', names.join('\n'));
     if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy';
   }
+
+  @HostListener('document:dragend')
+  endTileDrag(): void { furnitureTileDrag.tiles = null; }
 
   setScale(scale: number): void {
     this.scale = scale;

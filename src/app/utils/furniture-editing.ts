@@ -104,6 +104,59 @@ export function fillSequential(furniture: BFurniture, offsets: readonly number[]
   return next;
 }
 
+export const SHIFT_STEPS = [-4, -2, -1, 1, 2, 4] as const;
+
+/** Alphabetically ordered tileset names and their grid sizes. */
+export interface SheetCatalog {
+  names: readonly string[];
+  size: (sheet: string) => number | undefined;
+}
+
+/** Steps a tile index by `offset`, carrying across the alphabetically sorted tileset list when known. */
+function stepTile(sheet: string, index: number, offset: number, catalog?: SheetCatalog): { sheet: string; index: number } | null {
+  index += offset;
+  let sheetIndex = catalog?.names.indexOf(sheet) ?? -1;
+  let size = catalog?.size(sheet);
+  if (!catalog || sheetIndex < 0 || !size) return index >= 0 && index <= 9999 ? { sheet, index } : null;
+  for (let guard = 0; guard < catalog.names.length && (index < 0 || index >= size); guard++) {
+    if (index >= size) {
+      if (++sheetIndex >= catalog.names.length) return null;
+      index -= size;
+      sheet = catalog.names[sheetIndex];
+      size = catalog.size(sheet);
+      if (!size) return null;
+    } else {
+      if (--sheetIndex < 0) return null;
+      sheet = catalog.names[sheetIndex];
+      size = catalog.size(sheet);
+      if (!size) return null;
+      index += size;
+    }
+  }
+  return index >= 0 && index < size && index <= 9999 ? { sheet, index } : null;
+}
+
+/**
+ * Moves every tile of every orientation along its sheet by `offset`, keeping positions and zero padding. With
+ * `catalog`, tiles that run past the end (or start) of their sheet continue in the next (or previous)
+ * alphabetically listed tileset. Nothing changes if any tile name has no index or has nowhere to go.
+ */
+export function shiftTiles(furniture: BFurniture, offset: number, catalog?: SheetCatalog): BFurniture {
+  if (!offset || !furniture.entries.some(entry => entry.items.length)) return furniture;
+  const entries: BEntry[] = [];
+  for (const entry of furniture.entries) {
+    const items: BEntry['items'] = [];
+    for (const item of entry.items) {
+      const match = /^(.+)_(\d{1,4})$/.exec(item.tile);
+      const next = match && stepTile(match[1], Number(match[2]), offset, catalog);
+      if (!match || !next) return furniture;
+      items.push({ pos: item.pos, tile: `${next.sheet}_${String(next.index).padStart(match[2].length, '0')}` });
+    }
+    entries.push({ ...entry, items });
+  }
+  return { ...furniture, entries };
+}
+
 export function clearEntry(furniture: BFurniture, orient: string): BFurniture {
   return entryOf(furniture, orient)?.items.length ? withEntry(furniture, orient, entry => ({ ...entry, items: [] })) : furniture;
 }

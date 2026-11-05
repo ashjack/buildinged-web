@@ -1,6 +1,6 @@
 import { BFurniture, BFurnitureGroup } from '../models/furniture-window.models';
 import {
-  clearEntry, dropTiles, entrySize, fillSequential, SEQUENCES, move, orientsOf, setGrime, setLayer, setTile, tileAt, toggleCorners, updateFurniture,
+  clearEntry, dropTiles, entrySize, fillSequential, SEQUENCES, shiftTiles, move, orientsOf, setGrime, setLayer, setTile, tileAt, toggleCorners, updateFurniture,
   validCategoryLabel,
 } from './furniture-editing';
 
@@ -62,6 +62,33 @@ describe('furniture editing', () => {
       .toEqual(['W=oven_01_001', 'N=oven_01_000', 'E=oven_01_003', 'S=oven_01_002']);
     const first: BFurniture = { entries: [{ orient: 'W', items: [{ pos: '0,0', tile: 'oven_01_000' }] }] };
     expect(fillSequential(first, SEQUENCES['+1.5'])).toBe(first);
+  });
+
+  it('shifts every tile of every orientation along its sheet', () => {
+    const fridge: BFurniture = { entries: [
+      { orient: 'W', items: [{ pos: '0,0', tile: 'fridge_01_004' }, { pos: '0,1', tile: 'fridge_01_012' }] },
+      { orient: 'N', grime: false, items: [{ pos: '0,0', tile: 'fridge_01_005' }] },
+    ] };
+    const up = shiftTiles(fridge, 4);
+    expect(up.entries.map(entry => entry.items.map(item => item.tile))).toEqual([['fridge_01_008', 'fridge_01_016'], ['fridge_01_009']]);
+    expect(up.entries[0].items[1].pos).toBe('0,1');
+    expect(up.entries[1].grime).toBeFalse();
+    expect(shiftTiles(up, -4)).toEqual(fridge);
+    expect(shiftTiles(fridge, -5)).toBe(fridge);
+  });
+
+  it('carries shifts into the alphabetically next or previous tileset', () => {
+    const sizes: Record<string, number> = { 'alpha-sheet': 16, 'fridge_01': 16, 'zebra-sheet': 32 };
+    const catalog = { names: ['alpha-sheet', 'fridge_01', 'zebra-sheet'], size: (sheet: string) => sizes[sheet] };
+    const tile = (name: string): BFurniture => ({ entries: [{ orient: 'W', items: [{ pos: '0,0', tile: name }] }] });
+    const tileOf = (item: BFurniture) => item.entries[0].items[0].tile;
+    expect(tileOf(shiftTiles(tile('fridge_01_014'), 4, catalog))).toBe('zebra-sheet_002');
+    expect(tileOf(shiftTiles(tile('fridge_01_001'), -4, catalog))).toBe('alpha-sheet_013');
+    expect(tileOf(shiftTiles(tile('fridge_01_010'), 4, catalog))).toBe('fridge_01_014');
+    const end = tile('zebra-sheet_030');
+    expect(shiftTiles(end, 4, catalog)).toBe(end);
+    const start = tile('alpha-sheet_001');
+    expect(shiftTiles(start, -2, catalog)).toBe(start);
   });
 
   it('only copies the changed path so undo snapshots share untouched data', () => {

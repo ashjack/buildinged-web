@@ -17,6 +17,7 @@
   <span class="divider"></span>
   <div class="tools">
     <button class="button compact" (click)="addFurniture()" [disabled]="!currentGroup">Add furniture</button>
+    <button class="button compact" (click)="duplicateFurniture()" [disabled]="!current" title="Add a copy of the selected furniture after it (Ctrl+D)">Duplicate</button>
     <button class="button compact" (click)="removeFurniture()" [disabled]="!current">Remove</button>
     <button class="button compact" (click)="clearTiles()" [disabled]="!current || !entryOf(current, orient)?.items?.length" title="Clear the tiles of the selected orientation">Clear {{orient}}</button>
     <button class="button compact icon" (click)="moveFurniture(-1)" [disabled]="!current || furniture === 0" title="Move up" aria-label="Move furniture up">↑</button>
@@ -78,7 +79,7 @@
         </select>
       </label>
     </div>
-    <div class="furniture-scroll">
+    <div class="furniture-scroll" #furnitureScroll>
       <p *ngIf="loading" class="empty">Loading furniture…</p>
       <p *ngIf="!loading && currentGroup && !currentGroup.furniture.length" class="empty">This category is empty. Use <strong>Add furniture</strong>, then drag tiles onto a grid.</p>
       <div *ngFor="let item of currentGroup?.furniture; let i = index; trackBy: trackIndex" class="furniture-row" [class.active]="i === furniture">
@@ -101,6 +102,11 @@
           <app-furniture-cell *ngFor="let o of orientsOf(item)" [class.selected]="i === furniture && o === orient"
             [entry]="entryOf(item, o)" [orient]="o" [scale]="scale" [selected]="i === furniture && o === orient" [images]="image"
             (picked)="select(i, o)" (dropped)="onDrop(i, o, $event)" (cleared)="onClear(i, o, $event)"></app-furniture-cell>
+        </div>
+        <div *ngIf="i === furniture" class="shift" role="group" aria-label="Shift tile numbers">
+          <span>Shift</span>
+          <button *ngFor="let step of shiftSteps" class="button compact" (click)="shiftTiles(i, step)"
+            [disabled]="!item.entries.length" [title]="'Move every tile number by ' + step">{{step > 0 ? '+' + step : step}}</button>
         </div>
       </div>
     </div>

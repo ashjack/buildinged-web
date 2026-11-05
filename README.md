@@ -166,6 +166,13 @@ center within those bounds. Navigation never changes the building document.
   the cursor until release. Right-click deletes an object; Alt-click picks the
   stair tiles. Placement validates all five squares inside the building, excluding
   the outside border. No manual direction selector is required.
+- **Furniture:** hovering wall cells automatically faces the furniture against the
+  wall, including corner variants when available. Without a corner variant, the
+  pointer's nearest edge chooses between the two walls. Click to place the preview,
+  or hold and drag to override its facing. Drag direction uses eight sectors for
+  furniture with corner variants and four otherwise, even beyond the grid edge.
+  Missing variants fall back to an available cardinal or the selected orientation.
+  Placement stays anchored to the starting cell and is one undo/redo command.
 - **Roofs:** drag from a cell to create a roof, with the native type-specific size
   constraints and reverse-drag anchoring. Mouse position within a cell selects
   half-depth slopes and the supported corner types. Hover a roof to reveal its

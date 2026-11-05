@@ -4,6 +4,24 @@ import { MAX_FURNITURE_COORD, coords, entrySize } from '../../utils/furniture-ed
 
 export const FURNITURE_TILE_MIME = 'application/x-buildinged-tiles';
 
+/**
+ * The tiles being dragged from the tile browser. Chrome can lose custom drag data types when an image is
+ * dragged (the drag then only carries text/uri-list and text/html), so cells read this instead.
+ */
+export const furnitureTileDrag: { tiles: string[] | null } = { tiles: null };
+
+function draggedTiles(event: DragEvent): string[] | null {
+  if (furnitureTileDrag.tiles?.length) return furnitureTileDrag.tiles;
+  if (!event.dataTransfer?.types.includes(FURNITURE_TILE_MIME)) return null;
+  if (event.type !== 'drop') return [];
+  try {
+    const tiles = JSON.parse(event.dataTransfer.getData(FURNITURE_TILE_MIME));
+    return Array.isArray(tiles) && tiles.length && tiles.every(tile => typeof tile === 'string') ? tiles : null;
+  } catch {
+    return null;
+  }
+}
+
 // 1x isometric metrics: a floor square is 64x32 and a tile image is 64x128 with the floor at its bottom.
 const HALF_W = 32, HALF_H = 16, IMAGE_W = 64, IMAGE_H = 128, HEADROOM = 96, PAD = 6;
 
@@ -15,7 +33,7 @@ export interface FurnitureCellDrop extends FurnitureCellPoint { tiles: string[];
   selector: 'app-furniture-cell',
   template: `<canvas #canvas role="img" [attr.aria-label]="orient + ' orientation, ' + (entry?.items?.length || 0) + ' tiles'"
     (click)="picked.emit()" (contextmenu)="onContextMenu($event)" (mousemove)="onHover($event)" (mouseleave)="setHover(null)"
-    (dragover)="onDragOver($event)" (dragleave)="setHover(null)" (drop)="onDrop($event)"></canvas>`,
+    (dragenter)="onDragOver($event)" (dragover)="onDragOver($event)" (dragleave)="onDragLeave()" (drop)="onDrop($event)"></canvas>`,
   styles: [`:host { display: block; line-height: 0; } canvas { display: block; cursor: pointer; }`],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -76,25 +94,30 @@ export class FurnitureCellComponent implements OnChanges, AfterViewInit, OnDestr
 
   onHover(event: MouseEvent): void { this.setHover(this.pointAt(event)); }
 
+  onDragLeave(): void {
+    try { this.setHover(null); } catch { /* A failed redraw must not affect dragging. */ }
+  }
+
   onDragOver(event: DragEvent): void {
-    if (!event.dataTransfer?.types.includes(FURNITURE_TILE_MIME)) return;
     const point = this.pointAt(event);
-    this.setHover(point);
-    if (!point) return;
+    if (!draggedTiles(event) || !point) {
+      try { this.setHover(null); } catch { /* A failed redraw must not affect dragging. */ }
+      return;
+    }
+    // Accept before redrawing so a drawing error can't refuse the drop.
     event.preventDefault();
-    event.dataTransfer.dropEffect = 'copy';
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    try { this.setHover(point); } catch { /* A failed redraw must not affect dragging. */ }
   }
 
   onDrop(event: DragEvent): void {
     const point = this.pointAt(event);
-    this.setHover(null);
-    const data = event.dataTransfer?.getData(FURNITURE_TILE_MIME);
-    if (!point || !data) return;
+    try { this.setHover(null); } catch { /* A failed redraw must not affect dropping. */ }
+    const tiles = draggedTiles(event);
+    furnitureTileDrag.tiles = null;
+    if (!point || !tiles) return;
     event.preventDefault();
-    try {
-      const tiles = JSON.parse(data);
-      if (Array.isArray(tiles) && tiles.every(tile => typeof tile === 'string')) this.dropped.emit({ ...point, tiles });
-    } catch { /* Not a tile drag from this page. */ }
+    this.dropped.emit({ ...point, tiles });
   }
 
   onContextMenu(event: MouseEvent): void {
