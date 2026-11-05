@@ -1,4 +1,3 @@
-import { of } from 'rxjs';
 import { ApplyFurnishing, EditRooms, Redo, SetBuilding, Undo } from '../app.actions';
 import { furnishingBuilding } from '../testing/furnishing-fixtures';
 import { documentHarness } from '../testing/document-harness';
@@ -23,7 +22,7 @@ describe('First usable auto furnishing workflow', () => {
             objects: [{ uid: `door-${level}`, type: 'door', x: 0, y: 0, dir: 'N', Tile: 0 }]
         }));
         h = documentHarness(building); available = true;
-        const analysis = new AutoFurnishingAnalysisService({ get: () => of(source) } as any,
+        const analysis = new AutoFurnishingAnalysisService({ load: async () => ({ text: source }) } as any,
             { hasTile: async () => available } as any);
         service = new AutoFurnishingService(analysis, h.store as any);
     });
@@ -198,7 +197,7 @@ describe('First usable auto furnishing workflow', () => {
     it('reports missing style-specific furniture instead of silently replacing it with another set', async () => {
         const building = furnishingBuilding(); building.rooms[0] = { ...building.rooms[0], Name: 'kitchen', InternalName: 'kitchen' };
         h.store.dispatch(new SetBuilding(building));
-        const filtered = new AutoFurnishingAnalysisService({ get: () => of(source) } as any,
+        const filtered = new AutoFurnishingAnalysisService({ load: async () => ({ text: source }) } as any,
             { hasTile: async (name: string) => !(name.startsWith('fixtures_counters_01_01') || name === 'fixtures_counters_01_009.png') } as any);
         const styled = new AutoFurnishingService(filtered, h.store as any), session = await styled.inspect();
         const preview = await styled.generate(session, [session.preparation.analysis.rooms[0].id], 'missing-set', undefined, 'alternate-residential');

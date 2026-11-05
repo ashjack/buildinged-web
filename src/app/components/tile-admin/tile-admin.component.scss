@@ -4,7 +4,10 @@
 :host { display: block; height: 100vh; height: 100dvh; overflow-y: auto; overscroll-behavior: contain; background: $bg; color: $text; font: 400 14px/1.6 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; color-scheme: dark; }
 main { padding-bottom: 80px; }
 
-.crumb { color: $muted; font-size: 13px; }
+.tabs { display: flex; gap: 4px; }
+.tabs a { padding: 4px 10px; border-radius: 6px; color: $muted; font-size: 13px; transition: color .15s, background .15s; }
+.tabs a:hover { color: $text; }
+.tabs a.active { color: $text; background: $surface-2; }
 .user { margin-left: auto; white-space: nowrap; }
 
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 48px 0 32px; }

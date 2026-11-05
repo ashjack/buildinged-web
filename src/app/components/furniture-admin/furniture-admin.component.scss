@@ -1,0 +1,70 @@
+@import '../../styles/page';
+
+// The editor disables body scrolling globally, so this page lays itself out to the viewport.
+:host { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; background: $bg; color: $text; font: 400 14px/1.6 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; color-scheme: dark; }
+
+.bar.wide { padding: 0 20px; }
+.tabs { display: flex; gap: 4px; }
+.tabs a { padding: 4px 10px; border-radius: 6px; color: $muted; font-size: 13px; transition: color .15s, background .15s; }
+.tabs a:hover { color: $text; }
+.tabs a.active { color: $text; background: $surface-2; }
+.user { margin-left: auto; white-space: nowrap; }
+
+.toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 10px 20px; border-bottom: 1px solid $line; background: $surface; }
+.toolbar .tools { flex-wrap: wrap; gap: 6px; }
+.tools.end { margin-left: auto; }
+.divider { width: 1px; align-self: stretch; background: $line; }
+.button.icon { width: 28px; padding: 0; }
+.button.on { border-color: rgba($accent, .6); color: $accent; }
+.inline { flex-direction: row; align-items: center; gap: 8px; color: $muted; }
+.inline select { height: 28px; padding: 0 6px; }
+.check { cursor: pointer; }
+.check input { height: auto; accent-color: $accent; }
+.check.disabled { opacity: .45; cursor: not-allowed; }
+.state { font-size: 12px; color: $success; }
+.state.dirty { color: $accent; }
+
+.banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; padding: 8px 20px; border-bottom: 1px solid $line; font-size: 13px; color: $muted; }
+.banner.error { color: $danger; }
+
+.panes { flex: 1; min-height: 0; display: grid; grid-template-columns: 240px 1fr 300px; }
+.pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.pane + .pane { border-left: 1px solid $line; }
+.pane-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 6px 16px; border-bottom: 1px solid $line; }
+.pane-head h2 { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: $muted; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pane-foot { flex-wrap: wrap; gap: 6px; padding: 10px 12px; border-top: 1px solid $line; }
+.hint { padding: 8px 16px; border-top: 1px solid $line; font-size: 12px; color: $muted; }
+.empty { padding: 24px 16px; color: $muted; font-size: 13px; }
+
+.category-list { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 6px; }
+.category-list li { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 10px; border-radius: 6px; font-size: 13px; cursor: pointer; user-select: none; }
+.category-list li:hover { background: $surface; }
+.category-list li.active { background: $surface-2; box-shadow: inset 2px 0 0 $accent; }
+.category-list .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.category-list .count { color: #5d6167; font-size: 11px; font-variant-numeric: tabular-nums; }
+.category-list input { flex: 1; height: 26px; }
+
+.furniture-scroll { flex: 1; overflow: auto; padding: 12px 16px 24px; }
+.furniture-row { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; margin-bottom: 8px; border: 1px solid transparent; border-radius: 10px; }
+.furniture-row.active { border-color: $line-strong; background: rgba(255, 255, 255, .015); }
+.row-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #5d6167; font-variant-numeric: tabular-nums; }
+.sequence { display: flex; gap: 4px; margin-left: auto; }
+.sequence .button { height: 24px; padding: 0 10px; font-size: 12px; }
+.tag { padding: 0 6px; border: 1px solid $line-strong; border-radius: 999px; color: $muted; }
+.cells { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+app-furniture-cell { border: 1px solid $line; border-radius: 8px; background: $surface; transition: border-color .15s; }
+app-furniture-cell:hover { border-color: $line-strong; }
+app-furniture-cell.selected { border-color: $accent; }
+
+.browser { gap: 0; }
+.search { margin: 12px 12px 8px; }
+.sheet-list { height: 180px; margin: 0 12px 12px; padding: 4px; font-size: 12px; }
+.sheet-list option { padding: 2px 6px; border-radius: 4px; }
+.tile-grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); align-content: start; gap: 4px; padding: 0 12px 12px; }
+.tile-grid img { width: 100%; aspect-ratio: 1 / 2; object-fit: contain; border: 1px solid $line; border-radius: 4px; background: $surface; cursor: grab; }
+.tile-grid img:hover { border-color: $line-strong; }
+.tile-grid img.selected { border-color: $accent; background: rgba($accent, .12); }
+
+@media (max-width: 1000px) {
+  .panes { grid-template-columns: 200px 1fr 240px; }
+}

@@ -9,6 +9,7 @@ import { RoofService } from '../../services/roof.service';
 import { TileEntry } from '../../models/app.models';
 import { BuildingService } from '../../services/building.service';
 import { DbService } from '../../services/db.service';
+import { FurnitureLibraryService } from '../../services/furniture-library.service';
 import { GridService } from '../../services/grid.service';
 import { RoomTileLibraryService } from '../../services/room-tile-library.service';
 import { ToolSettingsService } from '../../services/tool-settings.service';
@@ -42,7 +43,8 @@ describe('Tiles and Furniture material sidebar', () => {
       { provide: Store, useValue: h.store }, { provide: BuildingService, useValue: h.buildings },
       { provide: GridService, useValue: h.grid }, { provide: ToolSettingsService, useValue: settings },
       { provide: RoomTileLibraryService, useValue: { load: async () => [] } },
-      { provide: DbService, useValue: { getTile: async () => undefined } }
+      { provide: DbService, useValue: { getTile: async () => undefined } },
+      { provide: FurnitureLibraryService, useValue: { groups$: of([{ label: 'Seating', furniture: [] }]), load: async () => ({}) } }
     ] });
   });
   afterEach(() => { h.destroy(); localStorage.clear(); Object.entries(JSON.parse(saved)).forEach(([key, value]) => localStorage.setItem(key, value as string)); });

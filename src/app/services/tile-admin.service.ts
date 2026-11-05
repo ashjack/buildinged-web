@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpEventType } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from './auth.service';
+import { FurnitureDocument } from '../models/furniture-window.models';
 
 export interface AdminTilepack {
   id: string | null;
@@ -38,6 +39,16 @@ export class TileAdminService {
 
   async list(): Promise<AdminTilepack[]> {
     return (await this.request<{ packs: AdminTilepack[] }>('GET', '/tilepacks')).packs;
+  }
+
+  /** The published furniture file, or null text before the first save. */
+  getFurniture(): Promise<{ text: string | null; generation: number }> {
+    return this.request('GET', '/furniture');
+  }
+
+  /** Saves only if nobody else saved since `generation` was read; the server rejects stale saves with an error. */
+  saveFurniture(document: FurnitureDocument, generation: number): Promise<{ generation: number; revision: number }> {
+    return this.request('PUT', '/furniture', { document, generation });
   }
 
   /** Uploads straight to Cloud Storage through a one-object session, then asks the server to validate and publish it. */

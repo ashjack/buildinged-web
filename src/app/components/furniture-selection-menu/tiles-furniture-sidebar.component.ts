@@ -7,6 +7,7 @@ import { Building, TileEntry } from '../../models/app.models';
 import { BFurnitureGroup } from '../../models/furniture-window.models';
 import { BuildingService } from '../../services/building.service';
 import { DbService } from '../../services/db.service';
+import { FurnitureLibraryService } from '../../services/furniture-library.service';
 import { GridService } from '../../services/grid.service';
 import { RoomTileLibraryService } from '../../services/room-tile-library.service';
 import { ToolSettingsService } from '../../services/tool-settings.service';
@@ -57,7 +58,8 @@ export class TilesFurnitureSidebarComponent implements OnInit, OnChanges, OnDest
   private destroyed = false;
   error = '';
   constructor(private store: Store<fromRoot.State>, private buildings: BuildingService, private library: RoomTileLibraryService,
-    private db: DbService, private grid: GridService, public settings: ToolSettingsService, private zone: NgZone) {
+    private db: DbService, private grid: GridService, public settings: ToolSettingsService, private zone: NgZone,
+    private furniture: FurnitureLibraryService) {
     this.images = new TileThumbnails(db, zone);
   }
   ngOnChanges(): void {
@@ -66,6 +68,7 @@ export class TilesFurnitureSidebarComponent implements OnInit, OnChanges, OnDest
   }
   ngOnInit(): void {
     this.subscriptions.add(this.store.select(fromRoot.getBuilding).subscribe(building => { this.building = building; this.rebuild(); }));
+    this.subscriptions.add(this.furniture.groups$.subscribe(groups => this.furnitureGroups = groups));
     Promise.all([this.buildings.getCategoryTileEntries(), this.library.load()]).then(([defaults, custom]) => {
       if (this.destroyed) return;
       this.defaults = [...defaults, ...custom]; this.rebuild();

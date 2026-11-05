@@ -2,7 +2,6 @@ import { CommonModule } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 import { FormsModule } from '@angular/forms';
 import { Store } from '@ngrx/store';
-import { of } from 'rxjs';
 import { EditRooms, SetBuilding, Undo } from '../../app.actions';
 import { AutoFurnishingAnalysisService } from '../../services/auto-furnishing-analysis.service';
 import { AutoFurnishingService } from '../../services/auto-furnishing.service';
@@ -21,7 +20,7 @@ describe('Auto furnishing dialog', () => {
         const db = { getTile: async () => ({ url: '' }), hasTile: async () => true };
         TestBed.configureTestingModule({ declarations: [AutoFurnishingDialogComponent], imports: [CommonModule, FormsModule],
             providers: [{ provide: Store, useValue: h.store }, { provide: GridService, useValue: h.grid }, { provide: DbService, useValue: db },
-                { provide: AutoFurnishingAnalysisService, useValue: new AutoFurnishingAnalysisService({ get: () => of(source) } as any, db as any) },
+                { provide: AutoFurnishingAnalysisService, useValue: new AutoFurnishingAnalysisService({ load: async () => ({ text: source }) } as any, db as any) },
                 AutoFurnishingService] });
     });
     afterEach(() => h.destroy());

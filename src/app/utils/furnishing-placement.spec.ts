@@ -1,4 +1,3 @@
-import { of } from 'rxjs';
 import { FurnishingPlacementInput, FurnishingPlacementRequest } from '../models/auto-furnishing.models';
 import { AutoFurnishingAnalysisService } from '../services/auto-furnishing-analysis.service';
 import { AutoFurnishingPlacementService } from '../services/auto-furnishing-placement.service';
@@ -306,7 +305,7 @@ describe('Native furnishing catalog placement integration', () => {
     let source: string;
     beforeAll(async () => source = await (await fetch('/assets/BuildingFurniture.txt')).text());
     it('plans real native bed/chair variants from the preparation service and validates the final layout', async () => {
-        const analysis = new AutoFurnishingAnalysisService({ get: () => of(source) } as any, { hasTile: async () => true } as any);
+        const analysis = new AutoFurnishingAnalysisService({ load: async () => ({ text: source }) } as any, { hasTile: async () => true } as any);
         const building = furnishingBuilding(), prep = await analysis.prepare(building), room = prep.analysis.rooms[0];
         const requests: FurnishingPlacementRequest[] = [{ id: 'bed', role: 'bed', count: 1 }, { id: 'chair', role: 'chair', count: 1 }];
         const plan = planFurnishingRoom(prep, room.id, requests, { seed: 'native-bedroom' });

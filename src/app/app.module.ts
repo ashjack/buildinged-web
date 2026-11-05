@@ -29,6 +29,8 @@ import { AuthService } from './services/auth.service';
 import { EditorComponent } from './components/editor/editor.component';
 import { ProjectWorkspaceComponent } from './components/project-workspace/project-workspace.component';
 import { TileAdminComponent } from './components/tile-admin/tile-admin.component';
+import { FurnitureAdminComponent } from './components/furniture-admin/furniture-admin.component';
+import { FurnitureCellComponent } from './components/furniture-admin/furniture-cell.component';
 
 @NgModule({
   declarations: [
@@ -36,6 +38,8 @@ import { TileAdminComponent } from './components/tile-admin/tile-admin.component
     AppComponent,
     EditorComponent,
     TileAdminComponent,
+    FurnitureAdminComponent,
+    FurnitureCellComponent,
     ProjectWorkspaceComponent,
     MenuComponent,
     ViewportCanvasComponent,

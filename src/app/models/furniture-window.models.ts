@@ -23,6 +23,12 @@ export interface BEntryItem {
     tile: string;
 }
 
+export interface FurnitureDocument {
+    revision: number;
+    sourceRevision: number;
+    groups: BFurnitureGroup[];
+}
+
 //Misc
 export interface VisualFurniture {
     entries: VisualFurnitureEntry[];

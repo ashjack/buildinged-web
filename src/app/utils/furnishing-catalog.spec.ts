@@ -1,6 +1,6 @@
 import { HttpClient, HttpClientModule } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
-import { firstValueFrom, of } from 'rxjs';
+import { firstValueFrom } from 'rxjs';
 import { AutoFurnishingAnalysisService } from '../services/auto-furnishing-analysis.service';
 import { buildFurnishingCatalog, FURNISHING_CATALOG_SPECS } from './furnishing-catalog';
 import { parseFurnitureGroups } from './furniture-catalog-parser';
@@ -61,7 +61,7 @@ describe('Curated furnishing catalog', () => {
     });
     it('checks availability per actual orientation, refreshes it after downloads and leaves the document unchanged', async () => {
         const downloaded = new Set<string>(), db = { hasTile: async (name: string) => downloaded.has(name) };
-        const service = new AutoFurnishingAnalysisService({ get: () => of(source) } as any, db as any);
+        const service = new AutoFurnishingAnalysisService({ load: async () => ({ text: source }) } as any, db as any);
         const building = readBuildingFile(new DOMParser().parseFromString(nativeBuildingXml, 'text/xml'));
         const before = JSON.stringify(building), first = await service.prepare(building);
         expect(first.availability.every(variant => !variant.available)).toBeTrue();

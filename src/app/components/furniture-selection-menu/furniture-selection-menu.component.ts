@@ -1,14 +1,15 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnChanges, OnDestroy, SimpleChanges } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { SvgTile } from '../../models/app.models';
 import { DbService } from '../../services/db.service';
 import { liveQuery } from 'dexie';
 import * as fromRoot from '../../app.reducers';
 import { Store } from "@ngrx/store";
-import { HttpClient } from '@angular/common/http';
+import { Subscription } from 'rxjs';
 import { BEntry, BEntryItem, BFurniture, BFurnitureGroup, VisualFurniture, VisualFurnitureEntry } from 'src/app/models/furniture-window.models';
 import { SetSelectedFurniture } from 'src/app/app.actions';
 import { ToolSettingsService } from '../../services/tool-settings.service';
+import { FurnitureLibraryService } from '../../services/furniture-library.service';
 import { parseFurnitureGroups } from '../../utils/furniture-catalog-parser';
 import { NATIVE_ZOOM_FACTORS } from '../../utils/native-camera';
 
@@ -18,16 +19,16 @@ import { NATIVE_ZOOM_FACTORS } from '../../utils/native-camera';
   templateUrl: './furniture-selection-menu.component.html',
   styleUrls: ['./furniture-selection-menu.component.scss']
 })
-export class FurnitureSelectionMenuComponent implements OnInit, OnChanges {
-  constructor(private sanitizer: DomSanitizer, private db: DbService, private http: HttpClient, private store: Store<fromRoot.State>, private settings: ToolSettingsService) { }
+export class FurnitureSelectionMenuComponent implements OnInit, OnChanges, OnDestroy {
+  constructor(private sanitizer: DomSanitizer, private db: DbService, private library: FurnitureLibraryService, private store: Store<fromRoot.State>, private settings: ToolSettingsService) { }
   @Input() tileEditing = false;
   @Input() embedded = false;
   @Input() group = '';
-  @Output() groupsLoaded = new EventEmitter<BFurnitureGroup[]>();
   @Input() zoom = .5;
   @Output() zoomChange = new EventEmitter<number>();
   zooms = NATIVE_ZOOM_FACTORS;
   private loadVersion = 0;
+  private subscription?: Subscription;
 
   selectedTileset: string = 'walls_exterior_house_01';
   selectedFurnitureGroup: string = 'Advertising';
@@ -42,15 +43,18 @@ export class FurnitureSelectionMenuComponent implements OnInit, OnChanges {
   selectedFurnitureOrient: string;
 
   ngOnInit(): void {
-    this.http.get('assets/BuildingFurniture.txt', { responseType: 'text' }).subscribe((data: any) => {
-      this.furnitureGroups = this.parseCustomFile(data);
-      this.groupsLoaded.emit(this.furnitureGroups);
+    // Re-runs whenever the shared list changes, so admin edits show up without reopening the editor.
+    this.subscription = this.library.groups$.subscribe(groups => {
+      this.furnitureGroups = groups;
       const group = this.furnitureGroups.find(x => x.label === (this.group || this.getSelectedFurnitureGroup())) || this.furnitureGroups[0];
       if (group) this.setSelectedFurnitureGroup(group.label);
+      else this.furnitureTiles = [];
     });
+    this.library.load().catch(error => console.error('Could not load the furniture list.', error));
 
     this.getTilesets();
   }
+  ngOnDestroy(): void { this.subscription?.unsubscribe(); }
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['group'] && this.group && this.furnitureGroups.length) this.setSelectedFurnitureGroup(this.group);
   }

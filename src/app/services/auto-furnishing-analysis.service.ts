@@ -1,21 +1,21 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
 import { Building } from '../models/app.models';
 import { FurnishingCatalog, FurnishingPreparation } from '../models/auto-furnishing.models';
 import { buildFurnishingCatalog } from '../utils/furnishing-catalog';
 import { analyzeFurnishingRooms } from '../utils/furnishing-room-analysis';
 import { DbService } from './db.service';
+import { FurnitureLibraryService } from './furniture-library.service';
 
 /** Read-only preparation shared by preview, planning and Apply validation. */
 @Injectable({ providedIn: 'root' })
 export class AutoFurnishingAnalysisService {
-    private catalog?: Promise<FurnishingCatalog>;
-    constructor(private http: HttpClient, private db: DbService) { }
-    loadCatalog(): Promise<FurnishingCatalog> {
-        if (!this.catalog) this.catalog = firstValueFrom(this.http.get('assets/BuildingFurniture.txt', { responseType: 'text' }))
-            .then(buildFurnishingCatalog).catch(error => { this.catalog = undefined; throw error; });
-        return this.catalog;
+    private catalog?: { text: string; catalog: FurnishingCatalog };
+    constructor(private library: FurnitureLibraryService, private db: DbService) { }
+    /** Rebuilt whenever the shared furniture list changes, e.g. after an admin edit. */
+    async loadCatalog(): Promise<FurnishingCatalog> {
+        const { text } = await this.library.load();
+        if (this.catalog?.text !== text) this.catalog = { text, catalog: buildFurnishingCatalog(text) };
+        return this.catalog.catalog;
     }
     async prepare(building: Building): Promise<FurnishingPreparation> {
         const catalog = await this.loadCatalog();
