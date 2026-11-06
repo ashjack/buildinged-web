@@ -1,4 +1,4 @@
-import { Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, HostListener, NgZone, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { AuthService } from '../../services/auth.service';
 import { DbService } from '../../services/db.service';
 import { FurnitureLibraryService } from '../../services/furniture-library.service';
@@ -14,7 +14,7 @@ import { FURNITURE_TILE_MIME, FurnitureCellDrop, FurnitureCellPoint, furnitureTi
 import { BuildingTilesLibraryService } from '../../services/building-tiles-library.service';
 import {
   BUILDING_TILE_CATEGORIES, BuildingTilesDocument, BuildingTilesEntry, BuildingTilesLayout, buildingTilesCategory, buildingTilesEntryKey,
-  buildingTilesLayout, entryFromSingleTile, parseBuildingTilesDocument, setEntryOffset, setEntryTile, updateCategoryEntries,
+  buildingTilesLayout, entryFromSingleTile, parseBuildingTilesDocument, setEntryOffset, setEntryTile, updateCategoryEntries, windowTemplateOffset,
 } from '../../utils/building-tiles';
 
 type AdminMode = 'furniture' | 'tiles';
@@ -31,7 +31,7 @@ const MAX_UNDO = 200;
   templateUrl: './furniture-admin.component.html',
   styleUrls: ['./furniture-admin.component.scss'],
 })
-export class FurnitureAdminComponent implements OnInit, OnDestroy {
+export class FurnitureAdminComponent implements OnInit, AfterViewInit, OnDestroy {
   readonly layers = FURNITURE_LAYERS;
   readonly scales = [.35, .5, .75, 1];
   readonly orientsOf = orientsOf;
@@ -47,7 +47,9 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
   tileDoc: BuildingTilesDocument | null = null;
   tileCategory = buildingTilesCategory(localStorage.getItem('furnitureAdminTileCategory') ?? '')?.name ?? BUILDING_TILE_CATEGORIES[0].name;
   tileEntry = 0;
-  scale = Number(localStorage.getItem('furnitureAdminScale')) || .5;
+  /** Expert mode edits every slot on the category's template; otherwise each entry shows as its display tile (BuildingTilesDialog). */
+  expertMode = localStorage.getItem('furnitureAdminExpertMode') !== 'false';
+  scale =  Number(localStorage.getItem('furnitureAdminScale')) || .5;
 
   loading = true;
   saving = false;
@@ -71,6 +73,11 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
   renameText = '';
   @ViewChild('renameInput') renameInput?: ElementRef<HTMLInputElement>;
   @ViewChild('furnitureScroll') furnitureScroll?: ElementRef<HTMLElement>;
+  @ViewChild('tileRows') tileRows?: ElementRef<HTMLElement>;
+  /** The scrolled part of the expert-mode list, relative to its first row. */
+  private viewport = { top: 0, height: 1200 };
+  private viewportCleanup?: () => void;
+  private renderFrame = 0;
 
   tilesets: string[] = [];
   private sheetSizes = new Map<string, number>();
@@ -89,14 +96,30 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
   private bitmaps = new Map<string, Promise<ImageBitmap | null>>();
 
   constructor(private tileAdmin: TileAdminService, private library: FurnitureLibraryService, private db: DbService, public auth: AuthService,
-    private tilesLibrary: BuildingTilesLibraryService) { }
+    private tilesLibrary: BuildingTilesLibraryService, private zone: NgZone) { }
 
   ngOnInit(): void {
     void this.load();
     void this.loadTilesets();
   }
 
+  ngAfterViewInit(): void {
+    const element = this.furnitureScroll?.nativeElement;
+    if (!element) return;
+    // Scrolling only re-renders when the window of rows changes.
+    this.zone.runOutsideAngular(() => {
+      const update = () => this.updateViewport();
+      element.addEventListener('scroll', update, { passive: true });
+      const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+      observer?.observe(element);
+      this.viewportCleanup = () => { element.removeEventListener('scroll', update); observer?.disconnect(); };
+    });
+    this.updateViewport();
+  }
+
   ngOnDestroy(): void {
+    this.viewportCleanup?.();
+    cancelAnimationFrame(this.renderFrame);
     furnitureTileDrag.tiles = null;
     this.tileRequest++;
     this.releaseBitmaps(new Set());
@@ -120,15 +143,97 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
     const cached = this.layoutCache;
     if (cached?.category === this.tileCategory && cached.scale === this.scale) return cached;
     const layout = buildingTilesLayout(this.tileDefinition), scale = this.scale;
-    const styles = layout.cells.map((cell): Record<string, string> | null => cell.template ? {
-      'background-image': `url(${layout.image})`,
-      'background-size': `${layout.columns * 128 * scale}px ${layout.rows * 256 * scale}px`,
-      'background-position': `${-cell.column * 128 * scale}px ${-cell.row * 256 * scale}px`,
-    } : null);
+    const styles = layout.cells.map((cell): Record<string, string> | null => cell.template ? this.templateStyle(layout, cell.column, cell.row) : null);
     this.layoutCache = { category: this.tileCategory, scale, layout, styles };
+    this.windowStyles.clear();
     return this.layoutCache;
   }
+  private readonly windowStyles = new Map<string, Record<string, string>>();
+  private templateStyle(layout: BuildingTilesLayout, column: number, row: number): Record<string, string> {
+    const scale = this.scale;
+    return {
+      'background-image': `url(${layout.image})`,
+      'background-size': `${layout.imageColumns * 128 * scale}px ${layout.imageRows * 256 * scale}px`,
+      'background-position': `${-column * 128 * scale}px ${-row * 256 * scale}px`,
+    };
+  }
+  /** A cell's template background; window cells show the frame drawing for their tile's WindowShape (BTC_Windows::shadowHack). */
+  cellStyle(entry: BuildingTilesEntry, c: number): Record<string, string> | null {
+    const { layout, styles } = this.tileLayout, cell = layout.cells[c];
+    if (this.tileCategory !== 'windows' || !cell.template || !cell.key) return styles[c];
+    const [dx, dy] = windowTemplateOffset(cell.key, entry.tiles[cell.key]);
+    if (!dx && !dy) return styles[c];
+    const id = `${cell.column + dx}:${cell.row + dy}`;
+    let style = this.windowStyles.get(id);
+    if (!style) this.windowStyles.set(id, style = this.templateStyle(layout, cell.column + dx, cell.row + dy));
+    return style;
+  }
   get tileEntries(): BuildingTilesEntry[] { return this.tileDoc?.categories.find(category => category.name === this.tileCategory)?.entries ?? []; }
+  /** Height of an expert-mode row: padding, border, the 24px meta line, the gap and the bordered template grid. */
+  get tileRowHeight(): number { return this.tileLayout.layout.rows * 256 * this.scale + 52; }
+  /** A row plus its bottom margin. */
+  get tileRowStride(): number { return this.tileRowHeight + 6; }
+  /** Rows to render: the visible ones plus a few either side. */
+  get tileWindow(): { start: number; end: number } {
+    const stride = this.tileRowStride, count = this.tileEntries.length, buffer = 2;
+    const start = Math.max(0, Math.min(count, Math.floor(this.viewport.top / stride) - buffer));
+    const end = Math.min(count, Math.ceil((this.viewport.top + this.viewport.height) / stride) + buffer);
+    return { start, end: Math.max(start, end) };
+  }
+  private rowsCache?: { entries: BuildingTilesEntry[]; start: number; end: number; rows: { entry: BuildingTilesEntry; index: number }[] };
+  get visibleTileRows(): { entry: BuildingTilesEntry; index: number }[] {
+    const entries = this.tileEntries, { start, end } = this.tileWindow, cached = this.rowsCache;
+    if (cached?.entries === entries && cached.start === start && cached.end === end) return cached.rows;
+    const rows = entries.slice(start, end).map((entry, i) => ({ entry, index: start + i }));
+    this.rowsCache = { entries, start, end, rows };
+    return rows;
+  }
+  /** Top of the first expert-mode row within the scrolled content. */
+  private tileListTop(scroll: HTMLElement): number {
+    const list = this.tileRows?.nativeElement;
+    return list ? list.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop : 0;
+  }
+  private updateViewport(): void {
+    const element = this.furnitureScroll?.nativeElement;
+    if (!element) return;
+    const before = this.tileWindow;
+    this.viewport = { top: Math.max(0, element.scrollTop - this.tileListTop(element)), height: element.clientHeight };
+    const after = this.tileWindow;
+    if (before.start !== after.start || before.end !== after.end) this.zone.run(() => undefined);
+  }
+  /** One change detection per frame for work finished outside Angular, such as sprites loading. */
+  private scheduleRender(): void {
+    if (this.renderFrame) return;
+    this.renderFrame = requestAnimationFrame(() => { this.renderFrame = 0; this.zone.run(() => undefined); });
+  }
+  private displayCache?: {
+    entries: BuildingTilesEntry[]; display: string; list: { index: number; tile: string }[];
+    groups: { sheet: string; items: { index: number; tile: string }[] }[];
+  };
+  /** Non-expert view: each entry's display tile, sorted by tile name like the desktop's QMap (BuildingTilesDialog::setCategoryTiles). */
+  get displayEntries(): { index: number; tile: string }[] {
+    const entries = this.tileEntries, display = this.tileDefinition.display, cached = this.displayCache;
+    if (cached?.entries === entries && cached.display === display) return cached.list;
+    const list = entries.map((entry, index) => ({ index, tile: entry.tiles[display] ?? '', key: (entry.tiles[display] ?? '') + index }))
+      .sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
+      .map(({ index, tile }) => ({ index, tile }));
+    this.displayCache = { entries, display, list, groups: this.groupBySheet(list) };
+    return list;
+  }
+  /** Runs of the sorted display tiles under a tileset heading (MixedTilesetModel::setTiles headers). */
+  get displayGroups(): { sheet: string; items: { index: number; tile: string }[] }[] {
+    void this.displayEntries; // refreshes the cache
+    return this.displayCache!.groups;
+  }
+  private groupBySheet(list: { index: number; tile: string }[]): { sheet: string; items: { index: number; tile: string }[] }[] {
+    const groups: { sheet: string; items: { index: number; tile: string }[] }[] = [];
+    for (const item of list) {
+      const sheet = item.tile ? parseTileName(item.tile)?.sheet ?? item.tile : '(none)';
+      const last = groups[groups.length - 1];
+      if (last?.sheet === sheet) last.items.push(item); else groups.push({ sheet, items: [item] });
+    }
+    return groups;
+  }
   get currentTileEntry(): BuildingTilesEntry | undefined { return this.mode === 'tiles' ? this.tileEntries[this.tileEntry] : undefined; }
   tileCount(name: string): number { return this.tileDoc?.categories.find(category => category.name === name)?.entries.length ?? 0; }
   get layer(): string { return this.current?.layer || 'Furniture'; }
@@ -234,7 +339,10 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
     // Leave text fields their own undo.
     const target = event.target as HTMLElement | null;
     if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
-    if (key === 'd' && !event.shiftKey) { event.preventDefault(); if (this.mode === 'tiles') this.duplicateTileEntry(); else this.duplicateFurniture(); }
+    if (key === 'd' && !event.shiftKey) {
+      event.preventDefault();
+      if (this.mode === 'furniture') this.duplicateFurniture(); else if (this.expertMode) this.duplicateTileEntry();
+    }
     else if (key === 'z' && !event.shiftKey) { event.preventDefault(); this.undo(); }
     else if (key === 'y' || (key === 'z' && event.shiftKey)) { event.preventDefault(); this.redo(); }
   }
@@ -360,6 +468,48 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
 
   selectTileEntry(index: number): void { this.tileEntry = index; }
 
+  /** Keeps the selected entry and brings it into view in the other layout (BuildingTilesDialog::setExpertMode). */
+  toggleExpertMode(): void {
+    this.expertMode = !this.expertMode;
+    localStorage.setItem('furnitureAdminExpertMode', String(this.expertMode));
+    this.dropTarget = null;
+    this.scrollToTileEntry('center');
+  }
+
+  private scrollToTileEntry(block: ScrollLogicalPosition = 'nearest'): void {
+    // Wait for the selected entry to render.
+    setTimeout(() => {
+      const scroll = this.furnitureScroll?.nativeElement;
+      if (!scroll) return;
+      if (this.mode === 'tiles' && this.expertMode) {
+        // The row may not be rendered yet, so scroll to where it sits.
+        const stride = this.tileRowStride, top = this.tileListTop(scroll) + this.tileEntry * stride;
+        let target = scroll.scrollTop;
+        if (block === 'center') target = top - (scroll.clientHeight - stride) / 2;
+        else if (top < scroll.scrollTop) target = top;
+        else if (top + stride > scroll.scrollTop + scroll.clientHeight) target = top + stride - scroll.clientHeight;
+        scroll.scrollTo({ top: Math.max(0, target), behavior: block === 'nearest' ? 'smooth' : 'auto' });
+        return;
+      }
+      const element = scroll.querySelector<HTMLElement>('.display-tile.active');
+      element?.scrollIntoView({ block, behavior: block === 'nearest' ? 'smooth' : 'auto' });
+    });
+  }
+
+  /** Where the desktop inserts a dropped tile's entry so tiles from one sheet stay together (BuildingTilesDialog::tileDropped). */
+  private tilesetPosition(entries: BuildingTilesEntry[], entry: BuildingTilesEntry): number {
+    const display = this.tileDefinition.display;
+    const tile = parseTileName(entry.tiles[display] ?? '') ?? { sheet: '', index: 0 };
+    let index = 0;
+    for (const other of entries) {
+      const otherTile = parseTileName(other.tiles[display] ?? '') ?? { sheet: '', index: 0 };
+      if (otherTile.sheet === tile.sheet && otherTile.index > tile.index) break;
+      if (otherTile.sheet > tile.sheet) break;
+      index++;
+    }
+    return index;
+  }
+
   private editTiles(update: (entries: BuildingTilesEntry[]) => BuildingTilesEntry[], tileEntry = this.tileEntry): void {
     if (!this.tileDoc) return;
     this.commitTiles(updateCategoryEntries(this.tileDoc, this.tileCategory, update), { tileCategory: this.tileCategory, tileEntry });
@@ -378,7 +528,7 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
   addBlankTileEntry(): void {
     const index = this.tileEntries.length ? this.tileEntry + 1 : 0;
     this.editTiles(entries => insertAt(entries, index, { tiles: {} }), index);
-    this.scrollToRow('.tile-row', index);
+    this.scrollToTileEntry();
   }
 
   /** Like dropping tiles on the desktop dialog's entry list: one entry per tile, skipping ones already listed. */
@@ -398,10 +548,16 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
       this.notice = `${tiles.length === 1 ? 'That tile is' : 'Those tiles are'} already in ${this.tileDefinition.label}.`;
       return;
     }
-    const index = at ?? (this.tileEntries.length ? this.tileEntry + 1 : 0);
-    this.editTiles(entries => [...entries.slice(0, index), ...created, ...entries.slice(index)], index);
+    if (this.expertMode) {
+      const index = at ?? (this.tileEntries.length ? this.tileEntry + 1 : 0);
+      this.editTiles(entries => [...entries.slice(0, index), ...created, ...entries.slice(index)], index);
+    } else {
+      let next = this.tileEntries;
+      for (const entry of created) next = insertAt(next, this.tilesetPosition(next, entry), entry);
+      this.editTiles(() => next, next.indexOf(created[0]));
+    }
     if (skipped) this.notice = `Skipped ${skipped} tile${skipped === 1 ? '' : 's'} already in ${this.tileDefinition.label}.`;
-    this.scrollToRow('.tile-row', index);
+    this.scrollToTileEntry();
   }
 
   addSelectedTileEntries(): void { this.addTileEntries(this.sortedSelection()); }
@@ -411,7 +567,7 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
     if (!source) return;
     const index = this.tileEntry + 1;
     this.editTiles(entries => insertAt(entries, index, source), index);
-    this.scrollToRow('.tile-row', index);
+    this.scrollToTileEntry();
   }
 
   removeTileEntry(): void {
@@ -424,7 +580,7 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
     const to = this.tileEntry + delta;
     if (!this.currentTileEntry || to < 0 || to >= this.tileEntries.length) return;
     this.editTiles(entries => move(entries, this.tileEntry, to), to);
-    this.scrollToRow('.tile-row', to);
+    this.scrollToTileEntry();
   }
 
   clearTileEntry(): void {
@@ -510,13 +666,15 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
     if (!this.sprites.has(name)) {
       this.sprites.set(name, null);
       const scale = this.scale;
-      void this.db.getTileSprite(name).then(sprite => {
+      // Outside Angular: hundreds of sprites resolve at once and should share one render.
+      this.zone.runOutsideAngular(() => this.db.getTileSprite(name)).then(sprite => {
         if (!sprite || scale !== this.spriteScale) return;
         this.sprites.set(name, {
           'background-image': `url(${sprite.url})`,
           'background-size': `${sprite.columns * 128 * scale}px ${sprite.rows * 256 * scale}px`,
           'background-position': `${-sprite.column * 128 * scale}px ${-sprite.row * 256 * scale}px`,
         });
+        this.scheduleRender();
       }).catch(() => { /* Missing sheets show the tile name instead. */ });
     }
     return this.sprites.get(name) ?? null;
@@ -600,6 +758,9 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
   }
 
   trackIndex(index: number): number { return index; }
+  trackRow(_: number, row: { index: number }): number { return row.index; }
+  trackDisplay(_: number, item: { index: number; tile: string }): string { return item.index + ':' + item.tile; }
+  trackSheet(index: number, group: { sheet: string }): string { return index + ':' + group.sheet; }
 
   // Tile browser
 

@@ -61,10 +61,12 @@ app-furniture-cell { border: 1px solid $line; border-radius: 8px; background: $s
 app-furniture-cell:hover { border-color: $line-strong; }
 app-furniture-cell.selected { border-color: $accent; }
 
-.tile-row { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; margin-bottom: 6px; border: 1px solid transparent; border-radius: 10px; cursor: pointer; }
+.tile-row { box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; margin-bottom: 6px; border: 1px solid transparent; border-radius: 10px; cursor: pointer; }
+.tile-row .row-meta { flex: none; height: 24px; }
+.tile-rows { box-sizing: border-box; }
 .tile-row:hover { background: rgba(255, 255, 255, .01); }
 .tile-row.active { border-color: $line-strong; background: rgba(255, 255, 255, .015); }
-.template-grid { display: grid; gap: 0; width: max-content; border: 1px solid $line; border-radius: 6px; overflow: hidden; }
+.template-grid { flex: none; display: grid; gap: 0; width: max-content; border: 1px solid $line; border-radius: 6px; overflow: hidden; }
 .cell { position: relative; overflow: hidden; background-repeat: no-repeat; image-rendering: pixelated; }
 .cell.slot { cursor: pointer; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .03); }
 .cell.slot:hover { box-shadow: inset 0 0 0 1px $line-strong; }
@@ -79,6 +81,14 @@ app-furniture-cell.selected { border-color: $accent; }
 .offset input { width: 52px; height: 22px; padding: 0 4px; font-size: 11px; }
 .new-entries { margin-top: 8px; padding: 16px; border: 1px dashed $line-strong; border-radius: 10px; text-align: center; font-size: 12px; color: $muted; }
 .new-entries.drop { border-color: $accent; color: $text; background: rgba($accent, .08); }
+.display-tiles { display: flex; flex-direction: column; gap: 12px; min-height: 100%; padding: 4px; border: 1px dashed transparent; border-radius: 10px; }
+.display-group { display: flex; flex-direction: column; gap: 6px; }
+.sheet-label { margin: 0; padding: 4px 6px; border-bottom: 1px solid $line; font-size: 12px; font-weight: 600; color: $muted; }
+.display-group-tiles { display: flex; flex-wrap: wrap; gap: 4px; }
+.display-tiles.drop { border-color: $accent; background: rgba($accent, .08); }
+.display-tile { cursor: pointer; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .03); }
+.display-tile:hover { box-shadow: inset 0 0 0 1px $line-strong; }
+.display-tile.active { box-shadow: inset 0 0 0 2px $accent; background-color: rgba($accent, .18); }
 
 .browser { gap: 0; }
 .search { margin: 12px 12px 8px; }

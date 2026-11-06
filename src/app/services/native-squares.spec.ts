@@ -119,6 +119,17 @@ describe('Native square generation', () => {
         expect(tile(generated.tiles, 1, 1, 'Walls2')).toBe('inside-WestDoor.png');
     });
 
+    it('cuts the wall frame matching a large window\'s WindowShape and falls back to the plain window wall', () => {
+        const b = fixture(); room(b, 1, 1, 2, 2);
+        b.entries[b.Window - 1].tiles = [{ enum: 'West', tile: 'fixtures_windows_church_004' }, { enum: 'North', tile: 'fixtures_windows_church_005' }];
+        b.entries[b.rooms[0].InteriorWall - 1].tiles.push({ enum: 'WestWindow3', tile: 'inside-WestWindow3' });
+        b.floors[0].objects.push(opening(b, 'window', 1, 2), opening(b, 'window', 2, 1, 'N'));
+        const { tiles } = generateBuildingSquares(b);
+        expect(tile(tiles, 1, 2, 'Walls')).toBe('inside-WestWindow3.png');
+        expect(tile(tiles, 2, 1, 'Walls')).toBe('inside-NorthWindow.png');
+        expect(tile(tiles, 1, 2, 'WallTrim2')).toBe('inner-trim-WestWindow.png');
+    });
+
     it('puts exterior-window curtains inside and shutters across exterior neighbor squares', () => {
         const b = fixture(); room(b, 1, 1, 2, 2);
         b.floors[0].objects.push(opening(b, 'window', 3, 1));

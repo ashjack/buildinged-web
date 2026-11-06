@@ -16,14 +16,21 @@
   </div>
   <span class="divider"></span>
   <div class="tools" *ngIf="mode === 'tiles'">
-    <button class="button compact" (click)="addBlankTileEntry()" [disabled]="!tileDoc" title="Add an empty entry after the selected one">Add entry</button>
+    <button class="button compact" (click)="toggleExpertMode()" [class.on]="expertMode" [attr.aria-pressed]="expertMode"
+      title="Edit every slot of each entry on the category's template, or show each entry as a single tile">Expert mode</button>
+  </div>
+  <span class="divider" *ngIf="mode === 'tiles'"></span>
+  <div class="tools" *ngIf="mode === 'tiles'">
+    <button *ngIf="expertMode" class="button compact" (click)="addBlankTileEntry()" [disabled]="!tileDoc" title="Add an empty entry after the selected one">Add entry</button>
     <button class="button compact" (click)="addSelectedTileEntries()" [disabled]="!tileDoc || !selectedTiles.size"
       [title]="'Add one entry per selected tile, filling the other slots from the tiles next to it in the sheet (like dropping on the desktop list)'">Add from selected tiles</button>
-    <button class="button compact" (click)="duplicateTileEntry()" [disabled]="!currentTileEntry" title="Add a copy of the selected entry after it (Ctrl+D)">Duplicate</button>
+    <button *ngIf="expertMode" class="button compact" (click)="duplicateTileEntry()" [disabled]="!currentTileEntry" title="Add a copy of the selected entry after it (Ctrl+D)">Duplicate</button>
     <button class="button compact" (click)="removeTileEntry()" [disabled]="!currentTileEntry">Remove</button>
-    <button class="button compact" (click)="clearTileEntry()" [disabled]="!currentTileEntry" title="Empty every slot of the selected entry">Clear</button>
-    <button class="button compact icon" (click)="moveTileEntry(-1)" [disabled]="!currentTileEntry || tileEntry === 0" title="Move up" aria-label="Move entry up">↑</button>
-    <button class="button compact icon" (click)="moveTileEntry(1)" [disabled]="!currentTileEntry || tileEntry >= tileEntries.length - 1" title="Move down" aria-label="Move entry down">↓</button>
+    <ng-container *ngIf="expertMode">
+      <button class="button compact" (click)="clearTileEntry()" [disabled]="!currentTileEntry" title="Empty every slot of the selected entry">Clear</button>
+      <button class="button compact icon" (click)="moveTileEntry(-1)" [disabled]="!currentTileEntry || tileEntry === 0" title="Move up" aria-label="Move entry up">↑</button>
+      <button class="button compact icon" (click)="moveTileEntry(1)" [disabled]="!currentTileEntry || tileEntry >= tileEntries.length - 1" title="Move down" aria-label="Move entry down">↓</button>
+    </ng-container>
   </div>
   <div class="tools" *ngIf="mode === 'furniture'">
     <button class="button compact" (click)="addFurniture()" [disabled]="!currentGroup">Add furniture</button>
@@ -101,8 +108,16 @@
     </div>
     <div class="furniture-scroll" #furnitureScroll>
       <p *ngIf="loading" class="empty">Loading…</p>
-      <ng-container *ngIf="mode === 'tiles' && !loading">
-        <div *ngFor="let entry of tileEntries; let i = index; trackBy: trackIndex" class="tile-row" [class.active]="i === tileEntry" (click)="selectTileEntry(i)">
+      <ng-container *ngIf="mode === 'tiles' && !loading && expertMode">
+        <!-- Only rows near the viewport are rendered; the padding stands in for the rest. -->
+        <div class="tile-rows" #tileRows [style.padding-top.px]="tileWindow.start * tileRowStride"
+          [style.padding-bottom.px]="(tileEntries.length - tileWindow.end) * tileRowStride">
+          <ng-container *ngFor="let row of visibleTileRows; trackBy: trackRow">
+            <ng-container *ngTemplateOutlet="tileRow; context: { $implicit: row.entry, i: row.index }"></ng-container>
+          </ng-container>
+        </div>
+        <ng-template #tileRow let-entry let-i="i">
+        <div class="tile-row" [style.height.px]="tileRowHeight" [class.active]="i === tileEntry" (click)="selectTileEntry(i)">
           <div class="row-meta">
             <span>#{{i + 1}}</span>
             <span *ngIf="i === tileEntry" class="offset" (click)="$event.stopPropagation()">
@@ -117,7 +132,7 @@
             <ng-container *ngFor="let cell of tileLayout.layout.cells; let c = index">
               <div *ngIf="!cell.key; else slotCell" class="cell gap" [style.width.px]="128 * scale" [style.height.px]="256 * scale"></div>
               <ng-template #slotCell>
-                <div *ngIf="cell.key as key" class="cell slot" [ngStyle]="tileLayout.styles[c]" [style.width.px]="128 * scale" [style.height.px]="256 * scale"
+                <div *ngIf="cell.key as key" class="cell slot" [ngStyle]="cellStyle(entry, c)" [style.width.px]="128 * scale" [style.height.px]="256 * scale"
                   [class.plain]="!cell.template" [class.current]="i === tileEntry && key === currentTileSlot" [class.drop]="dropTarget === i + ':' + key"
                   [title]="key + (slotTile(entry, key) ? ' = ' + slotTile(entry, key) : ' (empty)') + (hasOffset(entry, key) ? ' offset ' + slotOffset(entry, key, 0) + ', ' + slotOffset(entry, key, 1) : '')"
                   (click)="selectTileSlot(i, key); $event.stopPropagation()"
@@ -133,11 +148,27 @@
             </ng-container>
           </div>
         </div>
+        </ng-template>
         <div class="new-entries" [class.drop]="dropTarget === 'new'" (dragover)="tileDragOver($event, 'new')" (dragleave)="tileDragLeave('new')"
           (drop)="dropNewEntries($event)">
           Drop tiles here to add an entry for each one. Its other slots are filled from the neighbouring tiles in the sheet, like the desktop editor.
         </div>
       </ng-container>
+      <div *ngIf="mode === 'tiles' && !loading && !expertMode" class="display-tiles" [class.drop]="dropTarget === 'new'"
+        (dragover)="tileDragOver($event, 'new')" (dragleave)="tileDragLeave('new')" (drop)="dropNewEntries($event)">
+        <section *ngFor="let group of displayGroups; trackBy: trackSheet" class="display-group">
+          <h3 class="sheet-label">{{group.sheet}}</h3>
+          <div class="display-group-tiles">
+            <div *ngFor="let item of group.items; trackBy: trackDisplay" class="display-tile cell" [class.active]="item.index === tileEntry"
+              [style.width.px]="128 * scale" [style.height.px]="256 * scale" [title]="item.tile || '(no ' + tileDefinition.display + ' tile)'"
+              (click)="selectTileEntry(item.index)">
+              <span *ngIf="item.tile && sprite(item.tile) as style; else missing" class="sprite" [ngStyle]="style"></span>
+              <ng-template #missing><span class="missing">{{item.tile || '(empty)'}}</span></ng-template>
+            </div>
+          </div>
+        </section>
+        <p *ngIf="!displayEntries.length" class="empty">Drop tiles here to add an entry for each one.</p>
+      </div>
       <ng-container *ngIf="mode === 'furniture'">
       <p *ngIf="!loading && currentGroup && !currentGroup.furniture.length" class="empty">This category is empty. Use <strong>Add furniture</strong>, then drag tiles onto a grid.</p>
       <div *ngFor="let item of currentGroup?.furniture; let i = index; trackBy: trackIndex" class="furniture-row" [class.active]="i === furniture">
@@ -169,7 +200,8 @@
       </div>
       </ng-container>
     </div>
-    <p class="hint" *ngIf="mode === 'tiles'">Drag a tile onto a slot to set it (several tiles fill the following slots). Right-click a slot to empty it. Click a slot to edit its offset (in squares) above the entry.</p>
+    <p class="hint" *ngIf="mode === 'tiles' && expertMode">Drag a tile onto a slot to set it (several tiles fill the following slots). Right-click a slot to empty it. Click a slot to edit its offset (in squares) above the entry.</p>
+    <p class="hint" *ngIf="mode === 'tiles' && !expertMode">Each entry shows its {{tileDefinition.display}} tile. Drop tiles here to add entries; the other slots are filled from the neighbouring tiles in the sheet. Turn on Expert mode to edit individual slots.</p>
     <p class="hint" *ngIf="mode === 'furniture'">Drag tiles from the browser onto a grid. Several tiles run along the wall the orientation faces. Right-click a tile to remove it.</p>
   </section>
 

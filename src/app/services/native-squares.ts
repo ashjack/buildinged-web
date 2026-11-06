@@ -2,6 +2,10 @@ import { Building, FurnitureTileEntry, SvgObject, SvgTile, Tile } from '../model
 import { readIndexGrid } from '../utils/tbx-grid';
 import { buildRoofPlacements } from './roof-patterns';
 import { FurnishingEdge } from '../models/auto-furnishing.models';
+import { windowWallEnum } from '../utils/building-tiles';
+
+/** The shape number of a window-frame wall slot ("WestWindow12"). */
+const FRAME_NUMBER = /(?<=Window)\d+$/;
 
 // Pass order and section semantics follow BuildingFloor::LayoutToSquares and Square.
 // Coordinates here are document coordinates; viewport floor offsets are applied later.
@@ -168,14 +172,17 @@ export function generateBuildingSquares(building: Building, includeStructure = f
             if (s.sections[other]?.enum === side) delete s.sections[other];
             if (door) s.sections['Frames'] = piece(o.FrameTile, side, o.uid);
             const suffix = door ? 'Door' : 'Window';
+            // Large windows cut the wall frame matching their WindowShape (window-frame fork); empty frames fall back when drawn.
+            const cut = door ? side + suffix : windowWallEnum(side,
+                building.entries[Number(o.Tile) - 1]?.tiles.find(t => t.enum === side)?.tile);
             if (s.orient === 'NW' && !occupied(s.sections['Walls2'])) {
                 const original = s.sections['Walls'];
                 s.sections['Walls'] = original && { ...original, enum: side === 'West' ? 'North' : 'West' };
-                s.sections['Walls2'] = original && { ...original, enum: side + suffix };
+                s.sections['Walls2'] = original && { ...original, enum: cut };
             } else if (s.orient) {
                 for (const wallLayer of ['Walls', 'Walls2']) {
                     const p = s.sections[wallLayer];
-                    if (p && p.enum.startsWith(side)) s.sections[wallLayer] = { ...p, enum: side + suffix };
+                    if (p && p.enum.startsWith(side)) s.sections[wallLayer] = { ...p, enum: cut };
                 }
             }
             if (door) return;
@@ -288,8 +295,8 @@ export function generateBuildingSquares(building: Building, includeStructure = f
                 const p = s.sections[layer];
                 if (!p || !validEntry(p.entry)) continue;
                 if (p.enum === 'NorthWest') { gw = 'NorthWest'; gn = ''; fw = 'West'; fn = 'North'; }
-                else if (p.enum.startsWith('West')) { gw = p.enum; if (!p.enum.endsWith('Door')) fw = 'West'; }
-                else if (p.enum.startsWith('North')) { gn = p.enum; if (!p.enum.endsWith('Door')) fn = 'North'; }
+                else if (p.enum.startsWith('West')) { gw = p.enum.replace(FRAME_NUMBER, ''); if (!p.enum.endsWith('Door')) fw = 'West'; }
+                else if (p.enum.startsWith('North')) { gn = p.enum.replace(FRAME_NUMBER, ''); if (!p.enum.endsWith('Door')) fn = 'North'; }
                 else if (p.enum === 'SouthEast') { gw = 'SouthEast'; if (s.orient === 'SE') fw = 'NorthWest'; }
             }
             if (s.w.furniture && s.w.furniture.grime !== false) { if (s.w.raw && s.w.raw !== 'None') gw = 'West'; fw = 'West'; }
@@ -306,7 +313,10 @@ export function generateBuildingSquares(building: Building, includeStructure = f
             const p = s.tiles[layer] || s.sections[layer];
             if (!p) return;
             const entry = building.entries[p.entry - 1];
-            const source: Tile | undefined = p.raw !== undefined ? { tile: p.raw } : entry?.tiles.find(t => t.enum === p.enum);
+            let source: Tile | undefined = p.raw !== undefined ? { tile: p.raw } : entry?.tiles.find(t => t.enum === p.enum);
+            if (p.raw === undefined && (!source?.tile || source.tile === 'None') && FRAME_NUMBER.test(p.enum)) {
+                source = entry?.tiles.find(t => t.enum === p.enum.replace(FRAME_NUMBER, ''));
+            }
             if (!source?.tile || source.tile === 'None') return;
             const name = source.tile + '.png';
             floorTiles.push({ name, url: name, x: s.x, y: s.y, layer, level, object: p.uid,

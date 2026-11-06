@@ -1,4 +1,5 @@
 import { TileEntry } from '../models/app.models';
+import { WINDOW_SHAPE_RUNS } from './window-shapes.data';
 
 /** One BuildingTiles.txt entry. Blank slots are omitted from `tiles`, zero offsets from `offsets`. */
 export interface BuildingTilesEntry {
@@ -24,16 +25,32 @@ const range = (prefix: string, count: number) => Array.from({ length: count }, (
 const blanks = (count: number) => Array<null>(count).fill(null);
 const WALL = ['West', 'North', 'NorthWest', 'SouthEast', 'WestWindow', 'NorthWindow', 'WestDoor', 'NorthDoor'];
 const WALL_SINGLE = [0, 1, 2, 3, 8, 9, 10, 11];
+/** Window frames for WindowShape 1-19 (BTC_Walls in the window-frame fork, file version 3+). */
+export const WINDOW_FRAMES = 19;
+/** BuildingTiles.txt version written: 3 added frames 1-16 and 30-degree roofs, 4 added frames 17-19. */
+export const BUILDING_TILES_VERSION = 4;
+const FRAMES = Array.from({ length: WINDOW_FRAMES }, (_, i) => [`WestWindow${i + 1}`, `NorthWindow${i + 1}`]).flat();
+const WALLS = [...WALL, ...FRAMES];
+const WALLS_SINGLE = [...WALL_SINGLE, ...blanks(FRAMES.length)];
+const sixes = (...prefixes: string[]) => prefixes.flatMap(prefix => range(prefix, 6));
+const reversed = (prefix: string) => range(prefix, 6).reverse();
+const CAPS_30 = sixes('CapSlope30RiseE', 'CapSlope30FallE', 'CapSlope30RiseS', 'CapSlope30FallS', 'CapPeak30E', 'CapPeak30S');
+const SLOPES_30 = sixes('Slope30S', 'Slope30E', 'Slope30W', 'Slope30N', 'Peak30NS', 'Peak30WE', 'Peak30Quad');
+const SLOPES_30_CORNERS = sixes('InnerSlope30SE', 'InnerSlope30NE', 'InnerSlope30NW', 'InnerSlope30SW',
+  'OuterSlope30SE', 'OuterSlope30NE', 'OuterSlope30NW', 'OuterSlope30SW');
+const EXTENDED_SLOTS = new Set([...FRAMES, ...CAPS_30, ...SLOPES_30, ...SLOPES_30_CORNERS]);
+/** Slots only the window-frame fork knows (frames, 30-degree roofs); the original desktop rejects them in a .tbx. */
+export const isExtendedSlot = (key: string | undefined) => !!key && EXTENDED_SLOTS.has(key);
 const define = (name: string, label: string, enums: string[], single: (number | null)[], display = 'West',
   singleOffsets?: Record<string, [number, number]>): BuildingTilesCategoryDefinition =>
   ({ name, label, enums, single, display, singleOffsets });
 
 /** The fixed categories of the desktop editor (buildingtiles.cpp), in the order its writeTxt uses. */
 export const BUILDING_TILE_CATEGORIES: readonly BuildingTilesCategoryDefinition[] = [
-  define('exterior_walls', 'Exterior Walls', WALL, WALL_SINGLE),
-  define('interior_walls', 'Interior Walls', WALL, WALL_SINGLE),
-  define('exterior_wall_trim', 'Trim - Exterior Walls', WALL, WALL_SINGLE),
-  define('interior_wall_trim', 'Trim - Interior Walls', WALL, WALL_SINGLE),
+  define('exterior_walls', 'Exterior Walls', WALLS, WALLS_SINGLE),
+  define('interior_walls', 'Interior Walls', WALLS, WALLS_SINGLE),
+  define('exterior_wall_trim', 'Trim - Exterior Walls', WALLS, WALLS_SINGLE),
+  define('interior_wall_trim', 'Trim - Interior Walls', WALLS, WALLS_SINGLE),
   define('floors', 'Floors', ['Floor'], [0], 'Floor'),
   define('doors', 'Doors', ['West', 'North', 'WestOpen', 'NorthOpen'], [0, 1, 2, 3]),
   define('door_frames', 'Door Frames', ['West', 'North'], [0, 1]),
@@ -48,16 +65,18 @@ export const BUILDING_TILE_CATEGORIES: readonly BuildingTilesCategoryDefinition[
   define('roof_caps', 'Roof Caps', [...range('CapRiseE', 3), ...range('CapFallE', 3), ...range('CapRiseS', 3), ...range('CapFallS', 3),
     'PeakPt5S', 'PeakPt5E', 'PeakOnePt5S', 'PeakOnePt5E', 'PeakTwoPt5S', 'PeakTwoPt5E', ...range('CapGapS', 3), ...range('CapGapE', 3),
     'CapShallowRiseS1', 'CapShallowRiseS2', 'CapShallowFallS1', 'CapShallowFallS2',
-    'CapShallowRiseE1', 'CapShallowRiseE2', 'CapShallowFallE1', 'CapShallowFallE2'],
-  [0, 1, 2, 8, 9, 10, 13, 12, 11, 5, 4, 3, 7, 15, 6, 14, 17, 16, ...blanks(14)], 'CapRiseE3'),
+    'CapShallowRiseE1', 'CapShallowRiseE2', 'CapShallowFallE1', 'CapShallowFallE2', ...CAPS_30],
+  [0, 1, 2, 8, 9, 10, 13, 12, 11, 5, 4, 3, 7, 15, 6, 14, 17, 16, ...blanks(14 + CAPS_30.length)], 'CapRiseE3'),
   define('roof_slopes', 'Roof Slopes', [...range('SlopeS', 3), ...range('SlopeE', 3), 'SlopePt5S', 'SlopePt5E', 'SlopeOnePt5S', 'SlopeOnePt5E',
-    'SlopeTwoPt5S', 'SlopeTwoPt5E', ...['W', 'E', 'N', 'S'].flatMap(side => range(`ShallowSlope${side}`, 2)),
+    'SlopeTwoPt5S', 'SlopeTwoPt5E', ...['W', 'E', 'N', 'S'].flatMap(side => range(`ShallowSlope${side}`, 2)), ...SLOPES_30,
     ...range('Inner', 3), ...range('Outer', 3), 'InnerPt5', 'InnerOnePt5', 'InnerTwoPt5', 'OuterPt5', 'OuterOnePt5', 'OuterTwoPt5',
-    ...range('CornerSW', 3), ...range('CornerNE', 3)],
-  [0, 1, 2, 5, 4, 3, 15, 14, 15, 14, 15, 14, ...blanks(8), 11, 12, 13, 8, 9, 10, ...blanks(6), 24, 25, 26, 29, 28, 27], 'SlopeS2',
+    ...range('CornerSW', 3), ...range('CornerNE', 3), ...SLOPES_30_CORNERS],
+  [0, 1, 2, 5, 4, 3, 15, 14, 15, 14, 15, 14, ...blanks(8 + SLOPES_30.length), 11, 12, 13, 8, 9, 10, ...blanks(6), 24, 25, 26, 29, 28, 27,
+    ...blanks(SLOPES_30_CORNERS.length)], 'SlopeS2',
   { SlopePt5S: [1, 1], SlopePt5E: [1, 1], SlopeTwoPt5S: [-1, -1], SlopeTwoPt5E: [-1, -1] }),
   define('roof_tops', 'Roof Tops', [...range('West', 3), ...range('North', 3)], [0, 0, 0, 0, 0, 0], 'West2',
     { West1: [-1, -1], West2: [-2, -2], North1: [-1, -1], North2: [-2, -2] }),
+  define('ceiling', 'Ceilings', ['Ceiling'], [0], 'Ceiling'),
 ];
 
 export function buildingTilesCategory(name: string): BuildingTilesCategoryDefinition | undefined {
@@ -66,12 +85,18 @@ export function buildingTilesCategory(name: string): BuildingTilesCategoryDefini
 
 /** One cell of the desktop expert-mode grid: the slot it edits and which 64x128 cell of the template image sits behind it. */
 export interface BuildingTilesCell { key: string | null; column: number; row: number; template: boolean; }
-export interface BuildingTilesLayout { image: string; columns: number; rows: number; cells: BuildingTilesCell[]; }
+/** `columns`/`rows` size the grid; `imageColumns`/`imageRows` size the template image, which can be larger (windows). */
+export interface BuildingTilesLayout {
+  image: string; columns: number; rows: number; imageColumns: number; imageRows: number; cells: BuildingTilesCell[];
+}
 
 const TEMPLATE_PATH = 'assets/building-tile-templates/';
-const WALL_TEMPLATE = { image: 'shadow_walls.png', columns: 8, map: WALL };
+const WALL_TEMPLATE = {
+  image: 'shadow_walls.png', columns: 8,
+  map: [...WALL, ...FRAMES.slice(0, 32), 'WestWindow17', 'WestWindow18', 'NorthWindow17', 'NorthWindow18', 'WestWindow19', 'NorthWindow19', null, null],
+};
 /** Template image, its size in cells and its cell order, from buildingtiles.cpp setShadowImage and the shadowToEnum tables. */
-const TEMPLATES: Readonly<Record<string, { image: string; columns: number; map: readonly (string | null)[] }>> = {
+const TEMPLATES: Readonly<Record<string, { image: string; columns: number; map: readonly (string | null)[]; imageColumns?: number; imageRows?: number }>> = {
   exterior_walls: WALL_TEMPLATE,
   interior_walls: WALL_TEMPLATE,
   exterior_wall_trim: WALL_TEMPLATE,
@@ -79,7 +104,7 @@ const TEMPLATES: Readonly<Record<string, { image: string; columns: number; map: 
   floors: { image: 'shadow_floors.png', columns: 1, map: ['Floor'] },
   doors: { image: 'shadow_doors.png', columns: 4, map: ['West', 'North', 'WestOpen', 'NorthOpen'] },
   door_frames: { image: 'shadow_door_frames.png', columns: 2, map: ['West', 'North'] },
-  windows: { image: 'shadow_windows.png', columns: 2, map: ['West', 'North'] },
+  windows: { image: 'shadow_windows.png', columns: 2, map: ['West', 'North'], imageColumns: 8, imageRows: 5 },
   curtains: { image: 'shadow_curtains.png', columns: 4, map: ['West', 'East', 'North', 'South'] },
   shutters: { image: 'shadow_shutters.png', columns: 4, map: ['WestBelow', 'WestAbove', 'NorthLeft', 'NorthRight'] },
   stairs: { image: 'shadow_stairs.png', columns: 6, map: [...range('West', 3), ...range('North', 3)] },
@@ -96,6 +121,8 @@ const TEMPLATES: Readonly<Record<string, { image: string; columns: number; map: 
       'CapGapE1', 'CapGapE2', 'CapGapE3', 'CapGapS3', 'CapGapS2', 'CapGapS1',
       'CapShallowRiseE1', 'CapShallowRiseE2', null, null, 'CapShallowFallS2', 'CapShallowFallS1',
       'CapShallowFallE1', 'CapShallowFallE2', null, null, 'CapShallowRiseS2', 'CapShallowRiseS1',
+      ...range('CapSlope30RiseE', 6), ...reversed('CapSlope30FallE'), ...range('CapSlope30RiseS', 6), ...reversed('CapSlope30FallS'),
+      ...range('CapPeak30E', 6), ...range('CapPeak30S', 6),
     ],
   },
   roof_slopes: {
@@ -107,10 +134,41 @@ const TEMPLATES: Readonly<Record<string, { image: string; columns: number; map: 
       'CornerSW1', 'CornerSW2', 'CornerSW3', 'CornerNE3', 'CornerNE2', 'CornerNE1',
       'ShallowSlopeW1', 'ShallowSlopeW2', null, null, 'ShallowSlopeE2', 'ShallowSlopeE1',
       'ShallowSlopeN1', 'ShallowSlopeN2', null, null, 'ShallowSlopeS2', 'ShallowSlopeS1',
+      ...range('Slope30S', 6), ...reversed('Slope30E'), ...range('Slope30W', 6), ...reversed('Slope30N'),
+      ...range('InnerSlope30NW', 6), ...reversed('InnerSlope30SW'), ...range('InnerSlope30SE', 6), ...reversed('InnerSlope30NE'),
+      ...range('OuterSlope30SE', 6), ...reversed('OuterSlope30NE'), ...range('OuterSlope30SW', 6), ...reversed('OuterSlope30NW'),
+      ...range('Peak30NS', 6), ...reversed('Peak30WE'), ...range('Peak30Quad', 6),
     ],
   },
   roof_tops: { image: 'shadow_roof_tops.png', columns: 3, map: ['West3', 'West1', 'West2'] },
+  ceiling: { image: 'shadow_floors.png', columns: 1, map: ['Ceiling'] },
 };
+
+/** The game's WindowShape tile property (1-19) for a tile name like "fixtures_windows_church_004", or 0 when it has none. */
+export function windowShape(tile: string | undefined): number {
+  const match = /^(.+)_(\d+)(?:\.png)?$/i.exec(tile ?? '');
+  const runs = match ? WINDOW_SHAPE_RUNS[match[1]] : undefined;
+  const index = match ? Number(match[2]) : -1;
+  const run = runs?.find(([first, count]) => index >= first && index < first + count);
+  return run && run[2] >= 1 && run[2] <= WINDOW_FRAMES ? run[2] : 0;
+}
+
+/** The walls slot a window tile cuts (BTC_Windows::wallEnum): the frame for its WindowShape, or the plain window wall. */
+export function windowWallEnum(side: 'West' | 'North', windowTile: string | undefined): string {
+  const shape = windowShape(windowTile);
+  return `${side}Window${shape || ''}`;
+}
+
+/** BTC_Windows::shadowHack: which cells of shadow_windows.png to show behind a window entry's slot, added to its normal cell. */
+export function windowTemplateOffset(key: string, windowTile: string | undefined): [number, number] {
+  const shape = windowShape(windowTile);
+  if (!shape || (key !== 'West' && key !== 'North')) return [0, 0];
+  const north = key === 'North';
+  if (shape === 17) return [north ? 3 : 2, 0];
+  if (shape === 18) return [north ? 4 : 3, 0];
+  if (shape === 19) return [6, 0];
+  return [((shape - 1) % 4) * 2, 1 + Math.floor((shape - 1) / 4)];
+}
 
 /**
  * The desktop expert-mode grid for a category. Gaps in the template stay as empty cells; slots the desktop
@@ -129,6 +187,8 @@ export function buildingTilesLayout(definition: BuildingTilesCategoryDefinition)
     image: template ? TEMPLATE_PATH + template.image : '',
     columns,
     rows: Math.ceil(map.length / columns),
+    imageColumns: template?.imageColumns ?? columns,
+    imageRows: template?.imageRows ?? Math.ceil(map.length / columns),
     cells,
   };
 }
@@ -163,7 +223,9 @@ export function parseBuildingTilesDocument(text: string): BuildingTilesDocument 
   if (stack.length !== 1) throw new Error('BuildingTiles.txt has an unclosed block.');
   const value = (block: Block, key: string) => block.values.find(([name]) => name === key)?.[1];
   const version = Number(value(root, 'version'));
-  if (version !== 2) throw new Error(`Expected BuildingTiles.txt version 2, got ${value(root, 'version') ?? 'none'}.`);
+  if (![2, 3, BUILDING_TILES_VERSION].includes(version)) {
+    throw new Error(`Expected BuildingTiles.txt version 2 to ${BUILDING_TILES_VERSION}, got ${value(root, 'version') ?? 'none'}.`);
+  }
 
   const entries = new Map<string, BuildingTilesEntry[]>();
   for (const block of root.blocks) {
@@ -201,7 +263,7 @@ interface Block { name: string; values: [string, string][]; blocks: Block[]; }
 
 /** Writes the desktop format (BuildingTilesMgr::writeTxt). The server writes the published file the same way. */
 export function serializeBuildingTiles(document: BuildingTilesDocument): string {
-  const lines = ['version = 2', `revision = ${document.revision}`];
+  const lines = [`version = ${BUILDING_TILES_VERSION}`, `revision = ${document.revision}`];
   if (document.sourceRevision != null) lines.push(`source_revision = ${document.sourceRevision}`);
   for (const definition of BUILDING_TILE_CATEGORIES) {
     lines.push('category', '{', `    label = ${definition.label}`, `    name = ${definition.name}`);
