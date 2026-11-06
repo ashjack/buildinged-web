@@ -6,6 +6,7 @@ import { ScheduleRedraw, SetBuildingMaterial } from '../../app.actions';
 import { Building, TileEntry } from '../../models/app.models';
 import { BFurnitureGroup } from '../../models/furniture-window.models';
 import { BuildingService } from '../../services/building.service';
+import { BuildingTilesLibraryService } from '../../services/building-tiles-library.service';
 import { DbService } from '../../services/db.service';
 import { FurnitureLibraryService } from '../../services/furniture-library.service';
 import { GridService } from '../../services/grid.service';
@@ -52,14 +53,15 @@ export class TilesFurnitureSidebarComponent implements OnInit, OnChanges, OnDest
   furnitureGroups: BFurnitureGroup[] = [];
   groups: { name: string; entries: (TileEntry | null)[] }[] = [];
   building: Building | undefined;
-  private defaults: TileEntry[] = [];
+  private materials: TileEntry[] = [];
+  private custom: TileEntry[] = [];
   private images: TileThumbnails;
   private subscriptions = new Subscription();
   private destroyed = false;
   error = '';
   constructor(private store: Store<fromRoot.State>, private buildings: BuildingService, private library: RoomTileLibraryService,
     private db: DbService, private grid: GridService, public settings: ToolSettingsService, private zone: NgZone,
-    private furniture: FurnitureLibraryService) {
+    private furniture: FurnitureLibraryService, private tileLibrary: BuildingTilesLibraryService) {
     this.images = new TileThumbnails(db, zone);
   }
   ngOnChanges(): void {
@@ -69,9 +71,12 @@ export class TilesFurnitureSidebarComponent implements OnInit, OnChanges, OnDest
   ngOnInit(): void {
     this.subscriptions.add(this.store.select(fromRoot.getBuilding).subscribe(building => { this.building = building; this.rebuild(); }));
     this.subscriptions.add(this.furniture.groups$.subscribe(groups => this.furnitureGroups = groups));
-    Promise.all([this.buildings.getCategoryTileEntries(), this.library.load()]).then(([defaults, custom]) => {
+    // Admin edits to the published materials arrive here while the editor is open.
+    this.subscriptions.add(this.tileLibrary.entries$.subscribe(entries => { this.materials = entries; this.rebuild(); }));
+    this.tileLibrary.load().catch(() => { this.error = 'Could not load default tiles.'; });
+    this.library.load().then(custom => {
       if (this.destroyed) return;
-      this.defaults = [...defaults, ...custom]; this.rebuild();
+      this.custom = custom; this.rebuild();
     }).catch(() => { this.error = 'Could not load default tiles.'; });
   }
   ngOnDestroy(): void { this.destroyed = true; this.images.dispose(); this.subscriptions.unsubscribe(); }
@@ -87,7 +92,7 @@ export class TilesFurnitureSidebarComponent implements OnInit, OnChanges, OnDest
   }
   private rebuild(): void {
     const entries = new Map<string, TileEntry>();
-    [...this.defaults, ...(this.building?.entries || [])].filter(entry => entry.category === this.category)
+    [...this.materials, ...this.custom, ...(this.building?.entries || [])].filter(entry => entry.category === this.category)
       .forEach(entry => entries.set(this.key(entry), entry));
     const groups = new Map<string, (TileEntry | null)[]>();
     if (!['roof_caps', 'roof_slopes'].includes(this.category)) groups.set('', [null]);

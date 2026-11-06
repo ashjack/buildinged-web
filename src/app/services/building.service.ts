@@ -85,18 +85,6 @@ export class BuildingService {
         const catalog = await this.ensureTemplateCatalogLoaded();
         return catalog.entries.map(entry => ({ ...entry, tiles: entry.tiles.map(tile => ({ ...tile })) }));
     }
-    private categoryEntries?: Promise<TileEntry[]>;
-    getCategoryTileEntries(): Promise<TileEntry[]> {
-        if (!this.categoryEntries) {
-            this.categoryEntries = firstValueFrom(this.http.get('assets/BuildingTiles.txt', { responseType: 'text' }))
-                .then(text => this.extractNamedBlocks(text, 'category').flatMap(block => {
-                    const name = /^\s*name\s*=\s*(\w+)/m.exec(block.content)?.[1];
-                    return name ? this.extractNamedBlocks(block.content, 'entry')
-                        .map(entry => this.parseTileEntryBlock(`category = ${name}\n${entry.content}`)) : [];
-                })).catch(error => { this.categoryEntries = undefined; throw error; });
-        }
-        return this.categoryEntries;
-    }
 
     private async ensureTemplateCatalogLoaded(): Promise<TemplateCatalog> {
         if (this.templateCatalog) {

@@ -67,6 +67,20 @@ describe('SheetAtlas', () => {
     expect(await atlas.getTileUrl('walls_01_000.png')).toMatch(/^blob:/);
   });
 
+  it('locates tiles as sprites sharing one URL per sheet', async () => {
+    const sprites = await Promise.all([0, 3].map(i => atlas.getTileSprite(tileName('walls_01', i))));
+    expect(sprites[0]!.url).toMatch(/^blob:/);
+    expect(sprites[1]!.url).toBe(sprites[0]!.url);
+    expect(sprites.map(sprite => [sprite!.columns, sprite!.rows, sprite!.column, sprite!.row])).toEqual([[2, 2, 0, 0], [2, 2, 1, 1]]);
+    expect(blobReads).toBe(1);
+    expect(await atlas.getTileSprite('walls_01_004.png')).toBeNull();
+    expect(await atlas.getTileSprite('missing_01_000.png')).toBeNull();
+
+    atlas.invalidate(['walls_01']);
+    expect((await atlas.getTileSprite('walls_01_001.png'))!.url).not.toBe(sprites[0]!.url);
+    expect(blobReads).toBe(2);
+  });
+
   it('finds sheets that are stored after a failed lookup', async () => {
     expect(await atlas.hasTile('late_01_000.png')).toBeFalse();
     infos.set('late_01', { name: 'late_01', columns: 1, rows: 1 });

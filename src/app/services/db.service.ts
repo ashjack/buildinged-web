@@ -2,7 +2,7 @@
 import { Injectable } from '@angular/core';
 import Dexie, { Table } from 'dexie';
 import { Subject } from 'rxjs';
-import { SheetAtlas } from '../utils/sheet-atlas';
+import { SheetAtlas, TileSprite } from '../utils/sheet-atlas';
 
 /** A single tile, cut from its sheet on demand. `url` is an object URL owned by the tile cache. */
 export interface PngTile {
@@ -160,6 +160,11 @@ export class DbService extends Dexie {
   async getTile(name: string): Promise<PngTile | null> {
     const url = await this.atlas.getTileUrl(name);
     return url ? { name, url, tileset: name.replace(/_\d+(\.png)?$/i, '') } : null;
+  }
+
+  /** The tile as a region of its whole sheet image, for showing many tiles quickly as CSS sprites. */
+  getTileSprite(name: string): Promise<TileSprite | null> {
+    return this.atlas.getTileSprite(name);
   }
 
   async getTiles(tilesetName: string): Promise<PngTile[]> {

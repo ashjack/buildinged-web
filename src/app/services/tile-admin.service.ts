@@ -3,6 +3,7 @@ import { HttpClient, HttpErrorResponse, HttpEventType } from '@angular/common/ht
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from './auth.service';
 import { FurnitureDocument } from '../models/furniture-window.models';
+import { BuildingTilesDocument } from '../utils/building-tiles';
 
 export interface AdminTilepack {
   id: string | null;
@@ -49,6 +50,16 @@ export class TileAdminService {
   /** Saves only if nobody else saved since `generation` was read; the server rejects stale saves with an error. */
   saveFurniture(document: FurnitureDocument, generation: number): Promise<{ generation: number; revision: number }> {
     return this.request('PUT', '/furniture', { document, generation });
+  }
+
+  /** The published BuildingTiles.txt, or null text before the first save. */
+  getBuildingTiles(): Promise<{ text: string | null; generation: number }> {
+    return this.request('GET', '/building-tiles');
+  }
+
+  /** Saves only if nobody else saved since `generation` was read. */
+  saveBuildingTiles(document: BuildingTilesDocument, generation: number): Promise<{ generation: number; revision: number }> {
+    return this.request('PUT', '/building-tiles', { document, generation });
   }
 
   /** Uploads straight to Cloud Storage through a one-object session, then asks the server to validate and publish it. */

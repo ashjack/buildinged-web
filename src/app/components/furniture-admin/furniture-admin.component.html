@@ -15,7 +15,17 @@
     <button class="button compact" (click)="redo()" [disabled]="!canRedo" title="Redo (Ctrl+Y)">Redo</button>
   </div>
   <span class="divider"></span>
-  <div class="tools">
+  <div class="tools" *ngIf="mode === 'tiles'">
+    <button class="button compact" (click)="addBlankTileEntry()" [disabled]="!tileDoc" title="Add an empty entry after the selected one">Add entry</button>
+    <button class="button compact" (click)="addSelectedTileEntries()" [disabled]="!tileDoc || !selectedTiles.size"
+      [title]="'Add one entry per selected tile, filling the other slots from the tiles next to it in the sheet (like dropping on the desktop list)'">Add from selected tiles</button>
+    <button class="button compact" (click)="duplicateTileEntry()" [disabled]="!currentTileEntry" title="Add a copy of the selected entry after it (Ctrl+D)">Duplicate</button>
+    <button class="button compact" (click)="removeTileEntry()" [disabled]="!currentTileEntry">Remove</button>
+    <button class="button compact" (click)="clearTileEntry()" [disabled]="!currentTileEntry" title="Empty every slot of the selected entry">Clear</button>
+    <button class="button compact icon" (click)="moveTileEntry(-1)" [disabled]="!currentTileEntry || tileEntry === 0" title="Move up" aria-label="Move entry up">↑</button>
+    <button class="button compact icon" (click)="moveTileEntry(1)" [disabled]="!currentTileEntry || tileEntry >= tileEntries.length - 1" title="Move down" aria-label="Move entry down">↓</button>
+  </div>
+  <div class="tools" *ngIf="mode === 'furniture'">
     <button class="button compact" (click)="addFurniture()" [disabled]="!currentGroup">Add furniture</button>
     <button class="button compact" (click)="duplicateFurniture()" [disabled]="!current" title="Add a copy of the selected furniture after it (Ctrl+D)">Duplicate</button>
     <button class="button compact" (click)="removeFurniture()" [disabled]="!current">Remove</button>
@@ -24,8 +34,8 @@
     <button class="button compact icon" (click)="moveFurniture(1)" [disabled]="!current || furniture >= (currentGroup?.furniture?.length ?? 0) - 1" title="Move down" aria-label="Move furniture down">↓</button>
     <button class="button compact" (click)="toggleCorners()" [disabled]="!current" [class.on]="current?.corners" [attr.aria-pressed]="!!current?.corners">Corners</button>
   </div>
-  <span class="divider"></span>
-  <div class="tools">
+  <span class="divider" *ngIf="mode === 'furniture'"></span>
+  <div class="tools" *ngIf="mode === 'furniture'">
     <label class="inline">Layer
       <select [ngModel]="layer" (ngModelChange)="setLayer($event)" [disabled]="!current">
         <option *ngFor="let item of layers" [value]="item">{{item}}</option>
@@ -36,32 +46,42 @@
     </label>
   </div>
   <div class="tools end">
-    <span class="state" [class.dirty]="dirty || unpublished">{{saving ? 'Publishing…' : dirty ? 'Unsaved changes' : unpublished ? 'Not published yet' : 'Published'}}</span>
+    <span class="state" [class.dirty]="dirty || shownUnpublished">{{saving ? 'Publishing…' : dirty ? 'Unsaved changes' : shownUnpublished ? 'Not published yet' : 'Published'}}</span>
     <button class="button compact" (click)="reload()" [disabled]="loading || saving">Reload</button>
-    <button class="button compact primary" (click)="save()" [disabled]="loading || saving || (!dirty && !unpublished)" title="Publish (Ctrl+S)">Publish</button>
+    <button class="button compact primary" (click)="save()" [disabled]="!canPublish" title="Publish (Ctrl+S)">Publish</button>
   </div>
 </div>
 
 <p *ngIf="error" class="banner error" role="alert">{{error}} <button class="link" (click)="error = ''">Dismiss</button></p>
 <p *ngIf="notice" class="banner" role="status">{{notice}} <button class="link" (click)="notice = ''">Dismiss</button></p>
-<p *ngIf="unpublished && !loading && !error" class="banner">You haven't published a furniture list yet, so the app uses the copy bundled with it, which is shown here. When you publish, your edited list replaces it for every user. Only admins can edit or publish it.</p>
+<p *ngIf="shownUnpublished && !loading && !error" class="banner">You haven't published {{mode === 'tiles' ? 'the building tiles' : 'a furniture list'}} yet, so the app uses the copy bundled with it, which is shown here. When you publish, your edited list replaces it for every user. Only admins can edit or publish it.</p>
 
 <div class="panes">
   <aside class="pane categories" aria-label="Categories">
     <div class="pane-head">
       <h2>Categories</h2>
       <div class="tools">
-        <button class="link" (click)="newCategory()" [disabled]="loading" title="New category">New</button>
+        <button class="link" (click)="newCategory()" [disabled]="loading" title="New furniture category">New</button>
       </div>
     </div>
-    <ul class="category-list" role="listbox" aria-label="Furniture categories">
-      <li *ngFor="let g of groups; let i = index; trackBy: trackIndex" role="option" [attr.aria-selected]="i === group" [class.active]="i === group"
-        (click)="selectGroup(i)" (dblclick)="startRename(i)">
-        <input *ngIf="renaming === i; else labelText" #renameInput [(ngModel)]="renameText" maxlength="100"
-          (keydown.enter)="finishRename()" (keydown.escape)="cancelRename()" (blur)="finishRename()" (click)="$event.stopPropagation()" aria-label="Category name">
-        <ng-template #labelText><span class="label">{{g.label}}</span><span class="count">{{g.furniture.length}}</span></ng-template>
-      </li>
-    </ul>
+    <div class="category-scroll">
+      <h3 class="section">Building tiles</h3>
+      <ul class="category-list" role="listbox" aria-label="Building tile categories">
+        <li *ngFor="let c of tileCategories" role="option" [attr.aria-selected]="mode === 'tiles' && c.name === tileCategory"
+          [class.active]="mode === 'tiles' && c.name === tileCategory" (click)="selectTileCategory(c.name)">
+          <span class="label">{{c.label}}</span><span class="count">{{tileCount(c.name)}}</span>
+        </li>
+      </ul>
+      <h3 class="section">Furniture</h3>
+      <ul class="category-list" role="listbox" aria-label="Furniture categories">
+        <li *ngFor="let g of groups; let i = index; trackBy: trackIndex" role="option" [attr.aria-selected]="mode === 'furniture' && i === group"
+          [class.active]="mode === 'furniture' && i === group" (click)="selectGroup(i)" (dblclick)="startRename(i)">
+          <input *ngIf="renaming === i; else labelText" #renameInput [(ngModel)]="renameText" maxlength="100"
+            (keydown.enter)="finishRename()" (keydown.escape)="cancelRename()" (blur)="finishRename()" (click)="$event.stopPropagation()" aria-label="Category name">
+          <ng-template #labelText><span class="label">{{g.label}}</span><span class="count">{{g.furniture.length}}</span></ng-template>
+        </li>
+      </ul>
+    </div>
     <div class="pane-foot tools">
       <button class="button compact" (click)="startRename(group)" [disabled]="!currentGroup">Rename</button>
       <button class="button compact" (click)="removeCategory()" [disabled]="!currentGroup">Remove</button>
@@ -70,9 +90,9 @@
     </div>
   </aside>
 
-  <section class="pane furniture" aria-label="Furniture">
+  <section class="pane furniture" [attr.aria-label]="mode === 'tiles' ? 'Tile entries' : 'Furniture'">
     <div class="pane-head">
-      <h2>{{currentGroup?.label || 'No category'}}</h2>
+      <h2>{{mode === 'tiles' ? tileDefinition.label : currentGroup?.label || 'No category'}}</h2>
       <label class="inline">Zoom
         <select [ngModel]="scale" (ngModelChange)="setScale($event)">
           <option *ngFor="let value of scales" [ngValue]="value">{{value * 100}}%</option>
@@ -80,7 +100,45 @@
       </label>
     </div>
     <div class="furniture-scroll" #furnitureScroll>
-      <p *ngIf="loading" class="empty">Loading furniture…</p>
+      <p *ngIf="loading" class="empty">Loading…</p>
+      <ng-container *ngIf="mode === 'tiles' && !loading">
+        <div *ngFor="let entry of tileEntries; let i = index; trackBy: trackIndex" class="tile-row" [class.active]="i === tileEntry" (click)="selectTileEntry(i)">
+          <div class="row-meta">
+            <span>#{{i + 1}}</span>
+            <span *ngIf="i === tileEntry" class="offset" (click)="$event.stopPropagation()">
+              <span class="offset-slot">{{currentTileSlot}} offset</span>
+              <label>x <input type="number" min="-100" max="100" step="1" [ngModel]="slotOffset(entry, currentTileSlot, 0)"
+                (change)="setSlotOffset(i, currentTileSlot, 0, $any($event.target).value)" [attr.aria-label]="currentTileSlot + ' x offset'"></label>
+              <label>y <input type="number" min="-100" max="100" step="1" [ngModel]="slotOffset(entry, currentTileSlot, 1)"
+                (change)="setSlotOffset(i, currentTileSlot, 1, $any($event.target).value)" [attr.aria-label]="currentTileSlot + ' y offset'"></label>
+            </span>
+          </div>
+          <div class="template-grid" [style.grid-template-columns]="'repeat(' + tileLayout.layout.columns + ', ' + 128 * scale + 'px)'">
+            <ng-container *ngFor="let cell of tileLayout.layout.cells; let c = index">
+              <div *ngIf="!cell.key; else slotCell" class="cell gap" [style.width.px]="128 * scale" [style.height.px]="256 * scale"></div>
+              <ng-template #slotCell>
+                <div *ngIf="cell.key as key" class="cell slot" [ngStyle]="tileLayout.styles[c]" [style.width.px]="128 * scale" [style.height.px]="256 * scale"
+                  [class.plain]="!cell.template" [class.current]="i === tileEntry && key === currentTileSlot" [class.drop]="dropTarget === i + ':' + key"
+                  [title]="key + (slotTile(entry, key) ? ' = ' + slotTile(entry, key) : ' (empty)') + (hasOffset(entry, key) ? ' offset ' + slotOffset(entry, key, 0) + ', ' + slotOffset(entry, key, 1) : '')"
+                  (click)="selectTileSlot(i, key); $event.stopPropagation()"
+                  (dragover)="tileDragOver($event, i + ':' + key)" (dragleave)="tileDragLeave(i + ':' + key)"
+                  (drop)="dropOnSlot($event, i, key)" (contextmenu)="clearSlot(i, key, $event)">
+                  <ng-container *ngIf="slotTile(entry, key) as tile">
+                    <span *ngIf="sprite(tile) as style; else missing" class="sprite" [ngStyle]="style" [style.transform]="slotTransform(entry, key)"></span>
+                    <ng-template #missing><span class="missing">{{tile}}</span></ng-template>
+                  </ng-container>
+                  <span *ngIf="!cell.template" class="slot-name">{{key}}</span>
+                </div>
+              </ng-template>
+            </ng-container>
+          </div>
+        </div>
+        <div class="new-entries" [class.drop]="dropTarget === 'new'" (dragover)="tileDragOver($event, 'new')" (dragleave)="tileDragLeave('new')"
+          (drop)="dropNewEntries($event)">
+          Drop tiles here to add an entry for each one. Its other slots are filled from the neighbouring tiles in the sheet, like the desktop editor.
+        </div>
+      </ng-container>
+      <ng-container *ngIf="mode === 'furniture'">
       <p *ngIf="!loading && currentGroup && !currentGroup.furniture.length" class="empty">This category is empty. Use <strong>Add furniture</strong>, then drag tiles onto a grid.</p>
       <div *ngFor="let item of currentGroup?.furniture; let i = index; trackBy: trackIndex" class="furniture-row" [class.active]="i === furniture">
         <div class="row-meta">
@@ -109,8 +167,10 @@
             [disabled]="!item.entries.length" [title]="'Move every tile number by ' + step">{{step > 0 ? '+' + step : step}}</button>
         </div>
       </div>
+      </ng-container>
     </div>
-    <p class="hint">Drag tiles from the browser onto a grid. Several tiles run along the wall the orientation faces. Right-click a tile to remove it.</p>
+    <p class="hint" *ngIf="mode === 'tiles'">Drag a tile onto a slot to set it (several tiles fill the following slots). Right-click a slot to empty it. Click a slot to edit its offset (in squares) above the entry.</p>
+    <p class="hint" *ngIf="mode === 'furniture'">Drag tiles from the browser onto a grid. Several tiles run along the wall the orientation faces. Right-click a tile to remove it.</p>
   </section>
 
   <aside class="pane browser" aria-label="Tile browser">

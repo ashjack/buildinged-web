@@ -3,11 +3,12 @@ import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { FormsModule } from '@angular/forms';
 import { Store } from '@ngrx/store';
-import { of } from 'rxjs';
+import { BehaviorSubject, of } from 'rxjs';
 import { AddObject, Undo, Redo } from '../../app.actions';
 import { RoofService } from '../../services/roof.service';
 import { TileEntry } from '../../models/app.models';
 import { BuildingService } from '../../services/building.service';
+import { BuildingTilesLibraryService } from '../../services/building-tiles-library.service';
 import { DbService } from '../../services/db.service';
 import { FurnitureLibraryService } from '../../services/furniture-library.service';
 import { GridService } from '../../services/grid.service';
@@ -28,7 +29,7 @@ function material(category: string, name: string): TileEntry {
   return { category, tiles: enums.map(value => ({ enum: value, tile: `${name}-${value}` })) };
 }
 describe('Tiles and Furniture material sidebar', () => {
-  let h: ReturnType<typeof documentHarness>, settings: ToolSettingsService, saved: string;
+  let h: ReturnType<typeof documentHarness>, settings: ToolSettingsService, saved: string, materials: BehaviorSubject<TileEntry[]>;
   const defaults = [material('exterior_walls', 'outside'), material('interior_walls', 'inside'),
     material('exterior_wall_trim', 'outertrim'), material('interior_wall_trim', 'innertrim'),
     material('stairs', 'stairs'), material('doors', 'door'), material('door_frames', 'frame'),
@@ -38,11 +39,12 @@ describe('Tiles and Furniture material sidebar', () => {
     const b = readBuildingFile(new DOMParser().parseFromString(nativeBuildingXml, 'text/xml'));
     b.width = b.height = 8; b.floors = [{ rooms: writeIndexGrid(emptyIndexGrid(8, 8)), objects: [] }];
     h = documentHarness(b); settings = new ToolSettingsService();
-    spyOn(h.buildings, 'getCategoryTileEntries').and.resolveTo(defaults);
+    materials = new BehaviorSubject<TileEntry[]>(defaults);
     TestBed.configureTestingModule({ declarations: [TilesFurnitureSidebarComponent], imports: [CommonModule, FormsModule], schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [
       { provide: Store, useValue: h.store }, { provide: BuildingService, useValue: h.buildings },
       { provide: GridService, useValue: h.grid }, { provide: ToolSettingsService, useValue: settings },
       { provide: RoomTileLibraryService, useValue: { load: async () => [] } },
+      { provide: BuildingTilesLibraryService, useValue: { entries$: materials, load: async () => ({}) } },
       { provide: DbService, useValue: { getTile: async () => undefined } },
       { provide: FurnitureLibraryService, useValue: { groups$: of([{ label: 'Seating', furniture: [] }]), load: async () => ({}) } }
     ] });
@@ -53,30 +55,6 @@ describe('Tiles and Furniture material sidebar', () => {
     fixture.componentRef.setInput('tool', 'tool-wall'); fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
     return { fixture, sidebar: fixture.componentInstance, element: fixture.nativeElement as HTMLElement };
   }
-  it('reads native BuildingTiles categories with full variants, offsets and blank slots', async () => {
-    const buildings = new BuildingService(null!, null!, h.grid, h.rooms, h.store as any, { get: () => of(`
-      version = 2
-      category {
-        name = exterior_walls
-        entry {
-          West = walls_000
-          North =
-          offset = West -1 2
-        }
-      }
-      category {
-        name = shutters
-        entry {
-          NorthLeft = shutters_018
-          NorthRight = shutters_019
-        }
-      }`) } as any);
-    const entries = await buildings.getCategoryTileEntries();
-    expect(entries).toEqual([
-      { category: 'exterior_walls', tiles: [{ enum: 'West', tile: 'walls_000', offset: '-1 2' }, { enum: 'North', tile: '' }] },
-      { category: 'shutters', tiles: [{ enum: 'NorthLeft', tile: 'shutters_018' }, { enum: 'NorthRight', tile: 'shutters_019' }] }
-    ]);
-  });
   it('shows full-catalog category thumbnails and preserves the sidebar selection across placement tools', async () => {
     const { fixture, sidebar, element } = await setup();
     expect(element.querySelector('[aria-label="Tile and furniture categories"]')?.textContent).toContain('Exterior Wall Trim');
@@ -136,7 +114,7 @@ describe('Tiles and Furniture material sidebar', () => {
       { category: 'roof_slopes', tiles: [{ enum: 'SlopeS2', tile: 'slope_001' }] },
       { category: 'roof_tops', tiles: [{ enum: 'West2', tile: 'top_001' }] }
     ];
-    (h.buildings.getCategoryTileEntries as jasmine.Spy).and.resolveTo([...defaults, ...entries]);
+    materials.next([...defaults, ...entries]);
     const { fixture, sidebar, element } = await setup();
     expect(sidebar.categories.slice(-3).map(category => category.label)).toEqual(['Roof Caps', 'Roof Slopes', 'Roof Tops']);
     h.store.dispatch(new AddObject({ uid: 'roof', type: 'roof', x: 1, y: 1, width: 2, height: 2,

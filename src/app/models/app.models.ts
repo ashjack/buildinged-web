@@ -1,9 +1,12 @@
 import { SafeResourceUrl } from "@angular/platform-browser";
+import type { TileSprite } from "../utils/sheet-atlas";
 
 //Web App Only
 export interface SvgTile {
     name?: string;
     url: SafeResourceUrl;
+    /** Set instead of `url` by thumbnail lists that show tiles straight from their sheet. */
+    sprite?: TileSprite;
     x: number;
     y: number;
     layer: string;

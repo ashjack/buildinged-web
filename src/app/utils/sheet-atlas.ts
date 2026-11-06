@@ -32,6 +32,9 @@ export function readPngSize(bytes: Uint8Array): { width: number; height: number 
 
 interface DecodedSheet { bitmap: ImageBitmap; bytes: number; }
 
+/** Where a tile sits in its sheet image, for CSS sprite display without cutting or encoding the tile. */
+export interface TileSprite { url: string; columns: number; rows: number; column: number; row: number; }
+
 export interface SheetAtlasOptions {
   /** Decoded (RGBA) sheet bytes kept in memory before least-recently-used sheets are dropped. */
   decodedBudgetBytes?: number;
@@ -50,6 +53,7 @@ export class SheetAtlas {
   private readonly tileBitmaps = new Map<string, Promise<ImageBitmap | null>>();
   private readonly tileUrls = new Map<string, string>();
   private readonly tileUrlRequests = new Map<string, Promise<string | null>>();
+  private readonly sheetUrls = new Map<string, Promise<string | null>>();
   private decodedBytes = 0;
   private generation = 0;
   private idleTimer?: ReturnType<typeof setTimeout>;
@@ -104,6 +108,28 @@ export class SheetAtlas {
     return request;
   }
 
+  /** The tile's position within an object URL of its whole sheet. Much cheaper than `getTileUrl` for many tiles. */
+  async getTileSprite(name: string): Promise<TileSprite | null> {
+    const location = await this.locate(name);
+    if (!location) return null;
+    const { name: sheet, columns, rows } = location.info;
+    const url = await this.getSheetUrl(sheet);
+    return url ? { url, columns, rows, column: location.index % columns, row: Math.floor(location.index / columns) } : null;
+  }
+
+  private getSheetUrl(sheet: string): Promise<string | null> {
+    let request = this.sheetUrls.get(sheet);
+    if (!request) {
+      const current: Promise<string | null> = this.source.getSheetBlob(sheet).then(blob => blob ? URL.createObjectURL(blob) : null);
+      request = current;
+      // Missing sheets aren't remembered: they may still be downloading. `invalidate` revokes the rest.
+      const forget = () => { if (this.sheetUrls.get(sheet) === current) this.sheetUrls.delete(sheet); };
+      current.then(url => { if (!url) forget(); }, forget);
+      this.sheetUrls.set(sheet, current);
+    }
+    return request;
+  }
+
   async getTileNames(sheet: string): Promise<string[]> {
     const info = await this.getInfo(sheet);
     return info ? Array.from({ length: info.columns * info.rows }, (_, i) => tileName(sheet, i)) : [];
@@ -119,6 +145,9 @@ export class SheetAtlas {
       this.infos.delete(sheet);
       this.decoding.delete(sheet);
       this.dropDecoded(sheet);
+      const url = this.sheetUrls.get(sheet);
+      this.sheetUrls.delete(sheet);
+      url?.then(value => { if (value) URL.revokeObjectURL(value); }, () => undefined);
     }
     for (const tile of [...this.tileBitmaps.keys()]) if (affected(tile)) this.tileBitmaps.delete(tile);
     for (const tile of [...this.tileUrlRequests.keys()]) if (affected(tile)) this.tileUrlRequests.delete(tile);

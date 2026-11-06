@@ -12,6 +12,7 @@ import { ToolSettingsService } from '../../services/tool-settings.service';
 import { FurnitureLibraryService } from '../../services/furniture-library.service';
 import { parseFurnitureGroups } from '../../utils/furniture-catalog-parser';
 import { NATIVE_ZOOM_FACTORS } from '../../utils/native-camera';
+import { TileSprite } from '../../utils/sheet-atlas';
 
 
 @Component({
@@ -126,77 +127,37 @@ export class FurnitureSelectionMenuComponent implements OnInit, OnChanges, OnDes
     const version = ++this.loadVersion;
     this.tiles = [];
     this.furnitureTiles = [];
-    const result: VisualFurniture[] = [];
-  
-    for (const furniture of furnitureGroup.furniture) {
-      
-      let retEntry: VisualFurnitureEntry[] = [];
-      let maxX = 0;
-      let maxY = 0;
-  
-      for (const entry of furniture.entries) {
-        let retTiles: SvgTile[] = [];
-        maxX = 0;
-        maxY = 0;
-        for (const item of entry.items) {
-          try {
-            const tile = await this.db.getTile(item.tile + ".png");
-            if (tile) {
-              const x = Number.parseInt(item.pos.split(',')[0]);
-              const y = Number.parseInt(item.pos.split(',')[1]);
-
-              maxX = (x > maxX) ? x : maxX;
-              maxY = (y > maxY) ? y : maxY;
-
-              const newTile = {
-                name: tile.name,
-                url: this.sanitizer.bypassSecurityTrustResourceUrl(tile.url),
-                x: x,
-                y: y,
-                layer: this.getSelectedLayer(),
-                level: this.getSelectedLevel(),
-              };
-              this.tiles.push(newTile);
-              retTiles.push(newTile);
-            }
-          } catch (error) {
-            // Handle error fetching tile
-            console.error("Error fetching tile:", error);
-          }
-        }
-
-        retEntry.push({
-          orient: entry.orient,
-          grime: entry.grime,
-          tiles: [...retTiles],
-          xSize: maxX,
-          ySize: maxY
-          // tiles: [...retTiles].sort((a, b) => {
-          //   if (entry.orient === 'W' || entry.orient === 'E') {
-          //     // If orient is 'W' or 'E', sort by reverse x and then by y
-          //     if (a.x === b.x) {
-          //       return a.y - b.y; // Compare by y if x values are equal
-          //     }
-          //     return b.x - a.x; // Compare by reverse x
-          //   } else {
-          //     // For other orientations, sort by x and then by y
-          //     if (a.x === b.x) {
-          //       return a.y - b.y; // Compare by y if x values are equal
-          //     }
-          //     return a.x - b.x; // Compare by x
-          //   }
-          // })
-        });
-      }
-      // Push retTiles for each entry
-      result.push({
-        layer: furniture.layer,
-        corners: furniture.corners,
-        entries: retEntry
-      });
+    // Sprites come straight from the stored sheets, so nothing is cut out or re-encoded per tile.
+    const sprites = new Map<string, Promise<TileSprite | null>>();
+    for (const furniture of furnitureGroup.furniture) for (const entry of furniture.entries) for (const item of entry.items) {
+      if (!sprites.has(item.tile)) sprites.set(item.tile, this.db.getTileSprite(item.tile + '.png').catch(error => {
+        console.error('Error fetching tile:', error);
+        return null;
+      }));
     }
-  
-    if (version === this.loadVersion) this.furnitureTiles = result;
+    const resolved = new Map(await Promise.all([...sprites].map(async ([name, sprite]) => [name, await sprite] as const)));
+    if (version !== this.loadVersion) return;
+
+    const layer = this.getSelectedLayer(), level = this.getSelectedLevel();
+    const tiles: SvgTile[] = [];
+    this.furnitureTiles = furnitureGroup.furniture.map(furniture => ({
+      layer: furniture.layer,
+      corners: furniture.corners,
+      entries: furniture.entries.map(entry => {
+        let xSize = 0, ySize = 0;
+        const entryTiles: SvgTile[] = [];
+        for (const item of entry.items) {
+          const sprite = resolved.get(item.tile);
+          if (!sprite) continue;
+          const [x, y] = item.pos.split(',').map(value => Number.parseInt(value));
+          xSize = Math.max(xSize, x); ySize = Math.max(ySize, y);
+          entryTiles.push({ name: item.tile + '.png', url: '', sprite, x, y, layer, level });
+        }
+        tiles.push(...entryTiles);
+        return { orient: entry.orient, grime: entry.grime, tiles: entryTiles, xSize, ySize };
+      }),
+    }));
+    this.tiles = tiles;
   }
   
   

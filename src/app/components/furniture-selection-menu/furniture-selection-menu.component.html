@@ -4,7 +4,10 @@
     <div class="entries" aria-label="Furniture tile patterns">
       <div *ngFor="let furniture of furnitureTiles" class="entry-row">
         <button *ngFor="let entry of furniture.entries" class="entry" [class.selected-entry]="selectedFurniture === furniture && selectedFurnitureOrient === entry.orient" [attr.aria-label]="'Furniture pattern ' + entry.orient" (click)="setSelectedFurniture(furniture, entry.orient)" [style.width.px]="(entry.xSize + entry.ySize + 2) * 64 * zoom" [style.height.px]="256 * zoom + (entry.xSize + entry.ySize) * 32 * zoom">
-          <img *ngFor="let tile of entry.tiles" [src]="tile.url" alt="" [style.width.px]="128 * zoom" [style.left.px]="(tile.x - tile.y + entry.ySize) * 64 * zoom" [style.bottom.px]="(entry.xSize + entry.ySize - tile.x - tile.y) * 32 * zoom">
+          <span *ngFor="let tile of entry.tiles" class="sprite" [style.width.px]="128 * zoom" [style.height.px]="256 * zoom" [style.left.px]="(tile.x - tile.y + entry.ySize) * 64 * zoom" [style.bottom.px]="(entry.xSize + entry.ySize - tile.x - tile.y) * 32 * zoom"
+            [style.background-image]="'url(' + tile.sprite?.url + ')'"
+            [style.background-size]="(tile.sprite?.columns ?? 1) * 128 * zoom + 'px ' + (tile.sprite?.rows ?? 1) * 256 * zoom + 'px'"
+            [style.background-position]="(tile.sprite?.column ?? 0) * -128 * zoom + 'px ' + (tile.sprite?.row ?? 0) * -256 * zoom + 'px'"></span>
         </button>
       </div>
     </div>

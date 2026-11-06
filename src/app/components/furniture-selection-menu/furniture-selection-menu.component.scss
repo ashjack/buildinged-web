@@ -23,6 +23,6 @@
 .entries { flex: 1; min-height: 0; overflow: auto; background: white; border: 1px solid #aaa; }
 .entry-row { display: flex; width: max-content; border-bottom: 1px solid #ddd; }
 .entry { position: relative; flex-shrink: 0; border: 1px solid transparent; background: transparent; padding: 0; }
-.entry img { position: absolute; image-rendering: pixelated; }
+.entry .sprite { position: absolute; image-rendering: pixelated; background-repeat: no-repeat; pointer-events: none; }
 .entry.selected-entry { background: #85bdf0; border-color: #0078d7; }
 .entries-column select { align-self: flex-end; margin-top: 4px; }

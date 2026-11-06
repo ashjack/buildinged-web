@@ -11,12 +11,21 @@ import {
   toggleCorners, updateFurniture, updateGroup, validCategoryLabel,
 } from '../../utils/furniture-editing';
 import { FURNITURE_TILE_MIME, FurnitureCellDrop, FurnitureCellPoint, furnitureTileDrag } from './furniture-cell.component';
+import { BuildingTilesLibraryService } from '../../services/building-tiles-library.service';
+import {
+  BUILDING_TILE_CATEGORIES, BuildingTilesDocument, BuildingTilesEntry, BuildingTilesLayout, buildingTilesCategory, buildingTilesEntryKey,
+  buildingTilesLayout, entryFromSingleTile, parseBuildingTilesDocument, setEntryOffset, setEntryTile, updateCategoryEntries,
+} from '../../utils/building-tiles';
 
-interface Snapshot { groups: BFurnitureGroup[]; group: number; furniture: number; orient: string; }
+type AdminMode = 'furniture' | 'tiles';
+interface Snapshot {
+  groups: BFurnitureGroup[]; group: number; furniture: number; orient: string;
+  tileDoc: BuildingTilesDocument | null; mode: AdminMode; tileCategory: string; tileEntry: number;
+}
 interface BrowserTile { name: string; url: string; }
 const MAX_UNDO = 200;
 
-/** Admin-only port of the furniture half of the desktop "Tiles" dialog (BuildingTilesDialog). */
+/** Admin-only port of the desktop "Tiles" dialog (BuildingTilesDialog): building tile categories and furniture. */
 @Component({
   selector: 'app-furniture-admin',
   templateUrl: './furniture-admin.component.html',
@@ -28,11 +37,16 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
   readonly orientsOf = orientsOf;
   readonly entryOf = entryOf;
   readonly shiftSteps = SHIFT_STEPS;
+  readonly tileCategories = BUILDING_TILE_CATEGORIES;
 
+  mode: AdminMode = localStorage.getItem('furnitureAdminMode') === 'tiles' ? 'tiles' : 'furniture';
   groups: BFurnitureGroup[] = [];
   group = 0;
   furniture = 0;
   orient = 'W';
+  tileDoc: BuildingTilesDocument | null = null;
+  tileCategory = buildingTilesCategory(localStorage.getItem('furnitureAdminTileCategory') ?? '')?.name ?? BUILDING_TILE_CATEGORIES[0].name;
+  tileEntry = 0;
   scale = Number(localStorage.getItem('furnitureAdminScale')) || .5;
 
   loading = true;
@@ -40,12 +54,18 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
   error = '';
   notice = '';
   unpublished = false;
+  tilesUnpublished = false;
   private revision = 0;
   private sourceRevision = 0;
   private generation = 0;
   private savedGroups: BFurnitureGroup[] = [];
+  private tilesRevision = 0;
+  private tilesGeneration = 0;
+  private savedTileDoc: BuildingTilesDocument | null = null;
   private undoStack: Snapshot[] = [];
   private redoStack: Snapshot[] = [];
+  /** `entry:slot` under a tile drag, or `new` for the add-entries drop zone. */
+  dropTarget: string | null = null;
 
   renaming: number | null = null;
   renameText = '';
@@ -54,6 +74,12 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
 
   tilesets: string[] = [];
   private sheetSizes = new Map<string, number>();
+  private sheetColumns = new Map<string, number>();
+  private sprites = new Map<string, Record<string, string> | null>();
+  private spriteScale = 0;
+  private layoutCache?: { category: string; scale: number; layout: BuildingTilesLayout; styles: (Record<string, string> | null)[] };
+  /** The slot whose offset the selected entry's offset fields edit. */
+  tileSlot = '';
   tilesetFilter = '';
   tileset = localStorage.getItem('furnitureAdminTileset') || '';
   tiles: BrowserTile[] = [];
@@ -62,7 +88,8 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
   private tileRequest = 0;
   private bitmaps = new Map<string, Promise<ImageBitmap | null>>();
 
-  constructor(private tileAdmin: TileAdminService, private library: FurnitureLibraryService, private db: DbService, public auth: AuthService) { }
+  constructor(private tileAdmin: TileAdminService, private library: FurnitureLibraryService, private db: DbService, public auth: AuthService,
+    private tilesLibrary: BuildingTilesLibraryService) { }
 
   ngOnInit(): void {
     void this.load();
@@ -75,11 +102,35 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
     this.releaseBitmaps(new Set());
   }
 
-  get dirty(): boolean { return this.groups !== this.savedGroups; }
+  get furnitureDirty(): boolean { return this.groups !== this.savedGroups; }
+  get tilesDirty(): boolean { return this.tileDoc !== this.savedTileDoc; }
+  get dirty(): boolean { return this.furnitureDirty || this.tilesDirty; }
+  /** Publishing saves every edited list, or seeds the shown list if it was never published. */
+  private get publishFurniture(): boolean { return this.furnitureDirty || (this.unpublished && this.mode === 'furniture'); }
+  private get publishTiles(): boolean { return !!this.tileDoc && (this.tilesDirty || (this.tilesUnpublished && this.mode === 'tiles')); }
+  get canPublish(): boolean { return !this.loading && !this.saving && (this.publishFurniture || this.publishTiles); }
+  get shownUnpublished(): boolean { return this.mode === 'tiles' ? this.tilesUnpublished : this.unpublished; }
   get canUndo(): boolean { return !!this.undoStack.length; }
   get canRedo(): boolean { return !!this.redoStack.length; }
-  get currentGroup(): BFurnitureGroup | undefined { return this.groups[this.group]; }
+  get currentGroup(): BFurnitureGroup | undefined { return this.mode === 'furniture' ? this.groups[this.group] : undefined; }
   get current(): BFurniture | undefined { return this.currentGroup?.furniture[this.furniture]; }
+  get tileDefinition() { return buildingTilesCategory(this.tileCategory)!; }
+  /** The expert-mode grid of the shown category with each cell's template background, rebuilt when the category or zoom changes. */
+  get tileLayout(): { layout: BuildingTilesLayout; styles: (Record<string, string> | null)[] } {
+    const cached = this.layoutCache;
+    if (cached?.category === this.tileCategory && cached.scale === this.scale) return cached;
+    const layout = buildingTilesLayout(this.tileDefinition), scale = this.scale;
+    const styles = layout.cells.map((cell): Record<string, string> | null => cell.template ? {
+      'background-image': `url(${layout.image})`,
+      'background-size': `${layout.columns * 128 * scale}px ${layout.rows * 256 * scale}px`,
+      'background-position': `${-cell.column * 128 * scale}px ${-cell.row * 256 * scale}px`,
+    } : null);
+    this.layoutCache = { category: this.tileCategory, scale, layout, styles };
+    return this.layoutCache;
+  }
+  get tileEntries(): BuildingTilesEntry[] { return this.tileDoc?.categories.find(category => category.name === this.tileCategory)?.entries ?? []; }
+  get currentTileEntry(): BuildingTilesEntry | undefined { return this.mode === 'tiles' ? this.tileEntries[this.tileEntry] : undefined; }
+  tileCount(name: string): number { return this.tileDoc?.categories.find(category => category.name === name)?.entries.length ?? 0; }
   get layer(): string { return this.current?.layer || 'Furniture'; }
   get grime(): boolean { return this.current ? entryOf(this.current, this.orient)?.grime !== false : true; }
   get filteredTilesets(): string[] {
@@ -101,17 +152,23 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.error = this.notice = '';
     try {
-      const published = await this.tileAdmin.getFurniture();
+      const [published, tiles] = await Promise.all([this.tileAdmin.getFurniture(), this.tileAdmin.getBuildingTiles()]);
       this.unpublished = published.text === null;
-      const text = published.text ?? await this.library.bundledText();
+      this.tilesUnpublished = tiles.text === null;
+      const [text, tilesText] = await Promise.all([published.text ?? this.library.bundledText(), tiles.text ?? this.tilesLibrary.bundledText()]);
       const document = parseFurnitureDocument(text);
+      const tileDoc = parseBuildingTilesDocument(tilesText);
       this.generation = published.generation;
       this.revision = document.revision;
       this.sourceRevision = document.sourceRevision;
       this.groups = this.savedGroups = document.groups;
+      this.tilesGeneration = tiles.generation;
+      this.tilesRevision = tileDoc.revision;
+      this.tileDoc = this.savedTileDoc = tileDoc;
       this.undoStack = [];
       this.redoStack = [];
-      this.selectGroup(Math.min(this.group, Math.max(0, this.groups.length - 1)));
+      this.tileEntry = Math.min(this.tileEntry, Math.max(0, this.tileEntries.length - 1));
+      if (this.mode === 'furniture') this.selectGroup(Math.min(this.group, Math.max(0, this.groups.length - 1)));
     } catch (error) {
       this.error = this.message(error);
     } finally {
@@ -120,32 +177,46 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
   }
 
   async reload(): Promise<void> {
-    if (this.dirty && !confirm('Discard your unsaved furniture changes and load the published list?')) return;
+    if (this.dirty && !confirm('Discard your unsaved changes and load the published lists?')) return;
     await this.load();
   }
 
   async save(): Promise<void> {
-    if (this.saving || this.loading || (!this.dirty && !this.unpublished)) return;
+    if (!this.canPublish) return;
     this.saving = true;
     this.error = this.notice = '';
-    const groups = this.groups;
+    const notices: string[] = [];
     try {
-      const result = await this.tileAdmin.saveFurniture({ revision: this.revision + 1, sourceRevision: this.sourceRevision, groups }, this.generation);
-      this.generation = result.generation;
-      this.revision = result.revision;
-      this.savedGroups = groups;
-      this.unpublished = false;
-      this.notice = `Published revision ${result.revision}. Open editors pick it up when they regain focus.`;
-      await this.library.published().catch(() => { /* Other tabs still catch up on their next check. */ });
+      if (this.publishTiles && this.tileDoc) {
+        const tileDoc = this.tileDoc;
+        const result = await this.tileAdmin.saveBuildingTiles({ ...tileDoc, revision: this.tilesRevision + 1 }, this.tilesGeneration);
+        this.tilesGeneration = result.generation;
+        this.tilesRevision = result.revision;
+        this.savedTileDoc = tileDoc;
+        this.tilesUnpublished = false;
+        notices.push(`building tiles revision ${result.revision}`);
+        await this.tilesLibrary.published().catch(() => { /* Other tabs still catch up on their next check. */ });
+      }
+      if (this.publishFurniture) {
+        const groups = this.groups;
+        const result = await this.tileAdmin.saveFurniture({ revision: this.revision + 1, sourceRevision: this.sourceRevision, groups }, this.generation);
+        this.generation = result.generation;
+        this.revision = result.revision;
+        this.savedGroups = groups;
+        this.unpublished = false;
+        notices.push(`furniture revision ${result.revision}`);
+        await this.library.published().catch(() => { /* Other tabs still catch up on their next check. */ });
+      }
     } catch (error) {
       this.error = this.message(error);
     } finally {
       this.saving = false;
+      if (notices.length) this.notice = `Published ${notices.join(' and ')}. Open editors pick it up when they regain focus.`;
     }
   }
 
   canLeave(): boolean {
-    return !this.dirty || confirm('You have unsaved furniture changes. Leave without saving?');
+    return !this.dirty || confirm('You have unsaved tile or furniture changes. Leave without saving?');
   }
 
   @HostListener('window:beforeunload', ['$event'])
@@ -163,7 +234,7 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
     // Leave text fields their own undo.
     const target = event.target as HTMLElement | null;
     if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
-    if (key === 'd' && !event.shiftKey) { event.preventDefault(); this.duplicateFurniture(); }
+    if (key === 'd' && !event.shiftKey) { event.preventDefault(); if (this.mode === 'tiles') this.duplicateTileEntry(); else this.duplicateFurniture(); }
     else if (key === 'z' && !event.shiftKey) { event.preventDefault(); this.undo(); }
     else if (key === 'y' || (key === 'z' && event.shiftKey)) { event.preventDefault(); this.redo(); }
   }
@@ -171,7 +242,10 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
   // History
 
   private snapshot(): Snapshot {
-    return { groups: this.groups, group: this.group, furniture: this.furniture, orient: this.orient };
+    return {
+      groups: this.groups, group: this.group, furniture: this.furniture, orient: this.orient,
+      tileDoc: this.tileDoc, mode: this.mode, tileCategory: this.tileCategory, tileEntry: this.tileEntry,
+    };
   }
 
   private restore(snapshot: Snapshot): void {
@@ -179,16 +253,29 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
     this.group = snapshot.group;
     this.furniture = snapshot.furniture;
     this.orient = snapshot.orient;
+    this.tileDoc = snapshot.tileDoc;
+    this.tileCategory = snapshot.tileCategory;
+    this.tileEntry = snapshot.tileEntry;
+    this.setMode(snapshot.mode);
     this.renaming = null;
     this.pruneBitmaps();
   }
 
   private commit(groups: BFurnitureGroup[], selection: Partial<Omit<Snapshot, 'groups'>> = {}): void {
     if (groups === this.groups) return;
+    this.push({ ...this.snapshot(), mode: 'furniture', ...selection, groups });
+  }
+
+  private commitTiles(tileDoc: BuildingTilesDocument, selection: Partial<Omit<Snapshot, 'tileDoc'>> = {}): void {
+    if (tileDoc === this.tileDoc) return;
+    this.push({ ...this.snapshot(), mode: 'tiles', ...selection, tileDoc });
+  }
+
+  private push(next: Snapshot): void {
     this.undoStack.push(this.snapshot());
     if (this.undoStack.length > MAX_UNDO) this.undoStack.shift();
     this.redoStack = [];
-    this.restore({ ...this.snapshot(), ...selection, groups });
+    this.restore(next);
     this.notice = '';
   }
 
@@ -210,9 +297,24 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
 
   selectGroup(index: number): void {
     if (index !== this.group) this.renaming = null;
+    this.setMode('furniture');
     this.group = index;
     this.furniture = 0;
     this.orient = 'W';
+    this.pruneBitmaps();
+  }
+
+  private setMode(mode: AdminMode): void {
+    this.mode = mode;
+    localStorage.setItem('furnitureAdminMode', mode);
+    localStorage.setItem('furnitureAdminTileCategory', this.tileCategory);
+  }
+
+  selectTileCategory(name: string): void {
+    this.renaming = null;
+    if (name !== this.tileCategory || this.mode !== 'tiles') { this.tileEntry = 0; this.tileSlot = ''; }
+    this.tileCategory = name;
+    this.setMode('tiles');
     this.pruneBitmaps();
   }
 
@@ -254,6 +356,172 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
 
   cancelRename(): void { this.renaming = null; }
 
+  // Building tiles
+
+  selectTileEntry(index: number): void { this.tileEntry = index; }
+
+  private editTiles(update: (entries: BuildingTilesEntry[]) => BuildingTilesEntry[], tileEntry = this.tileEntry): void {
+    if (!this.tileDoc) return;
+    this.commitTiles(updateCategoryEntries(this.tileDoc, this.tileCategory, update), { tileCategory: this.tileCategory, tileEntry });
+  }
+
+  private editTileEntry(index: number, update: (entry: BuildingTilesEntry) => BuildingTilesEntry): void {
+    this.editTiles(entries => {
+      const next = update(entries[index]);
+      if (next === entries[index]) return entries;
+      const copy = entries.slice();
+      copy[index] = next;
+      return copy;
+    }, index);
+  }
+
+  addBlankTileEntry(): void {
+    const index = this.tileEntries.length ? this.tileEntry + 1 : 0;
+    this.editTiles(entries => insertAt(entries, index, { tiles: {} }), index);
+    this.scrollToRow('.tile-row', index);
+  }
+
+  /** Like dropping tiles on the desktop dialog's entry list: one entry per tile, skipping ones already listed. */
+  addTileEntries(tiles: string[], at?: number): void {
+    const keys = new Set(this.tileEntries.map(buildingTilesEntryKey));
+    const created: BuildingTilesEntry[] = [];
+    for (const tile of tiles) {
+      const sheet = parseTileName(tile)?.sheet ?? '';
+      const entry = entryFromSingleTile(this.tileCategory, tile, this.sheetColumns.get(sheet) ?? 8);
+      const key = buildingTilesEntryKey(entry);
+      if (keys.has(key)) continue;
+      keys.add(key);
+      created.push(entry);
+    }
+    const skipped = tiles.length - created.length;
+    if (!created.length) {
+      this.notice = `${tiles.length === 1 ? 'That tile is' : 'Those tiles are'} already in ${this.tileDefinition.label}.`;
+      return;
+    }
+    const index = at ?? (this.tileEntries.length ? this.tileEntry + 1 : 0);
+    this.editTiles(entries => [...entries.slice(0, index), ...created, ...entries.slice(index)], index);
+    if (skipped) this.notice = `Skipped ${skipped} tile${skipped === 1 ? '' : 's'} already in ${this.tileDefinition.label}.`;
+    this.scrollToRow('.tile-row', index);
+  }
+
+  addSelectedTileEntries(): void { this.addTileEntries(this.sortedSelection()); }
+
+  duplicateTileEntry(): void {
+    const source = this.currentTileEntry;
+    if (!source) return;
+    const index = this.tileEntry + 1;
+    this.editTiles(entries => insertAt(entries, index, source), index);
+    this.scrollToRow('.tile-row', index);
+  }
+
+  removeTileEntry(): void {
+    if (!this.currentTileEntry) return;
+    const count = this.tileEntries.length;
+    this.editTiles(entries => removeAt(entries, this.tileEntry), Math.max(0, Math.min(this.tileEntry, count - 2)));
+  }
+
+  moveTileEntry(delta: number): void {
+    const to = this.tileEntry + delta;
+    if (!this.currentTileEntry || to < 0 || to >= this.tileEntries.length) return;
+    this.editTiles(entries => move(entries, this.tileEntry, to), to);
+    this.scrollToRow('.tile-row', to);
+  }
+
+  clearTileEntry(): void {
+    if (!this.currentTileEntry) return;
+    this.editTileEntry(this.tileEntry, () => ({ tiles: {} }));
+  }
+
+  slotTile(entry: BuildingTilesEntry, key: string): string { return entry.tiles[key] ?? ''; }
+  slotOffset(entry: BuildingTilesEntry, key: string, axis: 0 | 1): number { return entry.offsets?.[key]?.[axis] ?? 0; }
+  hasOffset(entry: BuildingTilesEntry, key: string): boolean { return !!entry.offsets?.[key]; }
+  /** The selected slot, or the category's display slot if none was picked yet. */
+  get currentTileSlot(): string { return this.tileDefinition.enums.includes(this.tileSlot) ? this.tileSlot : this.tileDefinition.display; }
+
+  selectTileSlot(index: number, key: string): void {
+    this.tileEntry = index;
+    this.tileSlot = key;
+  }
+
+  /** Where an offset slot's tile is drawn inside its cell (BuildingEntryDelegate::tileToPixelCoords). */
+  slotTransform(entry: BuildingTilesEntry, key: string): string | null {
+    const offset = entry.offsets?.[key];
+    if (!offset) return null;
+    const [x, y] = offset, scale = this.scale;
+    return `translate(${(x - y) * 64 * scale}px, ${(x + y) * 32 * scale}px)`;
+  }
+
+  setSlotOffset(index: number, key: string, axis: 0 | 1, value: unknown): void {
+    const number = Math.trunc(Number(value));
+    if (!Number.isFinite(number)) return;
+    const clamped = Math.max(-100, Math.min(100, number));
+    this.editTileEntry(index, entry => {
+      const current = entry.offsets?.[key] ?? [0, 0];
+      return setEntryOffset(entry, key, axis === 0 ? clamped : current[0], axis === 1 ? clamped : current[1]);
+    });
+  }
+
+  clearSlot(index: number, key: string, event: MouseEvent): void {
+    event.preventDefault();
+    this.editTileEntry(index, entry => setEntryTile(entry, key, null));
+  }
+
+  private draggedTiles(event: DragEvent): string[] | null {
+    if (furnitureTileDrag.tiles?.length) return furnitureTileDrag.tiles;
+    try {
+      const names: unknown = JSON.parse(event.dataTransfer?.getData(FURNITURE_TILE_MIME) || 'null');
+      return Array.isArray(names) && names.every(name => typeof name === 'string') && names.length ? names : null;
+    } catch { return null; }
+  }
+
+  tileDragOver(event: DragEvent, target: string): void {
+    // The payload can't be read during dragover, so accept any drag that started in the tile browser.
+    if (!furnitureTileDrag.tiles && !event.dataTransfer?.types.includes(FURNITURE_TILE_MIME)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    this.dropTarget = target;
+  }
+
+  tileDragLeave(target: string): void { if (this.dropTarget === target) this.dropTarget = null; }
+
+  /** Several tiles dropped on a slot fill it and the slots after it, like a run of tiles in a sheet. */
+  dropOnSlot(event: DragEvent, index: number, key: string): void {
+    event.preventDefault();
+    this.dropTarget = null;
+    const tiles = this.draggedTiles(event);
+    if (!tiles) return;
+    const enums = this.tileDefinition.enums, start = enums.indexOf(key);
+    this.tileSlot = key;
+    this.editTileEntry(index, entry => tiles.slice(0, enums.length - start)
+      .reduce((next, tile, i) => setEntryTile(next, enums[start + i], tile), entry));
+  }
+
+  dropNewEntries(event: DragEvent): void {
+    event.preventDefault();
+    this.dropTarget = null;
+    const tiles = this.draggedTiles(event);
+    if (tiles) this.addTileEntries(tiles, this.tileEntries.length);
+  }
+
+  /** CSS sprite of a tile straight from its sheet; null while loading or if the sheet isn't downloaded. */
+  sprite(name: string): Record<string, string> | null {
+    if (!name) return null;
+    if (this.spriteScale !== this.scale) { this.sprites.clear(); this.spriteScale = this.scale; }
+    if (!this.sprites.has(name)) {
+      this.sprites.set(name, null);
+      const scale = this.scale;
+      void this.db.getTileSprite(name).then(sprite => {
+        if (!sprite || scale !== this.spriteScale) return;
+        this.sprites.set(name, {
+          'background-image': `url(${sprite.url})`,
+          'background-size': `${sprite.columns * 128 * scale}px ${sprite.rows * 256 * scale}px`,
+          'background-position': `${-sprite.column * 128 * scale}px ${-sprite.row * 256 * scale}px`,
+        });
+      }).catch(() => { /* Missing sheets show the tile name instead. */ });
+    }
+    return this.sprites.get(name) ?? null;
+  }
+
   // Furniture
 
   select(furniture: number, orient: string): void {
@@ -280,13 +548,13 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
     // Furniture is immutable, so the copy can share the original's entries.
     this.commit(updateGroup(this.groups, this.group, g => ({ ...g, furniture: insertAt(g.furniture, index, { ...source }) })),
       { furniture: index, orient: this.orient });
-    this.scrollToFurniture(index);
+    this.scrollToRow('.furniture-row', index);
   }
 
-  private scrollToFurniture(index: number): void {
+  private scrollToRow(selector: string, index: number): void {
     // Wait for the new row to render.
     setTimeout(() => {
-      const row = this.furnitureScroll?.nativeElement.querySelectorAll<HTMLElement>('.furniture-row')[index];
+      const row = this.furnitureScroll?.nativeElement.querySelectorAll<HTMLElement>(selector)[index];
       row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     });
   }
@@ -339,6 +607,7 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
     try {
       const tilesets = await this.db.getTilesets();
       this.sheetSizes = new Map(tilesets.map(tileset => [tileset.name, tileset.columns * tileset.rows]));
+      this.sheetColumns = new Map(tilesets.map(tileset => [tileset.name, tileset.columns]));
       this.tilesets = tilesets.map(tileset => tileset.name).sort((a, b) => a.localeCompare(b));
       if (!this.tilesets.includes(this.tileset)) this.tileset = this.tilesets[0] ?? '';
       if (this.tileset) await this.selectTileset(this.tileset);
@@ -377,15 +646,19 @@ export class FurnitureAdminComponent implements OnInit, OnDestroy {
       this.selectedTiles = new Set([tile.name]);
       this.anchorTile = tile.name;
     }
-    const names = [...this.selectedTiles].sort((a, b) => (parseTileName(a)?.index ?? 0) - (parseTileName(b)?.index ?? 0));
+    const names = this.sortedSelection();
     furnitureTileDrag.tiles = names;
     event.dataTransfer?.setData(FURNITURE_TILE_MIME, JSON.stringify(names));
     event.dataTransfer?.setData('text/plain', names.join('\n'));
     if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy';
   }
 
+  private sortedSelection(): string[] {
+    return [...this.selectedTiles].sort((a, b) => (parseTileName(a)?.index ?? 0) - (parseTileName(b)?.index ?? 0));
+  }
+
   @HostListener('document:dragend')
-  endTileDrag(): void { furnitureTileDrag.tiles = null; }
+  endTileDrag(): void { furnitureTileDrag.tiles = null; this.dropTarget = null; }
 
   setScale(scale: number): void {
     this.scale = scale;
