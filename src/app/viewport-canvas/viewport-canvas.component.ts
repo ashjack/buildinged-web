@@ -31,6 +31,7 @@ import ToolStairs from '../tools/tool-stairs';
 import { ToolSettingsService } from '../services/tool-settings.service';
 import { fractionalCellPosition, nativeTileEdge, nativeWallCorner } from '../utils/native-pointer';
 import { buildingCameraBounds, constrainCamera, nativeWheelZoom, safeZoom, wheelAngle, wheelScroll, zoomAroundPoint } from '../utils/native-camera';
+import { parseTilepackManifest } from '../utils/tilepack-manifest';
 
 @Component({
     selector: 'app-viewport-canvas',
@@ -110,12 +111,8 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     //Get tilesheets
 
     
-    this.http.get<any[]>(TILEPACK_MANIFEST_URL, { headers: { 'Cache-Control': 'no-cache' } }).subscribe((data) => {
-      for (const entry of data || []) {
-        if (!entry?.Url || !entry?.Name) continue;
-        this.tileService.tilepacks.push({ url: entry.Url, name: entry.Name, enabled: false,
-          version: entry.Version == null ? undefined : String(entry.Version) });
-      }
+    this.http.get<unknown>(TILEPACK_MANIFEST_URL, { headers: { 'Cache-Control': 'no-cache' } }).subscribe((data) => {
+      this.tileService.tilepacks.push(...parseTilepackManifest(data));
 
       if(!localStorage.getItem('Vanilla'))
       {

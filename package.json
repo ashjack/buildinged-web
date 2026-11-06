@@ -23,6 +23,7 @@
     "@angular/router": "^16.1.0",
     "@ngrx/effects": "^16.1.0",
     "@ngrx/store": "^16.1.0",
+    "@zip.js/zip.js": "2.7.57",
     "bootstrap": "^5.2.3",
     "dexie": "^3.2.4",
     "firebase": "^13.2.0",

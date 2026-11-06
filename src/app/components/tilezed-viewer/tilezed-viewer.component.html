@@ -1,0 +1,65 @@
+<div class="page">
+  <header class="topbar">
+    <div class="bar">
+      <a class="brand" routerLink="/">BuildingEd</a>
+      <span class="divider" aria-hidden="true">/</span>
+      <strong>TileZed viewer</strong>
+      <a class="link home" routerLink="/">Back to buildings</a>
+    </div>
+  </header>
+
+  <div class="toolbar" aria-label="TileZed controls">
+    <button class="button primary" type="button" (click)="mapInput.click()" [disabled]="loadingMap">
+      {{loadingMap ? 'Opening…' : 'Open .tmx'}}
+    </button>
+    <input #mapInput type="file" accept=".tmx" hidden (change)="onMapSelected($event)">
+    <button class="button" type="button" (click)="tilesInput.click()">Use local tiles (optional)</button>
+    <input #tilesInput type="file" accept=".png,image/png" webkitdirectory multiple hidden (change)="onTilesSelected($event)">
+    <span class="toolbar-divider" aria-hidden="true"></span>
+    <button class="button compact" type="button" (click)="zoom(1 / 1.25)" [disabled]="!scene" aria-label="Zoom out">−</button>
+    <span class="zoom" aria-label="Zoom level">{{zoomPercent}}%</span>
+    <button class="button compact" type="button" (click)="zoom(1.25)" [disabled]="!scene" aria-label="Zoom in">+</button>
+    <button class="button compact" type="button" (click)="fit()" [disabled]="!scene">Fit map</button>
+    <span class="map-name" *ngIf="scene">{{fileName}} · {{scene.map.width}} × {{scene.map.height}}{{restoredMap ? ' · restored copy' : ''}}</span>
+  </div>
+
+  <div class="messages">
+    <p *ngIf="error" class="message error" role="alert">{{error}}</p>
+    <p *ngIf="storageWarning" class="message warning" role="alert">{{storageWarning}}</p>
+    <p *ngIf="loadingSheets" class="message" role="status">Loading tilesheets from your tilepacks…</p>
+    <div *ngIf="tileWarnings.length" class="message warning" role="alert">
+      <ul><li *ngFor="let warning of tileWarnings">{{warning}}</li></ul>
+    </div>
+    <div *ngIf="!loadingSheets && sheetIssues.length" class="message warning" role="alert">
+      <strong>Some tilesheets are unavailable.</strong> Check the tilepack connection or use local tiles as a fallback.
+      <ul><li *ngFor="let issue of sheetIssues">{{issue}}</li></ul>
+    </div>
+    <p *ngIf="duplicateSheets.length" class="message warning">
+      Multiple matching sheets were found; the first of each was used: {{duplicateSheets.join(', ')}}.
+    </p>
+    <details *ngIf="scene?.warnings?.length" class="message warning">
+      <summary>Map warnings ({{scene!.warnings.length}})</summary>
+      <ul><li *ngFor="let warning of scene!.warnings">{{warning}}</li></ul>
+    </details>
+  </div>
+
+  <main #viewport class="viewport">
+    <canvas #canvas tabindex="0" [class.dragging]="dragging"
+            aria-label="TileZed map. Drag to pan, use the mouse wheel to zoom, or use arrow keys and plus or minus."
+            (wheel)="onWheel($event)" (pointerdown)="onPointerDown($event)"
+            (pointermove)="onPointerMove($event)" (pointerup)="onPointerEnd($event)"
+            (pointercancel)="onPointerEnd($event)" (lostpointercapture)="onPointerEnd($event)"
+            (keydown)="onKeyDown($event)" (contextmenu)="$event.preventDefault()"></canvas>
+    <div class="empty" *ngIf="!scene">
+      <h1>Open a TileZed map</h1>
+      <p>Choose a level-isometric <code>.tmx</code> file. Tiles load automatically from BuildingEd's cache and tilepacks.</p>
+      <p>The last map is saved in this browser for next time. The original file is not changed or uploaded.</p>
+      <button class="button primary" type="button" (click)="mapInput.click()" [disabled]="loadingMap">Open .tmx</button>
+    </div>
+  </main>
+
+  <footer>
+    <span>Read-only · Drag to pan · Mouse wheel to zoom · Home to fit</span>
+    <span *ngIf="folderName">Local tiles: {{folderName}}</span>
+  </footer>
+</div>

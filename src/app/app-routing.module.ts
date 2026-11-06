@@ -20,6 +20,7 @@ const routes: Routes = [
   { path: 'projects/:projectId/variants/:variantId/edit', component: EditorComponent,
     canActivate: [ProjectGuard, EditorGuard], canDeactivate: [EditorGuard] },
   { path: 'editor', component: EditorComponent, canDeactivate: [EditorGuard] },
+  { path: 'tilezed', loadChildren: () => import('./components/tilezed-viewer/tilezed-viewer.module').then(module => module.TilezedViewerModule) },
   { path: '**', redirectTo: '' }
 ];
 

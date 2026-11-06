@@ -6,6 +6,28 @@ This project was generated with [Angular CLI](https://github.com/angular/angular
 
 Run `npm start` for a dev server. Navigate to `http://localhost:4200/`. The application will automatically reload if you change any of the source files.
 
+## TileZed map viewer
+
+Open **TileZed** from the homepage, then choose a TileZed level-isometric `.tmx`
+file. The read-only viewer generates terrain from embedded BMP rules and draws
+ground-level tile layers. Drag to pan, use the mouse wheel or zoom buttons to
+zoom, and choose **Fit map** to return to the overview. The canvas also supports
+arrow keys, plus/minus, and Home.
+
+Tilesheets cached by BuildingEd are reused automatically. Missing sheets are
+retrieved individually from the same enabled tilepacks and cached in the browser;
+2x sheets are preferred, with 1x sheets used when no 2x version is present.
+Choosing local tiles remains an optional fallback for sheets outside those packs.
+
+The last successfully opened TMX is saved as a browser-local copy and reopened
+when returning to TileZed. Select the file again to pick up changes made outside
+the viewer. Clearing browser site data removes the saved map and cached tiles.
+The map and any selected local sheets are not uploaded. Missing or incompatible
+sheets are reported in the viewer.
+Objects/lots, image layers, additional levels, flipped tiles, and external TSX
+tilesets are not supported in this initial viewer; unsupported content is
+reported rather than silently presented as complete.
+
 ## Google sign-in and project workspaces
 
 Google is the only supported login provider. Standalone TBX creation, import and

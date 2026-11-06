@@ -1,0 +1,31 @@
+@import '../../styles/page';
+
+.page { position: fixed; inset: 0; display: flex; flex-direction: column; background: $bg; color: $text; font: 400 14px/1.5 'Inter', system-ui, sans-serif; color-scheme: dark; }
+.bar { min-height: 52px; padding: 0 20px; }
+.bar strong { font-size: 13px; font-weight: 500; }
+.divider { color: $line-strong; }
+.home { margin-left: auto; }
+.toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 20px; border-bottom: 1px solid $line; }
+.toolbar-divider { width: 1px; height: 26px; margin: 0 4px; background: $line-strong; }
+.zoom { min-width: 40px; text-align: center; color: $muted; font-size: 12px; }
+.map-name { margin-left: auto; overflow: hidden; color: $muted; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.messages { max-height: 180px; overflow: auto; }
+.messages:empty { display: none; }
+.message { padding: 8px 20px; border-bottom: 1px solid $line; background: $surface; font-size: 12px; }
+.message.error { color: $danger; }
+.message.warning { color: $accent; }
+.message ul { margin: 6px 0 0; padding-left: 20px; }
+.message summary { cursor: pointer; }
+.viewport { position: relative; flex: 1; min-height: 0; overflow: hidden; background: #202327; }
+canvas { display: block; width: 100%; height: 100%; cursor: grab; outline-offset: -3px; touch-action: none; }
+canvas.dragging { cursor: grabbing; }
+.empty { position: absolute; top: 50%; left: 50%; width: min(440px, calc(100% - 40px)); transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
+.empty h1 { font-size: 23px; font-weight: 600; }
+.empty p { margin-top: 12px; color: $muted; }
+.empty .button { margin-top: 20px; pointer-events: auto; }
+footer { display: flex; justify-content: space-between; gap: 12px; padding: 7px 20px; border-top: 1px solid $line; color: $muted; font-size: 11px; }
+@media (max-width: 640px) {
+  .bar, .toolbar, .message { padding-left: 12px; padding-right: 12px; }
+  .map-name { flex-basis: 100%; margin-left: 0; }
+  footer { flex-wrap: wrap; padding: 7px 12px; }
+}
