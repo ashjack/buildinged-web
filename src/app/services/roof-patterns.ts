@@ -308,4 +308,4 @@ function integerDepth(n: number): Depth { return n <= 1 ? "One" : n === 2 ? "Two
 function bounds(o: RoofPlacementOptions): Rect { return { x: o.x, y: o.y, width: o.width, height: o.height }; }
 function clamp(n: number, min: number, max: number): number { return Math.max(min, Math.min(n, max)); }
 function find(tiles: RoofTileSource[], name: string): RoofTileSource | undefined { return tiles.find(tile => tile.enum === name); }
-function parseOffset(value?: string): [number, number] { const values = (value || "0 0").trim().split(/\s+/).map(Number); return [values[0] || 0, values[1] || 0]; }
+function parseOffset(value?: string): [number, number] { const values = (value || "0 0").trim().split(/[\s,]+/).map(Number); return [values[0] || 0, values[1] || 0]; }

@@ -10,8 +10,8 @@ import { ScheduleRedraw, SetBuilding } from "../app.actions";
 import { HttpClient } from "@angular/common/http";
 import { firstValueFrom, take } from "rxjs";
 import { readBuildingFile, writeBuildingFile, TBX_VERSION } from "../utils/tbx-format";
-import { emptyIndexGrid, readIndexGrid, writeIndexGrid } from "../utils/tbx-grid";
-import { generateBuildingSquares } from "./native-squares";
+import { emptyIndexGrid, writeIndexGrid } from "../utils/tbx-grid";
+import { generateBuildingSquares, readBuildingManualTiles } from "./native-squares";
 import { DocumentCacheTarget, EditorSessionService } from './editor-session.service';
 
 interface BuildingTemplateRoom {
@@ -579,15 +579,7 @@ export class BuildingService {
         this.gridService.beginRebuild();
         try {
             this.roomService.rebuild(building);
-            building.floors.forEach((floor, level) => {
-                floor.tileLayers?.forEach(layer => {
-                    readIndexGrid(layer.tiles, building.width + 1, building.height + 1).forEach((row, y) => row.forEach((index, x) => {
-                        if (!index) return;
-                        const name = building.user_tiles[index - 1].tile + '.png';
-                        this.gridService.placeTile2({ name, url: name, x, y, layer: layer.layer, level }, false);
-                    }));
-                });
-            });
+            readBuildingManualTiles(building).forEach(tile => this.gridService.placeTile2(tile, false));
             const generated = generateBuildingSquares(building);
             this.gridService.roomTiles = generated.tiles;
             generated.objects.forEach(object => this.gridService.addObject(object));

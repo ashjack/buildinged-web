@@ -43,6 +43,29 @@ describe('TileZed partial tilepack reader', () => {
     expect(requests.length).toBeGreaterThan(0);
   });
 
+  it('reuses the archive directory when many buildings request different sheets', async () => {
+    await service.load('https://example.test/pack.zip', ['grass_01']);
+    await service.load('https://example.test/pack.zip', ['vegetation_01']);
+    const heads = (window.fetch as jasmine.Spy).calls.allArgs().filter(args => args[1]?.method === 'HEAD');
+    expect(heads.length).toBe(1);
+  });
+
+  it('refreshes expired archive indexes', async () => {
+    const time = spyOn(Date, 'now').and.returnValue(1000);
+    await service.load('https://example.test/pack.zip', ['grass_01']);
+    time.and.returnValue(302000);
+    await service.load('https://example.test/pack.zip', ['vegetation_01']);
+    const heads = (window.fetch as jasmine.Spy).calls.allArgs().filter(args => args[1]?.method === 'HEAD');
+    expect(heads.length).toBe(2);
+  });
+
+  it('does not cache failed archive requests', async () => {
+    (window.fetch as jasmine.Spy).and.resolveTo(new Response(null, { status: 503 }));
+    await expectAsync(service.load('https://example.test/pack.zip', ['grass_01'])).toBeRejected();
+    await expectAsync(service.load('https://example.test/pack.zip', ['grass_01'])).toBeRejected();
+    expect(window.fetch).toHaveBeenCalledTimes(2);
+  });
+
   it('rejects servers without an archive size rather than downloading the whole pack', async () => {
     (window.fetch as jasmine.Spy).and.resolveTo(new Response(null, { status: 200 }));
 

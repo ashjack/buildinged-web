@@ -1,3 +1,5 @@
+import { WorldedLot } from './worlded-world';
+
 export interface TilezedTileset {
   name: string;
   source: string;
@@ -54,6 +56,7 @@ export interface TilezedMap {
   blends: TilezedBlend[];
   blendEdgesEverywhere: boolean;
   warnings: string[];
+  lots?: WorldedLot[];
 }
 
 const MAX_CELLS = 1_000_000;
@@ -296,6 +299,7 @@ export async function readTilezedMap(xml: string): Promise<TilezedMap> {
     blends: [],
     blendEdgesEverywhere: false,
     warnings: [],
+    lots: [],
   };
   for (let i = 1; i < map.tilesets.length; i++) {
     const previous = map.tilesets[i - 1];
@@ -325,9 +329,25 @@ export async function readTilezedMap(xml: string): Promise<TilezedMap> {
   }
   const settings = children(root, 'bmp-settings')[0];
   if (settings) readSettings(map, settings);
-  if (children(root, 'objectgroup').some(group => children(group, 'object').length) ||
+  for (const group of children(root, 'objectgroup')) {
+    const { level } = layerName(group);
+    if (group.getAttribute('visible') === '0') continue;
+    for (const object of children(group, 'object')) {
+      if (object.getAttribute('name') !== 'lot' || object.getAttribute('visible') === '0') continue;
+      let path = object.getAttribute('type') ?? '';
+      if (!path) throw new Error('A TMX lot is missing its building path.');
+      if (!/\.(tbx|tmx)$/i.test(path)) path += '.tmx';
+      const value = (name: string) => {
+        const raw = object.getAttribute(name) ?? '0', number = Number(raw);
+        if (!Number.isFinite(number) || Math.abs(number) > 1_000_000) throw new Error(`Invalid lot ${name}: ${raw}`);
+        return number / map.tileHeight;
+      };
+      map.lots!.push({ x: value('x'), y: value('y'), width: value('width'), height: value('height'), level, map: path });
+    }
+  }
+  if (children(root, 'objectgroup').some(group => children(group, 'object').some(object => object.getAttribute('name') !== 'lot')) ||
       children(root, 'imagelayer').length || children(root, 'group').length) {
-    map.warnings.push('Objects, lots, image layers, and layer groups are not shown in this viewer.');
+    map.warnings.push('Non-lot objects, image layers, and layer groups are not shown in this viewer.');
   }
   return map;
 }

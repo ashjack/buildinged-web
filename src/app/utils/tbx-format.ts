@@ -37,12 +37,22 @@ function readTile(element: Element): Tile {
 
 /** Read native v2/v3 and recover the old web app's v0 format. */
 export function readBuildingFile(xml: Document): Building {
+    return readBuildingDocument(xml, false);
+}
+
+/** Read-only previews can consume newer native tile definitions without downgrading an editable file. */
+export function readBuildingPreviewFile(xml: Document): Building {
+    return readBuildingDocument(xml, true);
+}
+
+function readBuildingDocument(xml: Document, preview: boolean): Building {
     const root = xml.documentElement;
     if (!root || root.tagName !== 'building' || xml.getElementsByTagName('parsererror').length) {
         throw new Error('This file is not a valid TBX building XML document.');
     }
     const version = root.getAttribute('version');
-    if (version !== '0' && version !== '2' && version !== '3') {
+    if (version !== '0' && version !== '2' && version !== '3' &&
+        !(preview && ['4', '5', '6', '7'].includes(version ?? ''))) {
         if (version === '1' || version === '1.0') {
             throw new Error('TBX version 1 uses legacy tile names. Open and save it in desktop BuildingEd before importing it.');
         }

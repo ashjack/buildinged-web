@@ -2,6 +2,11 @@ import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, NgZone, OnDest
 import { Subscription } from 'rxjs';
 import { DbService } from '../../services/db.service';
 import { TilezedAssetsService, TilezedAssets } from '../../services/tilezed-assets.service';
+import { TilezedBuildingContext, TilezedHandoffService } from '../../services/tilezed-handoff.service';
+import { BuildingPreviewService } from '../../services/building-preview.service';
+import { BuildingLots } from '../../services/building-lots';
+import { drawBuildingSprites, orderTilezedBuildingSprites } from '../../utils/building-preview';
+import { resolveTilezedProject } from '../../utils/worlded-files';
 import { TilezedStorageService } from '../../services/tilezed-storage.service';
 import { readTilezedMap, TilezedTileset } from '../../utils/tilezed-map';
 import {
@@ -31,6 +36,11 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   loadingSheets = false;
   dragging = false;
   restoredMap = false;
+  buildings?: BuildingLots;
+  loadingBuildings = false;
+  loadingProject = false;
+  private mapFile?: File;
+  private buildingContext?: TilezedBuildingContext;
 
   private localSheets: TilezedSheetIndex = { files: new Map(), duplicates: [] };
   private images = new Map<number, TilezedImage>();
@@ -51,8 +61,10 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     private readonly db: DbService,
     private readonly assets: TilezedAssetsService,
     private readonly storage: TilezedStorageService,
+    private readonly handoff: TilezedHandoffService,
     private readonly zone: NgZone,
     private readonly changeDetector: ChangeDetectorRef,
+    private readonly buildingPreviews: BuildingPreviewService,
   ) {
     this.sheetsChanged = this.db.sheetsChanged.subscribe(names => {
       const changed = new Set(names.map(name => name.toLowerCase()));
@@ -81,7 +93,17 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
       this.resizeObserver.observe(this.viewportElement.nativeElement);
     }
     window.addEventListener('resize', this.onWindowResize);
-    void this.restoreLastMap();
+    const incoming = this.handoff.take();
+    const buildings = this.handoff.takeBuildings();
+    if (incoming) {
+      const generation = this.mapGeneration;
+      void Promise.resolve().then(() => {
+        if (!this.destroyed && generation === this.mapGeneration) return this.openMap(incoming, true, buildings);
+        return undefined;
+      });
+    } else {
+      void this.restoreLastMap();
+    }
   }
 
   ngOnDestroy(): void {
@@ -89,6 +111,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     this.mapGeneration++;
     this.sheetGeneration++;
     this.sheetsChanged.unsubscribe();
+    this.buildings?.dispose();
     this.resizeObserver?.disconnect();
     window.removeEventListener('resize', this.onWindowResize);
     if (this.frame !== undefined) cancelAnimationFrame(this.frame);
@@ -102,7 +125,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     if (file) await this.openMap(file);
   }
 
-  async openMap(file: File, remember = true): Promise<void> {
+  async openMap(file: File, remember = true, buildings?: TilezedBuildingContext): Promise<void> {
     const generation = ++this.mapGeneration;
     if (!/\.tmx$/i.test(file.name)) {
       this.error = 'Choose a TileZed .tmx file.';
@@ -120,6 +143,9 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
       this.releaseImages(this.images);
       this.images = new Map();
       this.scene = scene;
+      this.mapFile = file;
+      this.buildingContext = buildings ?? { lots: map.lots ?? [], files: new Map() };
+      this.loadBuildings();
       this.fileName = file.name;
       this.restoredMap = !remember;
       this.storageWarning = '';
@@ -141,7 +167,10 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     const generation = this.mapGeneration;
     try {
       const file = await this.storage.lastMap();
-      if (file && !this.destroyed && generation === this.mapGeneration) await this.openMap(file, false);
+      if (file && !this.destroyed && generation === this.mapGeneration) {
+        const buildings = await this.storage.lastBuildings(file);
+        if (!this.destroyed && generation === this.mapGeneration) await this.openMap(file, false, buildings);
+      }
     } catch (error) {
       console.error('Could not reopen the last TileZed map:', error);
       if (!this.destroyed && generation === this.mapGeneration) {
@@ -153,7 +182,8 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
 
   private async rememberMap(file: File, scene: TilezedScene): Promise<void> {
     try {
-      await this.storage.rememberMap(file);
+      if (this.buildingContext?.lots.length) await this.storage.rememberMap(file, this.buildingContext);
+      else await this.storage.rememberMap(file);
     } catch (error) {
       console.error('Could not remember the TileZed map:', error);
       if (!this.destroyed && this.scene === scene) {
@@ -177,6 +207,62 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     this.localSheets = indexed;
     this.folderName = files[0].webkitRelativePath.split(/[\\/]/)[0] || 'Selected tiles';
     await this.reloadSheets();
+  }
+
+  async onProjectSelected(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    input.value = '';
+    if (!files.length || !this.mapFile || !this.scene || !this.buildingContext) return;
+    const scene = this.scene, mapFile = this.mapFile;
+    this.loadingProject = true;
+    this.error = '';
+    try {
+      const project = await resolveTilezedProject(files, mapFile, this.buildingContext.lots);
+      if (this.destroyed || this.scene !== scene) return;
+      this.buildingContext = { lots: this.buildingContext.lots, files: project.files };
+      this.loadBuildings();
+      project.warnings.forEach(warning => this.buildings?.warnings.add(warning));
+      await this.rememberMap(mapFile, scene);
+    } catch (error) {
+      if (!this.destroyed && this.scene === scene) this.error = error instanceof Error ? error.message : String(error);
+    } finally {
+      if (!this.destroyed && this.scene === scene) {
+        this.loadingProject = false;
+        this.changeDetector.markForCheck();
+      }
+    }
+  }
+
+  private loadBuildings(): void {
+    this.buildings?.dispose();
+    const buildings = this.buildings = new BuildingLots(this.buildingPreviews, undefined, undefined, sprites => {
+      const ordered = orderTilezedBuildingSprites(sprites);
+      if (ordered.cyclic) {
+        buildings.warnings.add('Interlocking building footprints need per-tile compositing; some building overlaps may be inaccurate.');
+      }
+      return ordered.sprites;
+    });
+    if (!this.scene || !this.buildingContext) return;
+    const map = this.scene.map;
+    const scale = map.tileWidth / 64;
+    const lots = this.buildingContext.lots.map(lot => ({
+      lot, scale,
+      x: map.height * map.tileWidth / 2 + (lot.x - lot.y) * map.tileWidth / 2,
+      y: (lot.x + lot.y) * map.tileHeight / 2 - lot.level * 96 * scale,
+    }));
+    this.loadingBuildings = lots.length > 0 && this.buildingContext.files.size > 0;
+    void buildings.load(lots, this.buildingContext.files, () => {
+      if (!this.destroyed && this.buildings === buildings) {
+        this.requestDraw();
+        this.changeDetector.markForCheck();
+      }
+    }).finally(() => {
+      if (!this.destroyed && this.buildings === buildings) {
+        this.loadingBuildings = false;
+        this.changeDetector.markForCheck();
+      }
+    });
   }
 
   private async reloadSheets(): Promise<void> {
@@ -327,6 +413,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
         this.frame = undefined;
         if (this.context && this.scene) {
           drawTilezedScene(this.context, this.scene, this.images, this.camera, this.viewport, this.pixelRatio);
+          drawBuildingSprites(this.context, this.buildings?.sprites ?? [], this.camera, this.viewport);
         }
       });
     });

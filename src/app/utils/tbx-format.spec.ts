@@ -1,4 +1,4 @@
-import { readBuildingFile, writeBuildingFile } from './tbx-format';
+import { readBuildingFile, readBuildingPreviewFile, writeBuildingFile } from './tbx-format';
 import { emptyIndexGrid, readIndexGrid, writeIndexGrid } from './tbx-grid';
 
 import { nativeBuildingXml } from '../testing/native-building.fixture';
@@ -34,6 +34,12 @@ describe('TBX file compatibility', () => {
 
     it('upgrades native version 2 on export', () => {
         expect(roundTrip(nativeBuildingXml.replace('version="3"', 'version="2"')).version).toBe(3);
+    });
+
+    it('reads newer native definitions for previews without enabling lossy editable import', () => {
+        const xml = parse(nativeBuildingXml.replace('version="3"', 'version="4"'));
+        expect(readBuildingPreviewFile(xml).width).toBe(2);
+        expect(() => readBuildingFile(xml)).toThrowError(/Unsupported TBX version/);
     });
 
     it('recovers old web version 0 grids and drops only an empty room border', () => {

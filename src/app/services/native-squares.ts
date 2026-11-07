@@ -25,6 +25,20 @@ interface Square {
 interface ResolvedFurniture { definition: FurnitureTileEntry; layer: string; width: number; height: number; }
 export interface GeneratedBuilding { tiles: SvgTile[]; objects: SvgObject[]; edges?: FurnishingEdge[]; }
 
+export function readBuildingManualTiles(building: Building): SvgTile[] {
+    const tiles: SvgTile[] = [];
+    building.floors.forEach((floor, level) => floor.tileLayers?.forEach(layer => {
+        readIndexGrid(layer.tiles, building.width + 1, building.height + 1).forEach((row, y) => row.forEach((index, x) => {
+            if (!index) return;
+            const source = building.user_tiles[index - 1];
+            if (!source) throw new Error(`Floor ${level} user tile index ${index} is out of range.`);
+            const name = source.tile + '.png';
+            tiles.push({ name, url: name, x, y, layer: layer.layer, level });
+        }));
+    }));
+    return tiles;
+}
+
 export function resolveFurniture(building: Building, object: any): ResolvedFurniture | undefined {
     const furniture = building.furniture[Number(object.FurnitureTiles)];
     if (!furniture) return undefined;
@@ -49,7 +63,7 @@ export function generateBuildingSquares(building: Building, includeStructure = f
     const interned = new Map<string, number>();
     const canonical = building.entries.map((entry, index) => {
         const key = JSON.stringify([entry.category, entry.tiles.map(t => [t.enum, t.tile,
-            (t.offset || '0 0').trim().split(/\s+/).map(Number)]).sort((a, b) => String(a[0]).localeCompare(String(b[0])))]);
+            (t.offset || '0 0').trim().split(/[\s,]+/).map(Number)]).sort((a, b) => String(a[0]).localeCompare(String(b[0])))]);
         if (!interned.has(key)) interned.set(key, index + 1);
         return interned.get(key)!;
     });

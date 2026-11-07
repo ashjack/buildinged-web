@@ -43,6 +43,16 @@ async function fixture(exclude = true): Promise<string> {
 }
 
 describe('TileZed TMX terrain', () => {
+  it('reads visible native lot references in tile coordinates and preserves their level', async () => {
+    const xml = (await fixture()).replace('<objectgroup name="0_Lots"/>', `<objectgroup name="2_Lots">
+      <object name="lot" type="../Buildings/house.tbx" x="64" y="96" width="128" height="160"/>
+      <object name="lot" type="hidden.tbx" visible="0" x="0" y="0"/>
+    </objectgroup>`);
+    const map = await readTilezedMap(xml);
+    expect(map.lots).toEqual([{ map: '../Buildings/house.tbx', x: 2, y: 3, width: 4, height: 5, level: 2 }]);
+    expect(map.warnings).not.toContain('Objects, lots, image layers, and layer groups are not shown in this viewer.');
+  });
+
   it('decodes compressed layers and BMP palettes and applies ground and conditional vegetation', async () => {
     const map = await readTilezedMap(await fixture());
     const scene = generateTilezedScene(map);

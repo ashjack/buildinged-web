@@ -1,0 +1,150 @@
+import { TestBed } from '@angular/core/testing';
+import { TilezedAssetsService } from './tilezed-assets.service';
+import { BuildingPreviewService } from './building-preview.service';
+import { BuildingLots } from './building-lots';
+import { TilezedStorageService } from './tilezed-storage.service';
+
+const xml = `<building version="3" width="1" height="1">
+  <tile_entry category="floors"><tile enum="Floor" tile="floor_01_000"/></tile_entry>
+  <room Name="Room" Floor="1"/>
+  <floor><rooms>1</rooms></floor>
+</building>`;
+
+describe('Background building previews', () => {
+  let service: BuildingPreviewService;
+  let assets: jasmine.SpyObj<TilezedAssetsService>;
+  let storage: jasmine.SpyObj<TilezedStorageService>;
+
+  beforeEach(() => {
+    assets = jasmine.createSpyObj('TilezedAssetsService', ['load', 'configurationKey']);
+    assets.configurationKey.and.returnValue('test');
+    storage = jasmine.createSpyObj('TilezedStorageService', ['buildingPreview', 'rememberBuildingPreview']);
+    storage.buildingPreview.and.resolveTo(undefined);
+    storage.rememberBuildingPreview.and.resolveTo();
+    TestBed.configureTestingModule({ providers: [
+      { provide: TilezedAssetsService, useValue: assets }, { provide: TilezedStorageService, useValue: storage },
+    ] });
+    service = TestBed.inject(BuildingPreviewService);
+  });
+
+  it('generates a preview in a worker and caches repeated buildings without reloading sheets', async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512; canvas.height = 128;
+    canvas.getContext('2d')!.fillRect(0, 0, 64, 128);
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/png'));
+    assets.load.and.resolveTo({ sheets: new Map([[1, blob]]), warnings: [], errors: new Map() });
+    const file = new File([xml], 'house.tbx');
+    const [first, second] = await Promise.all([service.preview(file), service.preview(file)]);
+    expect(second).toBe(first);
+    expect(first.warnings).toEqual([]);
+    expect(first.bounds).toEqual({ left: -32, right: 32, top: -96, bottom: 32 });
+    expect(assets.load).toHaveBeenCalledTimes(1);
+    expect(storage.rememberBuildingPreview).toHaveBeenCalledTimes(1);
+    const lots = new BuildingLots(service);
+    const lot = { x: 0, y: 0, width: 1, height: 1, level: 0, map: 'house.tbx' };
+    await lots.load([{ lot, x: 0, y: 0, scale: 1 }, { lot, x: 100, y: 0, scale: 1 }],
+      new Map([['house.tbx', file]]), () => undefined);
+    expect(lots.loaded).toBe(2);
+    expect(lots.sprites[0].bitmap).toBe(lots.sprites[1].bitmap);
+    lots.dispose();
+    expect(lots.sprites.length).toBe(0);
+  });
+
+  it('stores fixed-width thumbnails and caches previews whose only gaps are missing tilepack sheets', async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512; canvas.height = 128;
+    canvas.getContext('2d')!.fillRect(0, 0, 64, 128);
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/png'));
+    const wide = `<building version="3" width="8" height="1">
+  <tile_entry category="floors"><tile enum="Floor" tile="floor_01_000"/></tile_entry>
+  <tile_entry category="floors"><tile enum="Floor" tile="modded_floor_01_0"/></tile_entry>
+  <room Name="Room" Floor="1"/>
+  <room Name="Modded" Floor="2"/>
+  <floor><rooms>1,1,1,1,1,1,1,2</rooms></floor>
+</building>`;
+    assets.load.and.callFake(async sheets => ({
+      sheets: new Map(sheets.filter(sheet => sheet.name === 'floor_01').map(sheet => [sheet.firstGid, blob])),
+      errors: new Map(sheets.filter(sheet => sheet.name !== 'floor_01')
+        .map(sheet => [sheet.firstGid, `${sheet.name}: sheet not found in configured tilepacks`])),
+      warnings: [],
+    }));
+    const preview = await service.preview(new File([wide], 'wide.tbx'), 0, 128);
+    expect(preview.width).toBe(128);
+    expect(preview.warnings.some(warning => warning.endsWith('sheet not found in configured tilepacks'))).toBeTrue();
+    expect(storage.rememberBuildingPreview).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(storage.rememberBuildingPreview.calls.mostRecent().args[0])[3]).toBe(128);
+  });
+
+  it('renders a manual-only roof on an upper-floor border through the worker', async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512; canvas.height = 128;
+    const context = canvas.getContext('2d')!;
+    context.fillStyle = '#00ff00';
+    context.fillRect(0, 0, 64, 128);
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/png'));
+    assets.load.and.callFake(async sheets => ({
+      sheets: new Map(sheets.map(sheet => [sheet.firstGid, blob])), warnings: [], errors: new Map(),
+    }));
+    const manual = `<building version="3" width="1" height="1">
+      <user_tiles><tile tile="manual_roof_01_0"/></user_tiles>
+      <floor><rooms>0</rooms></floor>
+      <floor><rooms>0</rooms><tiles layer="Roof">0,0,0,1</tiles></floor>
+    </building>`;
+    const preview = await service.preview(new File([manual], 'manual-roof.tbx'), 1);
+    expect(assets.load.calls.mostRecent().args[0].map(sheet => sheet.name)).toEqual(['manual_roof_01']);
+    expect(preview.bounds).toEqual({ left: -32, right: 32, top: -160, bottom: -32 });
+    expect(preview.squares).toEqual({ minX: 1, minY: 1, maxX: 1, maxY: 1 });
+    expect(preview.warnings).toEqual([]);
+    const image = await createImageBitmap(preview.blob);
+    try {
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0);
+      expect([...context.getImageData(32, 64, 1, 1).data]).toEqual([0, 255, 0, 255]);
+    } finally { image.close(); }
+    expect(JSON.parse(storage.rememberBuildingPreview.calls.mostRecent().args[0])[0]).toBe('building-preview-v5');
+  });
+
+  it('replaces generated tiles with manual tiles instead of drawing both', async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512; canvas.height = 128;
+    const context = canvas.getContext('2d')!;
+    context.fillStyle = 'rgba(255, 0, 0, 0.5)';
+    context.fillRect(0, 0, 64, 128);
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/png'));
+    assets.load.and.callFake(async sheets => ({
+      sheets: new Map(sheets.map(sheet => [sheet.firstGid, blob])), warnings: [], errors: new Map(),
+    }));
+    const manual = xml.replace('<floor>', '<user_tiles><tile tile="manual_floor_01_0"/></user_tiles><floor>')
+      .replace('</floor>', '<tiles layer="Floor">1,0,0,0</tiles></floor>');
+    const preview = await service.preview(new File([manual], 'manual-floor.tbx'));
+    expect(assets.load.calls.mostRecent().args[0].map(sheet => sheet.name)).toEqual(['manual_floor_01']);
+    const image = await createImageBitmap(preview.blob);
+    try {
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0);
+      expect([...context.getImageData(32, 64, 1, 1).data]).toEqual([255, 0, 0, 128]);
+    } finally { image.close(); }
+  });
+
+  it('reuses a persistent thumbnail without generating geometry or requesting sheets', async () => {
+    storage.buildingPreview.and.resolveTo({ blob: new Blob(), width: 1, height: 1, squares: { minX: 0, minY: 0, maxX: 1, maxY: 1 },
+      bounds: { left: 0, right: 1, top: 0, bottom: 1 }, warnings: [] });
+    await service.preview(new File([xml], 'house.tbx'));
+    expect(assets.load).not.toHaveBeenCalled();
+  });
+
+  it('rejects oversized buildings before generating squares', async () => {
+    await expectAsync(service.preview(new File([xml.replace('width="1"', 'width="100000"')], 'huge.tbx')))
+      .toBeRejectedWithError(/dimensions/);
+    expect(assets.load).not.toHaveBeenCalled();
+  });
+
+  it('reports unavailable building files and continues loading other lots', async () => {
+    const lots = new BuildingLots(service);
+    await lots.load([{ lot: { x: 0, y: 0, width: 1, height: 1, level: 0, map: 'missing.tbx' },
+      x: 0, y: 0, scale: 1 }], new Map(), () => undefined);
+    expect(lots.loaded).toBe(0);
+    expect([...lots.warnings].join(' ')).toContain('missing.tbx');
+    lots.dispose();
+  });
+});

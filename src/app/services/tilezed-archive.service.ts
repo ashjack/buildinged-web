@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import type { Entry } from '@zip.js/zip.js';
+import type { Entry, ZipReader } from '@zip.js/zip.js';
 import { tilezedSheetName } from '../utils/tilezed-sheets';
 
 export interface TilezedArchiveSheets {
@@ -8,6 +8,13 @@ export interface TilezedArchiveSheets {
 }
 
 const MAX_SHEET_BYTES = 64 * 1024 * 1024;
+const INDEX_LIFETIME_MS = 5 * 60 * 1000;
+
+interface TilepackIndex {
+  reader: ZipReader<string>;
+  sheets: Map<string, Entry>;
+  created: number;
+}
 
 function entryPriority(path: string): number {
   const parts = path.replace(/\\/g, '/').split('/');
@@ -19,6 +26,8 @@ function entryPriority(path: string): number {
 
 @Injectable({ providedIn: 'root' })
 export class TilezedArchiveService {
+  private readonly indexes = new Map<string, Promise<TilepackIndex>>();
+
   async load(url: string, names: readonly string[]): Promise<TilezedArchiveSheets> {
     const wanted = new Set(names.map(tilezedSheetName));
     const sheets = new Map<string, Blob>();
@@ -92,23 +101,49 @@ export class TilezedArchiveService {
       }
     }
 
-    const reader = new zip.ZipReader(new RangeReader(url));
-    try {
-      const entries = await reader.getEntries();
-      const selected = new Map<string, { entry: Entry; priority: number }>();
-      for (const entry of entries) {
-        if (entry.directory || !/\.png$/i.test(entry.filename)) continue;
-        const name = tilezedSheetName(entry.filename);
-        const priority = entryPriority(entry.filename);
-        if (priority < 0 || !wanted.has(name)) continue;
-        const previous = selected.get(name);
-        if (!previous || priority > previous.priority ||
-            (priority === previous.priority && entry.filename.localeCompare(previous.entry.filename) < 0)) {
-          selected.set(name, { entry, priority });
+    const indexKey = url;
+    let request = this.indexes.get(indexKey);
+    if (request && Date.now() - (await request).created > INDEX_LIFETIME_MS) {
+      const expired = await request;
+      await expired.reader.close();
+      this.indexes.delete(indexKey);
+      request = undefined;
+    }
+    if (!request) {
+      request = (async () => {
+        const reader = new zip.ZipReader(new RangeReader(url));
+        try {
+          const selected = new Map<string, { entry: Entry; priority: number }>();
+          for (const entry of await reader.getEntries()) {
+            if (entry.directory || !/\.png$/i.test(entry.filename)) continue;
+            const name = tilezedSheetName(entry.filename);
+            const priority = entryPriority(entry.filename);
+            if (priority < 0) continue;
+            const previous = selected.get(name);
+            if (!previous || priority > previous.priority ||
+                (priority === previous.priority && entry.filename.localeCompare(previous.entry.filename) < 0)) {
+              selected.set(name, { entry, priority });
+            }
+          }
+          return { reader, sheets: new Map([...selected].map(([name, value]) => [name, value.entry])), created: Date.now() };
+        }
+        catch (error) { await reader.close(); throw error; }
+      })();
+      this.indexes.set(indexKey, request);
+      if (this.indexes.size > 3) {
+        const oldest = this.indexes.keys().next().value;
+        if (oldest !== undefined) {
+          const expired = this.indexes.get(oldest)!;
+          this.indexes.delete(oldest);
+          void expired.then(value => value.reader.close()).catch(error => console.warn('Could not release tilepack index:', error));
         }
       }
-
-      for (const [name, { entry }] of selected) {
+    }
+    try {
+      const index = await request;
+      for (const name of wanted) {
+        const entry = index.sheets.get(name);
+        if (!entry) continue;
         try {
           if (!Number.isSafeInteger(entry.compressedSize) || !Number.isSafeInteger(entry.uncompressedSize) ||
               entry.compressedSize < 0 || entry.uncompressedSize < 0 ||
@@ -137,9 +172,15 @@ export class TilezedArchiveService {
           errors.set(name, error instanceof Error ? error.message : String(error));
         }
       }
+      if (errors.size && this.indexes.get(indexKey) === request) {
+        this.indexes.delete(indexKey);
+        await index.reader.close();
+      }
       return { sheets, errors };
-    } finally {
-      await reader.close();
+    } catch (error) {
+      if (this.indexes.get(indexKey) === request) this.indexes.delete(indexKey);
+      await request.then(value => value.reader.close(), () => undefined);
+      throw error;
     }
   }
 }

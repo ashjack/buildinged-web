@@ -4,6 +4,7 @@
       <a class="brand" routerLink="/">BuildingEd</a>
       <span class="divider" aria-hidden="true">/</span>
       <strong>TileZed viewer</strong>
+      <a class="link" routerLink="/worlded">WorldEd</a>
       <a class="link home" routerLink="/">Back to buildings</a>
     </div>
   </header>
@@ -13,6 +14,10 @@
       {{loadingMap ? 'Opening…' : 'Open .tmx'}}
     </button>
     <input #mapInput type="file" accept=".tmx" hidden (change)="onMapSelected($event)">
+    <button class="button" type="button" (click)="projectInput.click()" [disabled]="!scene || loadingMap || loadingProject">
+      {{loadingProject ? 'Loading project...' : 'Choose project folder'}}
+    </button>
+    <input #projectInput type="file" webkitdirectory multiple hidden (change)="onProjectSelected($event)">
     <button class="button" type="button" (click)="tilesInput.click()">Use local tiles (optional)</button>
     <input #tilesInput type="file" accept=".png,image/png" webkitdirectory multiple hidden (change)="onTilesSelected($event)">
     <span class="toolbar-divider" aria-hidden="true"></span>
@@ -27,6 +32,11 @@
     <p *ngIf="error" class="message error" role="alert">{{error}}</p>
     <p *ngIf="storageWarning" class="message warning" role="alert">{{storageWarning}}</p>
     <p *ngIf="loadingSheets" class="message" role="status">Loading tilesheets from your tilepacks…</p>
+    <p *ngIf="loadingBuildings" class="message" role="status">Rendering buildings in the background: {{buildings?.loaded}}</p>
+    <details *ngIf="buildings?.warnings?.size" class="message warning">
+      <summary>Building warnings ({{buildings?.warnings?.size}})</summary>
+      <ul><li *ngFor="let warning of buildings?.warnings">{{warning}}</li></ul>
+    </details>
     <div *ngIf="tileWarnings.length" class="message warning" role="alert">
       <ul><li *ngFor="let warning of tileWarnings">{{warning}}</li></ul>
     </div>

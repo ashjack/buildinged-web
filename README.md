@@ -23,10 +23,76 @@ The last successfully opened TMX is saved as a browser-local copy and reopened
 when returning to TileZed. Select the file again to pick up changes made outside
 the viewer. Clearing browser site data removes the saved map and cached tiles.
 The map and any selected local sheets are not uploaded. Missing or incompatible
-sheets are reported in the viewer.
-Objects/lots, image layers, additional levels, flipped tiles, and external TSX
-tilesets are not supported in this initial viewer; unsupported content is
+sheets are reported in the viewer. Older saved maps are upgraded when reopened;
+if the original file is no longer available, select an available copy.
+TBX building lots are drawn as cached, roof-inclusive images over the terrain.
+For standalone TMX lots, choose the project folder containing the map and its
+referenced buildings. Cells opened from WorldEd receive their PZW lot placements
+automatically, even when the exported TMX lot layer is empty. The last TMX
+snapshot includes these placements and their referenced building files.
+Non-lot objects, image layers, additional terrain levels, flipped tiles, and
+external TSX tilesets are not supported in this initial viewer; unsupported content is
 reported rather than silently presented as complete.
+
+## WorldEd world viewer
+
+Open **WorldEd** from the homepage and choose a `.pzw` world, then choose its
+project folder so the browser can resolve the referenced terrain images and
+cell `.tmx` files. If references leave that folder using `..`, choose a parent
+folder containing the world and those files. Files are read locally, not
+uploaded. BuildingEd's existing tiles and tilepacks are used when a cell is
+opened in TileZed; there is no need to select a tiles folder.
+
+The read-only overview displays terrain images in an isometric cell grid and
+shows TBX building lots with walls, furniture and roofs. Choose the project
+folder again to add building files to a previously saved terrain-only snapshot.
+Unavailable lots remain footprints and are reported in the warnings.
+Cell maps may contain changes not reflected in the terrain images.
+Click a cell, then choose **Open terrain in
+TileZed** to inspect its map. Drag to pan, use the mouse wheel or zoom buttons,
+and choose **Fit world** to return to the overview. On the focused canvas, Enter
+selects or opens a cell, and Shift+arrow keys change the selected cell.
+World objects and zones, road objects, linked worlds and
+in-game map features are not rendered in this initial overview.
+
+The last world and referenced terrain images, cell maps and buildings are saved as
+browser-local copies, up to 64 MiB in total. The viewer warns if some files
+cannot be saved. Re-select the `.pzw` and project folder to pick up external
+changes; clearing browser site data removes the saved copies. Older saved worlds
+are upgraded when reopened; if their source files are unavailable, select the
+world and project folder again.
+
+Building geometry is generated in a Web Worker using the existing BuildingEd
+square/roof projection. Like desktop WorldEd's lot map images, each building is
+composited with its manually placed TBX tile layers overriding generated tiles
+on the same square, layer and level, then
+rendered once to a cached image (WorldEd stores fixed-width 256 px thumbnails;
+TileZed uses full-resolution images), repeated lots share it, and pan/zoom frames
+only draw visible images, not their individual tiles. WorldEd draws lots in level
+order over the terrain. TileZed orders buildings back-to-front within each base
+level, approximating desktop TileZed's square-by-square diagonal drawing order.
+It uses the squares each building actually draws, rather than file order, lot
+rectangles or image bounds, so neighbours sharing a party-wall line order
+correctly. Only buildings whose images overlap are constrained, and the order is
+computed as lots load, not during pan/zoom. Interlocking footprints
+that require per-tile compositing produce a warning. Desktop TileZed also draws
+every lot's level 0 before any lot's level 1; whole-building images cannot
+interleave floors this way.
+PNG previews are cached by
+file contents, width and tilepack configuration, with a 256 MiB LRU limit so a
+whole world's thumbnails stay cached between visits. Previews whose only gaps
+are sheets missing from the configured tilepacks are cached too; transient
+failures are retried. Each viewer also caps decoded preview memory at 96 MiB.
+Tilepack directory
+indexes are reused for five minutes (at most three packs), avoiding repeated ZIP
+directory scans when different buildings request different sheets. Oversized or
+unsupported buildings and missing tilesheets are reported explicitly. The
+initial building preview supports TBX v2-v7 (room ceiling tiles are not drawn),
+not TMX lot submaps, and does not
+perform desktop TileZed's per-tile lot compositing, so terrain objects in front
+of a building are drawn behind it.
+Restart an already-running development server after this update so Angular
+picks up the Web Worker build configuration.
 
 ## Google sign-in and project workspaces
 

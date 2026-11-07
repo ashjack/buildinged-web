@@ -5,6 +5,7 @@
       <a class="brand" routerLink="/">BuildingEd</a>
       <nav aria-label="Main navigation">
         <a class="link" routerLink="/tilezed">TileZed</a>
+        <a class="link" routerLink="/worlded">WorldEd</a>
         <button class="link" (click)="openDialog('docs')">Docs</button>
         <a class="link" href="https://theindiestone.com/forums/index.php?/forum/64-mapping/" target="_blank" rel="noopener noreferrer">Community</a>
         <button class="link" *ngIf="(openBuilding$ | async) || hasStandaloneRecovery" (click)="resumeEditor()">Resume editor</button>

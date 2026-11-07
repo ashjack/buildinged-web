@@ -1,0 +1,21 @@
+<aside class="inspector" aria-label="World cell details">
+  <ng-container *ngIf="cell as selected; else selectHint">
+    <h2>Cell {{selected.x}}, {{selected.y}}</h2>
+    <dl>
+      <dt>Cell map</dt><dd>{{selected.map || 'No map assigned'}}</dd>
+      <dt>Building lots</dt><dd>{{selected.lots.length}}</dd>
+      <dt>Objects and zones</dt><dd>{{selected.objectCount}}</dd>
+    </dl>
+    <button class="button primary" type="button" (click)="openCell.emit()"
+            [disabled]="!selected.map || !mapAvailable || busy">Open terrain in TileZed</button>
+    <p *ngIf="selected.map && !mapAvailable" class="hint">
+      The cell map is unavailable or not a .tmx file. Choose the project folder containing it.
+    </p>
+  </ng-container>
+  <ng-template #selectHint>
+    <h2>World overview</h2>
+    <p>Click a cell to see its map and open its terrain in TileZed.</p>
+    <p>Terrain colors come from the project images; cell maps may contain additional changes.</p>
+    <p>{{lotCount}} building lots. Available buildings are drawn as cached images; unavailable lots remain footprints.</p>
+  </ng-template>
+</aside>

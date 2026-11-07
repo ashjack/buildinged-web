@@ -34,6 +34,13 @@ export class TilezedAssetsService {
     private readonly archives: TilezedArchiveService,
   ) { }
 
+  configurationKey(): string {
+    const versions = Object.keys(localStorage).filter(key => key.startsWith('tilepack-version:')).sort()
+      .map(key => [key, localStorage.getItem(key), localStorage.getItem(key.slice('tilepack-version:'.length))]);
+    return JSON.stringify([versions, this.tileService.tilepacks.map(pack =>
+      [pack.name, pack.url, pack.enabled, pack.version])]);
+  }
+
   async load(tilesets: readonly TilezedTileset[]): Promise<TilezedAssets> {
     const sheets = new Map<number, Blob>();
     const errors = new Map<number, string>();
