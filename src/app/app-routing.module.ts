@@ -22,6 +22,7 @@ const routes: Routes = [
   { path: 'editor', component: EditorComponent, canDeactivate: [EditorGuard] },
   { path: 'tilezed', loadChildren: () => import('./components/tilezed-viewer/tilezed-viewer.module').then(module => module.TilezedViewerModule) },
   { path: 'worlded', loadChildren: () => import('./components/worlded-viewer/worlded-viewer.module').then(module => module.WorldedViewerModule) },
+  { path: 'settings', loadChildren: () => import('./components/settings/settings.module').then(module => module.SettingsModule) },
   { path: '**', redirectTo: '' }
 ];
 

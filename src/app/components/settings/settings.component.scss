@@ -1,0 +1,11 @@
+@import '../../styles/page';
+
+.page { min-height: 100vh; background: $bg; color: $text; font: 400 14px/1.5 'Inter', system-ui, sans-serif; color-scheme: dark; }
+.bar strong { font-size: 13px; font-weight: 500; }
+.divider { color: $line-strong; }
+.home { margin-left: auto; }
+.section { border-top: 0; }
+.section-head { align-items: flex-start; }
+.section-head p { max-width: 640px; }
+.button.danger { background: #c4372b; border-color: #c4372b; color: #fff; }
+.button.danger:hover:not(:disabled) { background: #d9473a; border-color: #d9473a; }

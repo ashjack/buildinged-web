@@ -17,7 +17,7 @@ describe('Background building previews', () => {
 
   beforeEach(() => {
     assets = jasmine.createSpyObj('TilezedAssetsService', ['load', 'configurationKey']);
-    assets.configurationKey.and.returnValue('test');
+    assets.configurationKey.and.resolveTo('test');
     storage = jasmine.createSpyObj('TilezedStorageService', ['buildingPreview', 'rememberBuildingPreview']);
     storage.buildingPreview.and.resolveTo(undefined);
     storage.rememberBuildingPreview.and.resolveTo();
@@ -145,6 +145,55 @@ describe('Background building previews', () => {
       x: 0, y: 0, scale: 1 }], new Map(), () => undefined);
     expect(lots.loaded).toBe(0);
     expect([...lots.warnings].join(' ')).toContain('missing.tbx');
+    lots.dispose();
+  });
+
+  it('loads and decodes each shared sheet once while rendering several buildings', async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512; canvas.height = 128;
+    canvas.getContext('2d')!.fillRect(0, 0, 64, 128);
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/png'));
+    assets.load.and.callFake(async sheets => ({
+      sheets: new Map(sheets.map(sheet => [sheet.firstGid, blob])), warnings: [], errors: new Map(),
+    }));
+    const decode = spyOn(window, 'createImageBitmap').and.callThrough();
+    const previews = await Promise.all(['a', 'b', 'c'].map(name =>
+      service.preview(new File([xml.replace('width="1"', `width="1" name="${name}"`)], `${name}.tbx`))));
+    expect(previews.every(preview => !preview.warnings.length)).toBeTrue();
+    expect(assets.load).toHaveBeenCalledTimes(1);
+    expect(decode.calls.all().filter(call => call.args[0] === blob).length).toBe(1);
+  });
+});
+
+describe('Building lot loading', () => {
+  it('requests later previews early but adds sprites in lot order', async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/png'));
+    const preview = (file: File) => ({ blob, width: 1, height: 1, warnings: [],
+      bounds: { left: 0, right: 1, top: 0, bottom: 1 }, squares: { minX: 0, minY: 0, maxX: 0, maxY: 0 }, name: file.name });
+    const resolvers: (() => void)[] = [];
+    const requested: string[] = [];
+    const delayed = { preview: (file: File) => new Promise(resolve => {
+      requested.push(file.name);
+      resolvers.push(() => resolve(preview(file)));
+    }) } as unknown as BuildingPreviewService;
+    const immediate = { preview: async (file: File) => preview(file) } as unknown as BuildingPreviewService;
+    const files = new Map(['a', 'b', 'c'].map(name => [`${name}.tbx`, new File([xml], `${name}.tbx`)]));
+    const placements = [['a', 1, 10], ['b', 0, 20], ['c', 0, 30]].map(([name, level, x]) => ({
+      lot: { x: Number(x), y: 0, width: 1, height: 1, level: Number(level), map: `${name}.tbx` }, x: Number(x), y: 0, scale: 1,
+    }));
+    const expected = new BuildingLots(immediate);
+    await expected.load(placements, files, () => undefined);
+    const lots = new BuildingLots(delayed);
+    const loading = lots.load(placements, files, () => undefined);
+    await new Promise(resolve => setTimeout(resolve));
+    expect(requested).toEqual(['b.tbx', 'c.tbx', 'a.tbx']);
+    resolvers.slice().reverse().forEach(resolve => resolve());
+    await loading;
+    expect(lots.sprites.map(sprite => [sprite.level, sprite.bounds]))
+      .toEqual(expected.sprites.map(sprite => [sprite.level, sprite.bounds]));
+    expected.dispose();
     lots.dispose();
   });
 });

@@ -79,12 +79,20 @@ that require per-tile compositing produce a warning. Desktop TileZed also draws
 every lot's level 0 before any lot's level 1; whole-building images cannot
 interleave floors this way.
 PNG previews are cached by
-file contents, width and tilepack configuration, with a 256 MiB LRU limit so a
+file contents, width and tilepack configuration (the published pack list and
+saved enabled flags, so the cache is shared whether or not the BuildingEd
+editor was opened first), with a 256 MiB LRU limit so a
 whole world's thumbnails stay cached between visits. Previews whose only gaps
-are sheets missing from the configured tilepacks are cached too; transient
-failures are retried. Each viewer also caps decoded preview memory at 96 MiB.
+are sheets missing from the configured tilepacks are cached too (a published
+pack that returns 403/404/410 counts as supplying no sheets, and is not
+re-requested for a minute); transient failures are retried. Each viewer also caps decoded preview memory at 96 MiB.
+Up to three previews render concurrently (lots are still placed in order), and
+they share tilesheet lookups, the tilepack manifest and decoded tilesheets; the
+decoded sheets (also capped at 96 MiB) are released after 10 seconds idle.
+While buildings stream in, redraws are throttled and TileZed reuses a cached
+terrain layer, so only building images are redrawn.
 Tilepack directory
-indexes are reused for five minutes (at most three packs), avoiding repeated ZIP
+indexes are reused for five minutes (at most eight packs), avoiding repeated ZIP
 directory scans when different buildings request different sheets. Oversized or
 unsupported buildings and missing tilesheets are reported explicitly. The
 initial building preview supports TBX v2-v7 (room ceiling tiles are not drawn),
@@ -93,6 +101,17 @@ perform desktop TileZed's per-tile lot compositing, so terrain objects in front
 of a building are drawn behind it.
 Restart an already-running development server after this update so Angular
 picks up the Web Worker build configuration.
+
+## Settings and saved data
+
+The Settings page (`/settings`, linked from the homepage) has a **Clear data**
+button. After confirmation it empties the site's cache databases (`tilesets`:
+downloaded tilesheets and their metadata; `tilezed-viewer`: TileZed sheets,
+building previews and the saved map copy; `worlded-viewer`: the saved world
+copy), removes the `tilepack-version:*` download markers, then reloads the page.
+It keeps building drafts (`buildingXml`, `buildinged:draft:*`), the Firebase
+sign-in, tilepack enabled choices, the room tile library and UI preferences.
+It is disabled while a tilepack download is running.
 
 ## Google sign-in and project workspaces
 

@@ -1,0 +1,30 @@
+<div class="page">
+  <header class="topbar">
+    <div class="shell bar">
+      <a class="brand" routerLink="/">BuildingEd</a>
+      <span class="divider" aria-hidden="true">/</span>
+      <strong>Settings</strong>
+      <a class="link home" routerLink="/">Back to buildings</a>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2>Saved data</h2>
+          <p class="muted">
+            Removes downloaded tiles and their metadata, TileZed and WorldEd caches, and the viewers' saved map and
+            world copies. Your building drafts, sign-in, tilepack choices and preferences are kept.
+          </p>
+        </div>
+        <button class="button danger" type="button" (click)="clearData()"
+                [disabled]="clearing || siteData.downloading">
+          {{clearing ? 'Clearing...' : 'Clear data'}}
+        </button>
+      </div>
+      <p *ngIf="siteData.downloading && !clearing" class="muted">Tiles are downloading; wait for the download to finish.</p>
+      <p *ngIf="error" class="notice error" role="alert">{{error}}</p>
+    </section>
+  </main>
+</div>

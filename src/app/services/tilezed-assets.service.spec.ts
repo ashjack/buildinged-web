@@ -113,6 +113,19 @@ describe('TileZed tile sources', () => {
     expect(result.errors.size).toBe(0);
   });
 
+  it('shares one manifest request between a burst of sheet lookups', async () => {
+    archives.load.and.resolveTo({ sheets: new Map(), errors: new Map() });
+    const loading = [service.load([sheet('one_01', 1)]), service.load([sheet('two_01', 1)])];
+    await settle();
+    http.expectOne(TILEPACK_MANIFEST_URL).flush([{ Name: 'Vanilla', Url: vanillaUrl }]);
+    const results = await Promise.all(loading);
+    expect(results.every(result => result.errors.get(1)?.endsWith('sheet not found in configured tilepacks'))).toBeTrue();
+
+    await service.load([sheet('three_01', 1)]);
+    http.expectNone(TILEPACK_MANIFEST_URL);
+    expect(archives.load).toHaveBeenCalledTimes(3);
+  });
+
   it('reuses BuildingEd tiles while fetching only the missing 1x sheet', async () => {
     getBuildingEdSheet.and.callFake(async (name: string) => name === 'grass_01' ? { name, blob: png } : undefined);
     const vegetation = new Blob(['vegetation'], { type: 'image/png' });
@@ -128,6 +141,23 @@ describe('TileZed tile sources', () => {
     expect(archives.load).toHaveBeenCalledOnceWith(vanillaUrl, ['vegetation_01']);
     expect(storage.rememberSheet).toHaveBeenCalledTimes(1);
     expect(result.errors.size).toBe(0);
+  });
+
+  it('keys the configuration on saved settings, not on whether the editor loaded its pack list', async () => {
+    const before = service.configurationKey();
+    await settle();
+    http.expectOne(TILEPACK_MANIFEST_URL).flush([
+      { Name: 'Vanilla', Url: vanillaUrl, Version: '2' },
+      { Name: 'TilezedTestPack', Url: customUrl },
+    ]);
+    const key = await before;
+
+    tileService.tilepacks.push({ name: 'Vanilla', url: vanillaUrl, version: '2', enabled: true } as never,
+      { name: 'TilezedTestPack', url: customUrl, enabled: true } as never);
+    expect(await service.configurationKey()).toBe(key);
+
+    localStorage.setItem('TilezedTestPack', '1');
+    expect(await service.configurationKey()).not.toBe(key);
   });
 
   it('uses enabled JSON packs after checking the base pack', async () => {
@@ -164,6 +194,44 @@ describe('TileZed tile sources', () => {
     expect(result.sheets.size).toBe(0);
     expect(result.errors.get(1)).toContain('Offline');
     expect(console.warn).toHaveBeenCalled();
+  });
+
+  it('treats a published pack that does not exist as missing sheets and does not refetch it per building', async () => {
+    spyOn(console, 'warn');
+    localStorage.setItem('TilezedTestPack', '1');
+    const loading = service.load([sheet('custom_01', 3)]);
+    await settle();
+    http.expectOne(TILEPACK_MANIFEST_URL).flush([
+      { Name: 'Vanilla', Url: vanillaUrl },
+      { Name: 'TilezedTestPack', Url: customUrl },
+    ]);
+    await settle();
+    http.expectOne(customUrl).flush('Not found', { status: 404, statusText: 'Not Found' });
+
+    const result = await loading;
+    expect(result.errors.get(3)).toContain('TilezedTestPack: HTTP 404');
+    expect(result.errors.get(3)?.endsWith('sheet not found in configured tilepacks')).toBeTrue();
+
+    const again = await service.load([sheet('other_01', 1)]);
+    http.expectNone(customUrl);
+    expect(again.errors.get(1)?.endsWith('sheet not found in configured tilepacks')).toBeTrue();
+  });
+
+  it('reuses a JSON pack list between buildings', async () => {
+    localStorage.setItem('TilezedTestPack', '1');
+    const first = service.load([sheet('custom_01', 1)]);
+    await settle();
+    http.expectOne(TILEPACK_MANIFEST_URL).flush([
+      { Name: 'Vanilla', Url: vanillaUrl },
+      { Name: 'TilezedTestPack', Url: customUrl },
+    ]);
+    await settle();
+    http.expectOne(customUrl).flush([{ name: 'custom_01', url: 'https://example.test/custom_01.png' }]);
+    await first;
+
+    const second = await service.load([sheet('missing_01', 1)]);
+    http.expectNone(customUrl);
+    expect(second.errors.get(1)?.endsWith('sheet not found in configured tilepacks')).toBeTrue();
   });
 
   it('still renders a downloaded sheet while reporting a cache write failure', async () => {

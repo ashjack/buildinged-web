@@ -1,7 +1,10 @@
-import { BuildingSprite, placeBuildingSprite } from '../utils/building-preview';
+import { BuildingPreview, BuildingSprite, placeBuildingSprite } from '../utils/building-preview';
 import { worldedFileFor } from '../utils/worlded-files';
 import { WorldedLot } from '../utils/worlded-world';
 import { BuildingPreviewService } from './building-preview.service';
+
+const LOOKAHEAD = 6;
+const CHANGE_INTERVAL_MS = 250;
 
 export interface PlacedBuildingLot {
   lot: WorldedLot;
@@ -27,8 +30,23 @@ export class BuildingLots {
 
   async load(lots: readonly PlacedBuildingLot[], files: ReadonlyMap<string, File>, changed: () => void): Promise<void> {
     const ordered = lots.slice().sort((a, b) => a.lot.level - b.lot.level);
-    for (const placement of ordered) {
+    // Previews are requested a few lots ahead so the service can overlap them; results are used in order.
+    const requests = new Map<number, Promise<BuildingPreview>>();
+    const request = (index: number) => {
+      const placement = ordered[index];
+      if (!placement || requests.has(index) || this.disposed) return;
+      const file = worldedFileFor(files, placement.lot.map);
+      const firstLevel = Math.max(0, -placement.lot.level);
+      if (!file || this.failures.get(file)?.has(firstLevel)) return;
+      const preview = this.previews.preview(file, firstLevel, this.previewWidth);
+      preview.catch(() => undefined);
+      requests.set(index, preview);
+    };
+    let lastChanged = Number.NEGATIVE_INFINITY;
+    for (let index = 0; index < ordered.length; index++) {
+      const placement = ordered[index];
       if (this.disposed) return;
+      for (let ahead = index; ahead < index + LOOKAHEAD; ahead++) request(ahead);
       const file = worldedFileFor(files, placement.lot.map);
       if (!file) {
         this.warnings.add(`Building unavailable: ${placement.lot.map}. Choose the project folder to load it.`);
@@ -37,7 +55,8 @@ export class BuildingLots {
       const firstLevel = Math.max(0, -placement.lot.level);
       if (this.failures.get(file)?.has(firstLevel)) continue;
       try {
-        const preview = await this.previews.preview(file, firstLevel, this.previewWidth);
+        const preview = await (requests.get(index) ?? this.previews.preview(file, firstLevel, this.previewWidth));
+        requests.delete(index);
         if (this.disposed) return;
         preview.warnings.forEach(warning => this.warnings.add(warning));
         const variants = this.images.get(file) ?? new Map<number, ImageBitmap>();
@@ -65,7 +84,11 @@ export class BuildingLots {
         failed.add(firstLevel);
         this.failures.set(file, failed);
       }
-      if (!this.disposed) changed();
+      // Redraws are throttled because each one repaints the whole visible map.
+      if (!this.disposed && performance.now() - lastChanged >= CHANGE_INTERVAL_MS) {
+        lastChanged = performance.now();
+        changed();
+      }
       await new Promise<void>(resolve => setTimeout(resolve, 0));
     }
     if (!this.disposed) changed();

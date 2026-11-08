@@ -10,7 +10,7 @@ import { resolveTilezedProject } from '../../utils/worlded-files';
 import { TilezedStorageService } from '../../services/tilezed-storage.service';
 import { readTilezedMap, TilezedTileset } from '../../utils/tilezed-map';
 import {
-  constrainTilezedCamera, drawTilezedScene, fitTilezedCamera, TilezedCamera, TilezedImage,
+  applyTilezedCamera, constrainTilezedCamera, drawTilezedScene, fitTilezedCamera, TilezedCamera, TilezedImage,
   TilezedViewport, tilezedBounds, zoomTilezedCamera,
 } from '../../utils/tilezed-renderer';
 import { indexTilezedSheets, localTilezedSheet, TilezedSheetIndex, tilezedSheetLayout, tilezedSheetName } from '../../utils/tilezed-sheets';
@@ -51,6 +51,11 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   private resizeObserver?: ResizeObserver;
   private readonly sheetsChanged: Subscription;
   private frame?: number;
+  // Building loads redraw often; terrain is reused while the camera, size, scene and sheets are unchanged.
+  private terrain?: {
+    canvas: HTMLCanvasElement; scene: TilezedScene; images: Map<number, TilezedImage>; camera: TilezedCamera;
+    width: number; height: number; pixelRatio: number;
+  };
   private mapGeneration = 0;
   private sheetGeneration = 0;
   private pointer?: { id: number; x: number; y: number };
@@ -115,6 +120,8 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     this.resizeObserver?.disconnect();
     window.removeEventListener('resize', this.onWindowResize);
     if (this.frame !== undefined) cancelAnimationFrame(this.frame);
+    if (this.terrain) this.terrain.canvas.width = this.terrain.canvas.height = 0;
+    this.terrain = undefined;
     this.releaseImages(this.images);
   }
 
@@ -412,7 +419,24 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
       this.frame = requestAnimationFrame(() => {
         this.frame = undefined;
         if (this.context && this.scene) {
-          drawTilezedScene(this.context, this.scene, this.images, this.camera, this.viewport, this.pixelRatio);
+          const target = this.canvas.nativeElement;
+          let terrain = this.terrain;
+          if (!terrain || terrain.scene !== this.scene || terrain.images !== this.images || terrain.camera !== this.camera ||
+              terrain.width !== target.width || terrain.height !== target.height || terrain.pixelRatio !== this.pixelRatio) {
+            const canvas = terrain?.canvas ?? document.createElement('canvas');
+            canvas.width = target.width;
+            canvas.height = target.height;
+            const context = canvas.getContext('2d');
+            if (!context) return;
+            drawTilezedScene(context, this.scene, this.images, this.camera, this.viewport, this.pixelRatio);
+            terrain = this.terrain = { canvas, scene: this.scene, images: this.images, camera: this.camera,
+              width: target.width, height: target.height, pixelRatio: this.pixelRatio };
+          }
+          this.context.setTransform(1, 0, 0, 1, 0, 0);
+          this.context.globalAlpha = 1;
+          this.context.drawImage(terrain.canvas, 0, 0);
+          this.context.imageSmoothingEnabled = false;
+          applyTilezedCamera(this.context, this.camera, this.viewport, this.pixelRatio);
           drawBuildingSprites(this.context, this.buildings?.sprites ?? [], this.camera, this.viewport);
         }
       });

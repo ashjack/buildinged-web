@@ -55,6 +55,14 @@ interface Sprite {
   height: number;
 }
 
+/** Maps world pixels to canvas pixels for the current camera. */
+export function applyTilezedCamera(context: CanvasRenderingContext2D, camera: TilezedCamera,
+                                   viewport: TilezedViewport, pixelRatio: number): void {
+  context.setTransform(pixelRatio * camera.zoom, 0, 0, pixelRatio * camera.zoom,
+    pixelRatio * (viewport.width / 2 - camera.x * camera.zoom),
+    pixelRatio * (viewport.height / 2 - camera.y * camera.zoom));
+}
+
 /** Draws cells in isometric depth order, clipping traversal to the visible viewport. */
 export function drawTilezedScene(context: CanvasRenderingContext2D, scene: TilezedScene,
                                  images: Map<number, TilezedImage>, camera: TilezedCamera,
@@ -65,9 +73,7 @@ export function drawTilezedScene(context: CanvasRenderingContext2D, scene: Tilez
   context.fillStyle = '#202327';
   context.fillRect(0, 0, viewport.width, viewport.height);
   context.imageSmoothingEnabled = false;
-  context.setTransform(pixelRatio * camera.zoom, 0, 0, pixelRatio * camera.zoom,
-    pixelRatio * (viewport.width / 2 - camera.x * camera.zoom),
-    pixelRatio * (viewport.height / 2 - camera.y * camera.zoom));
+  applyTilezedCamera(context, camera, viewport, pixelRatio);
 
   const halfWidth = map.tileWidth / 2;
   const halfHeight = map.tileHeight / 2;

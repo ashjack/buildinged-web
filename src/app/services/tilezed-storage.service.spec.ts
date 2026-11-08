@@ -106,4 +106,22 @@ describe('TileZed browser storage', () => {
     await storage.rememberBuildingPreview('without-squares', { ...preview, squares: undefined! });
     await expectAsync(storage.buildingPreview('without-squares')).toBeRejectedWithError(/invalid/);
   });
+
+  it('tracks the thumbnail cache size without rescanning it on every write', async () => {
+    const preview = { blob: new Blob(['12345']), width: 1, height: 1, squares: { minX: 0, minY: 0, maxX: 0, maxY: 0 },
+      bounds: { left: 0, right: 1, top: 0, bottom: 1 }, warnings: [] };
+    const table = storage.table('buildingPreviews');
+    await storage.rememberBuildingPreview('one', preview);
+    const scan = spyOn(Object.getPrototypeOf(table), 'orderBy').and.callThrough();
+    await storage.rememberBuildingPreview('one', preview);
+    await storage.rememberBuildingPreview('two', preview);
+    expect(scan).not.toHaveBeenCalled();
+    expect((storage as unknown as { buildingPreviewBytes: number }).buildingPreviewBytes).toBe(10);
+
+    (storage as unknown as { buildingPreviewBytes: number }).buildingPreviewBytes = 256 * 1024 * 1024;
+    await storage.rememberBuildingPreview('three', preview);
+    expect(scan).toHaveBeenCalledTimes(1);
+    expect(await table.count()).toBe(3);
+    expect((storage as unknown as { buildingPreviewBytes: number }).buildingPreviewBytes).toBe(15);
+  });
 });

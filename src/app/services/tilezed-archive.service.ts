@@ -9,6 +9,13 @@ export interface TilezedArchiveSheets {
 
 const MAX_SHEET_BYTES = 64 * 1024 * 1024;
 const INDEX_LIFETIME_MS = 5 * 60 * 1000;
+// Enough for every published ZIP pack, so enabling them all doesn't evict and re-read directories per building.
+const MAX_INDEXES = 8;
+
+/** An HTTP failure, so callers can tell a pack that doesn't exist from a temporary error. */
+export class TilepackHttpError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
 
 interface TilepackIndex {
   reader: ZipReader<string>;
@@ -42,7 +49,7 @@ export class TilezedArchiveService {
 
       override async init(): Promise<void> {
         const response = await fetch(this.source, { method: 'HEAD' });
-        if (!response.ok) throw new Error(`Could not inspect tilepack (HTTP ${response.status}).`);
+        if (!response.ok) throw new TilepackHttpError(`Could not inspect tilepack (HTTP ${response.status}).`, response.status);
         const length = response.headers.get('Content-Length');
         const size = length === null ? NaN : Number(length);
         if (!Number.isSafeInteger(size) || size <= 0 || response.headers.has('Content-Encoding')) {
@@ -130,7 +137,7 @@ export class TilezedArchiveService {
         catch (error) { await reader.close(); throw error; }
       })();
       this.indexes.set(indexKey, request);
-      if (this.indexes.size > 3) {
+      if (this.indexes.size > MAX_INDEXES) {
         const oldest = this.indexes.keys().next().value;
         if (oldest !== undefined) {
           const expired = this.indexes.get(oldest)!;

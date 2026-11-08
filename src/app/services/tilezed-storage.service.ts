@@ -7,6 +7,8 @@ import { BuildingPreview } from '../utils/building-preview';
 
 interface StoredBuildingPreview extends BuildingPreview { key: string; lastUsed: number; }
 
+const MAX_BUILDING_PREVIEW_BYTES = 256 * 1024 * 1024;
+
 interface StoredTilezedMap {
   id: string;
   name: string;
@@ -39,6 +41,7 @@ export class TilezedStorageService extends Dexie {
   private sheets!: Table<CachedTilezedSheet, string>;
   private buildingPreviews!: Table<StoredBuildingPreview, string>;
   private mapWrites: Promise<void> = Promise.resolve();
+  private buildingPreviewBytes?: number;
 
   constructor(@Inject(TILEZED_STORAGE_DATABASE) databaseName: string) {
     super(databaseName);
@@ -60,19 +63,33 @@ export class TilezedStorageService extends Dexie {
   }
 
   async rememberBuildingPreview(key: string, preview: BuildingPreview): Promise<void> {
-    await this.transaction('rw', this.buildingPreviews, async () => {
-      await this.buildingPreviews.put({ ...preview, key, lastUsed: Date.now() });
-      const records = await this.buildingPreviews.orderBy('lastUsed').toArray();
-      let bytes = records.reduce((sum, record) => sum + record.blob.size, 0);
-      const expired: string[] = [];
-      for (const record of records) {
+    try {
+      await this.transaction('rw', this.buildingPreviews, async () => {
+        if (this.buildingPreviewBytes === undefined) {
+          let total = 0;
+          await this.buildingPreviews.each(record => { total += record.blob.size; });
+          this.buildingPreviewBytes = total;
+        }
+        const previous = await this.buildingPreviews.get(key);
+        await this.buildingPreviews.put({ ...preview, key, lastUsed: Date.now() });
+        this.buildingPreviewBytes += preview.blob.size - (previous?.blob.size ?? 0);
         // Large enough for a whole world's thumbnails, so sequential loads don't evict every entry.
-        if (bytes <= 256 * 1024 * 1024) break;
-        bytes -= record.blob.size;
-        expired.push(record.key);
-      }
-      await this.buildingPreviews.bulkDelete(expired);
-    });
+        if (this.buildingPreviewBytes <= MAX_BUILDING_PREVIEW_BYTES) return;
+        const records = await this.buildingPreviews.orderBy('lastUsed').toArray();
+        let bytes = records.reduce((sum, record) => sum + record.blob.size, 0);
+        const expired: string[] = [];
+        for (const record of records) {
+          if (bytes <= MAX_BUILDING_PREVIEW_BYTES) break;
+          bytes -= record.blob.size;
+          expired.push(record.key);
+        }
+        await this.buildingPreviews.bulkDelete(expired);
+        this.buildingPreviewBytes = bytes;
+      });
+    } catch (error) {
+      this.buildingPreviewBytes = undefined;
+      throw error;
+    }
   }
 
   lastMap(): Promise<File | undefined> {
