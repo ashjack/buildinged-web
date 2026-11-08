@@ -166,6 +166,21 @@ describe('TileZed read-only viewer', () => {
     expect([...component.buildings!.warnings].join(' ')).toContain('missing.tbx');
   });
 
+  it('shows and remembers WorldEd cell zones, with toggles saved as preferences', async () => {
+    const file = new File([mapXml], 'cell.tmx');
+    const zones = [{ name: '', group: 'FarmLand', type: 'FarmLand', color: '#bcff7d', level: 0,
+      geometry: 'rectangle' as const, x: 1, y: 1, width: 2, height: 2, points: [] }];
+    const buildings = { lots: [], files: new Map<string, File>(), zones };
+    await component.openMap(file, true, buildings);
+    expect(component.zones).toEqual(zones);
+    expect(component.zoneSummary).toEqual([{ group: 'FarmLand', color: 'rgba(188, 255, 125, 1)', count: 1 }]);
+    expect(storage.rememberMap).toHaveBeenCalledWith(file, buildings);
+    component.setShowZones(false);
+    expect(localStorage.getItem('tilezed:showZones')).toBe('0');
+    component.setShowZones(true);
+    localStorage.removeItem('tilezed:showZones');
+  });
+
   it('orders loaded building sprites back-to-front without changing saved lot order', async () => {
     const preview = TestBed.inject(BuildingPreviewService) as jasmine.SpyObj<BuildingPreviewService>;
     const canvas = document.createElement('canvas');

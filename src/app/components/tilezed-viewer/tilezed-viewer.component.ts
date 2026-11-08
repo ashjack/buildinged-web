@@ -15,6 +15,11 @@ import {
 } from '../../utils/tilezed-renderer';
 import { indexTilezedSheets, localTilezedSheet, TilezedSheetIndex, tilezedSheetLayout, tilezedSheetName } from '../../utils/tilezed-sheets';
 import { generateTilezedScene, TilezedScene } from '../../utils/tilezed-terrain';
+import { drawTilezedOverlays, summarizeZones, TilezedZoneSummary } from '../../utils/tilezed-overlays';
+import { WorldedZone } from '../../utils/worlded-world';
+
+const SHOW_ZONES_KEY = 'tilezed:showZones';
+const SHOW_LOTS_KEY = 'tilezed:showLotOutlines';
 
 @Component({
   selector: 'app-tilezed-viewer',
@@ -39,6 +44,10 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   buildings?: BuildingLots;
   loadingBuildings = false;
   loadingProject = false;
+  zones: WorldedZone[] = [];
+  zoneSummary: TilezedZoneSummary[] = [];
+  showZones = localStorage.getItem(SHOW_ZONES_KEY) !== '0';
+  showLotOutlines = localStorage.getItem(SHOW_LOTS_KEY) !== '0';
   private mapFile?: File;
   private buildingContext?: TilezedBuildingContext;
 
@@ -152,6 +161,9 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
       this.scene = scene;
       this.mapFile = file;
       this.buildingContext = buildings ?? { lots: map.lots ?? [], files: new Map() };
+      // The TMX's own object groups, then the WorldEd cell's zones, kept in level order.
+      this.zones = [...(map.zones ?? []), ...(buildings?.zones ?? [])].sort((a, b) => a.level - b.level);
+      this.zoneSummary = summarizeZones(this.zones);
       this.loadBuildings();
       this.fileName = file.name;
       this.restoredMap = !remember;
@@ -189,8 +201,9 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
 
   private async rememberMap(file: File, scene: TilezedScene): Promise<void> {
     try {
-      if (this.buildingContext?.lots.length) await this.storage.rememberMap(file, this.buildingContext);
-      else await this.storage.rememberMap(file);
+      if (this.buildingContext?.lots.length || this.buildingContext?.zones?.length) {
+        await this.storage.rememberMap(file, this.buildingContext);
+      } else await this.storage.rememberMap(file);
     } catch (error) {
       console.error('Could not remember the TileZed map:', error);
       if (!this.destroyed && this.scene === scene) {
@@ -227,7 +240,8 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     try {
       const project = await resolveTilezedProject(files, mapFile, this.buildingContext.lots);
       if (this.destroyed || this.scene !== scene) return;
-      this.buildingContext = { lots: this.buildingContext.lots, files: project.files };
+      this.buildingContext = { lots: this.buildingContext.lots, files: project.files,
+        ...(this.buildingContext.zones ? { zones: this.buildingContext.zones } : {}) };
       this.loadBuildings();
       project.warnings.forEach(warning => this.buildings?.warnings.add(warning));
       await this.rememberMap(mapFile, scene);
@@ -336,6 +350,18 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     this.requestDraw();
   }
 
+  setShowZones(show: boolean): void {
+    this.showZones = show;
+    localStorage.setItem(SHOW_ZONES_KEY, show ? '1' : '0');
+    this.requestDraw();
+  }
+
+  setShowLotOutlines(show: boolean): void {
+    this.showLotOutlines = show;
+    localStorage.setItem(SHOW_LOTS_KEY, show ? '1' : '0');
+    this.requestDraw();
+  }
+
   zoom(factor: number, x = this.viewport.width / 2, y = this.viewport.height / 2): void {
     if (!this.scene) return;
     this.camera = zoomTilezedCamera(this.camera, tilezedBounds(this.scene.map), this.viewport, factor, x, y);
@@ -438,6 +464,8 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
           this.context.imageSmoothingEnabled = false;
           applyTilezedCamera(this.context, this.camera, this.viewport, this.pixelRatio);
           drawBuildingSprites(this.context, this.buildings?.sprites ?? [], this.camera, this.viewport);
+          drawTilezedOverlays(this.context, this.scene.map, this.buildingContext?.lots ?? [], this.zones,
+            this.camera, this.viewport, { lots: this.showLotOutlines, zones: this.showZones });
         }
       });
     });

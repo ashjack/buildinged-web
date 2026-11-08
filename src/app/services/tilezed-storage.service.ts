@@ -4,6 +4,7 @@ import { copyLocalBlob, LOCAL_FILE_SNAPSHOT_VERSION } from '../utils/local-file-
 import { TilezedBuildingContext } from './tilezed-handoff.service';
 import { worldedFileFor, worldedReferenceKey } from '../utils/worlded-files';
 import { BuildingPreview } from '../utils/building-preview';
+import { WorldedZone } from '../utils/worlded-world';
 
 interface StoredBuildingPreview extends BuildingPreview { key: string; lastUsed: number; }
 
@@ -16,7 +17,11 @@ interface StoredTilezedMap {
   type: string;
   lastModified: number;
   snapshotVersion?: number;
-  buildings?: { lots: TilezedBuildingContext['lots']; files: { path: string; name: string; blob: Blob; type: string; lastModified: number }[] };
+  buildings?: {
+    lots: TilezedBuildingContext['lots'];
+    files: { path: string; name: string; blob: Blob; type: string; lastModified: number }[];
+    zones?: WorldedZone[];
+  };
 }
 
 export interface StoredTilezedSheet {
@@ -138,11 +143,19 @@ export class TilezedStorageService extends Dexie {
       if (!lot || typeof lot.map !== 'string' || [lot.x, lot.y, lot.width, lot.height, lot.level]
         .some(value => !Number.isFinite(value))) throw new Error('A saved building placement is invalid.');
     }
-    return { lots: stored.buildings.lots, files };
+    const zones = stored.buildings.zones;
+    if (zones !== undefined && (!Array.isArray(zones) || zones.some(zone => !zone ||
+        typeof zone.color !== 'string' || typeof zone.geometry !== 'string' || !Array.isArray(zone.points) ||
+        [zone.x, zone.y, zone.width, zone.height, zone.level].some(value => !Number.isFinite(value)) ||
+        zone.points.some(point => !Array.isArray(point) || !point.every(Number.isFinite))))) {
+      throw new Error('The saved zones are invalid.');
+    }
+    return { lots: stored.buildings.lots, files, ...(zones ? { zones } : {}) };
   }
 
   rememberMap(file: File, buildings?: TilezedBuildingContext): Promise<void> {
     const lots = buildings?.lots.map(lot => ({ ...lot }));
+    const zones = buildings?.zones?.map(zone => ({ ...zone, points: zone.points.map(([x, y]) => [x, y] as [number, number]) }));
     const write = this.mapWrites.then(async () => {
       const blob = await copyLocalBlob(file, file.name);
       const files: NonNullable<StoredTilezedMap['buildings']>['files'] = [];
@@ -162,7 +175,7 @@ export class TilezedStorageService extends Dexie {
       }
       await this.maps.put({ id: 'last', name: file.name, blob, type: file.type,
         lastModified: file.lastModified, snapshotVersion: LOCAL_FILE_SNAPSHOT_VERSION,
-        ...(lots ? { buildings: { lots, files } } : {}) });
+        ...(lots ? { buildings: { lots, files, ...(zones?.length ? { zones } : {}) } } : {}) });
     });
     // Keep later writes ordered while returning each failure to its caller.
     this.mapWrites = write.catch(() => undefined);

@@ -79,7 +79,9 @@ describe('WorldEd read-only viewer', () => {
     expect(component.selectedCell?.lots.length).toBe(1);
     expect(component.selectedMapFile).toBe(map);
     await component.openSelectedCell();
-    expect(handoff.send).toHaveBeenCalledOnceWith(map, { lots: component.selectedCell!.lots, files: component.workspace!.files });
+    expect(handoff.send).toHaveBeenCalledOnceWith(map, {
+      lots: component.selectedCell!.lots, files: component.workspace!.files, zones: component.selectedCell!.zones,
+    });
     expect(navigate).toHaveBeenCalledOnceWith(['/tilezed']);
     expect(sessions.current?.selectedCell).toEqual({ x: 1, y: 0 });
   });

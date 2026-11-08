@@ -102,6 +102,22 @@ of a building are drawn behind it.
 Restart an already-running development server after this update so Angular
 picks up the Web Worker build configuration.
 
+### Zones and building outlines
+
+TileZed draws zones (parking stalls, farmland, town zones, spawn points and other
+WorldEd object types) over the map, plus a WorldEd-style outline for each
+building lot. Like desktop WorldEd, each rectangle or polygon has a black shadow
+edge, a coloured outline and a translucent fill; polylines are unfilled and
+points are circles. Lots draw below zones; zones draw in level, group and
+object order. Colours come from the PZW object group colour (WorldEd's dark grey
+when the group has none). Zones stored in the TMX itself use their object group
+colour, or TileZed's default grey. Cells opened from WorldEd receive that cell's
+zones, which are saved with the map; reopen older maps from WorldEd to pick them
+up. The **Zones** and **Building outlines** toolbar toggles are remembered, and
+a legend lists the visible zone groups. Object labels, polyline widths and
+TileZed's per-user object type colours are not shown, and the WorldEd overview
+does not draw zones.
+
 ## Settings and saved data
 
 The Settings page (`/settings`, linked from the homepage) has a **Clear data**

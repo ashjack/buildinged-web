@@ -1,9 +1,11 @@
 import { Injectable } from '@angular/core';
-import { WorldedLot } from '../utils/worlded-world';
+import { WorldedLot, WorldedZone } from '../utils/worlded-world';
 
 export interface TilezedBuildingContext {
   lots: WorldedLot[];
   files: Map<string, File>;
+  /** Zones from the WorldEd cell; the TMX's own object groups are read from the map itself. */
+  zones?: WorldedZone[];
 }
 
 @Injectable({ providedIn: 'root' })

@@ -44,6 +44,14 @@ describe('TileZed browser storage', () => {
     expect(await storage.lastBuildings(new File(['other'], 'different.tmx'))).toBeUndefined();
   });
 
+  it('remembers WorldEd zones with the map', async () => {
+    const zones = [{ name: 'good', group: 'ParkingStall', type: 'ParkingStall', color: '#ff007f', level: 0,
+      geometry: 'polygon' as const, x: 1, y: 1, width: 4, height: 3, points: [[1, 1], [4, 1], [4, 3]] as [number, number][] }];
+    await storage.rememberMap(new File(['map'], 'cell.tmx'), { lots: [], files: new Map(), zones });
+    const restored = await storage.lastMap();
+    expect((await storage.lastBuildings(restored!))?.zones).toEqual(zones);
+  });
+
   it('orders map writes so the last successful selection is remembered', async () => {
     const writes = ['one', 'two', 'three'].map(name =>
       storage.rememberMap(new File([name], `${name}.tmx`)));

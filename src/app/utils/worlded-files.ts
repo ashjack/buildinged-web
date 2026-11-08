@@ -134,8 +134,8 @@ export async function resolveTilezedProject(
   selected: readonly File[], mapFile: File, lots: WorldedLot[],
 ): Promise<WorldedProjectFiles> {
   const world: WorldedWorld = {
-    width: 1, height: 1, cellSize: 300, bitmaps: [], lotCount: lots.length, objectCount: 0, warnings: [],
-    cells: new Map([['0,0', { x: 0, y: 0, map: '', lots, objectCount: 0, featureCount: 0 }]]),
+    width: 1, height: 1, cellSize: 300, bitmaps: [], objectGroups: [], lotCount: lots.length, objectCount: 0, warnings: [],
+    cells: new Map([['0,0', { x: 0, y: 0, map: '', lots, zones: [], objectCount: 0, featureCount: 0 }]]),
   };
   return resolveWorldedProject(selected, mapFile, world);
 }

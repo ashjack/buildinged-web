@@ -53,6 +53,24 @@ describe('TileZed TMX terrain', () => {
     expect(map.warnings).not.toContain('Objects, lots, image layers, and layer groups are not shown in this viewer.');
   });
 
+  it('reads non-lot TMX objects as zones with the group colour or TileZed fallback', async () => {
+    const xml = (await fixture()).replace('<objectgroup name="0_Lots"/>', `<objectgroup name="1_Zones" color="#ff007f">
+      <object type="ParkingStall" x="32" y="64" width="96" height="32"/>
+    </objectgroup>
+    <objectgroup name="0_Other">
+      <object name="shape" x="32" y="32"><polygon points="0,0 64,0 64,32"/></object>
+      <object gid="3" x="0" y="0"/>
+    </objectgroup>`);
+    const map = await readTilezedMap(xml);
+    expect(map.zones).toEqual([
+      { name: 'shape', group: '0_Other', type: '', color: '#a0a0a4', level: 0, geometry: 'polygon',
+        points: [[1, 1], [3, 1], [3, 2]], x: 1, y: 1, width: 2, height: 1 },
+      { name: '', group: '1_Zones', type: 'ParkingStall', color: '#ff007f', level: 1, geometry: 'rectangle',
+        points: [], x: 1, y: 2, width: 3, height: 1 },
+    ]);
+    expect(map.warnings).toContain('1 tile objects are not shown in this viewer.');
+  });
+
   it('decodes compressed layers and BMP palettes and applies ground and conditional vegetation', async () => {
     const map = await readTilezedMap(await fixture());
     const scene = generateTilezedScene(map);

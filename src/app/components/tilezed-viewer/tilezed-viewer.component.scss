@@ -8,6 +8,11 @@
 .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 20px; border-bottom: 1px solid $line; }
 .toolbar-divider { width: 1px; height: 26px; margin: 0 4px; background: $line-strong; }
 .zoom { min-width: 40px; text-align: center; color: $muted; font-size: 12px; }
+label.toggle { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; margin: 0; color: $muted; font-size: 12px; cursor: pointer; user-select: none; }
+label.toggle input { width: auto; height: auto; margin: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.swatch { width: 10px; height: 10px; border: 1px solid #000; border-radius: 2px; }
 .map-name { margin-left: auto; overflow: hidden; color: $muted; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .messages { max-height: 180px; overflow: auto; }
 .messages:empty { display: none; }

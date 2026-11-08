@@ -1,4 +1,4 @@
-import { WorldedLot } from './worlded-world';
+import { WorldedLot, WorldedZone, worldedColor } from './worlded-world';
 
 export interface TilezedTileset {
   name: string;
@@ -57,7 +57,12 @@ export interface TilezedMap {
   blendEdgesEverywhere: boolean;
   warnings: string[];
   lots?: WorldedLot[];
+  /** Non-lot objects from the TMX's own object groups, drawn as zones. */
+  zones?: WorldedZone[];
 }
+
+/** TileZed's MapObjectItem::objectColor fallback (Qt::gray). */
+export const TILEZED_OBJECT_COLOR = '#a0a0a4';
 
 const MAX_CELLS = 1_000_000;
 const DIRECTIONS: TilezedDirection[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
@@ -300,7 +305,9 @@ export async function readTilezedMap(xml: string): Promise<TilezedMap> {
     blendEdgesEverywhere: false,
     warnings: [],
     lots: [],
+    zones: [],
   };
+  let skippedTileObjects = 0;
   for (let i = 1; i < map.tilesets.length; i++) {
     const previous = map.tilesets[i - 1];
     if (previous.firstGid + previous.columns * previous.rows > map.tilesets[i].firstGid) {
@@ -332,22 +339,52 @@ export async function readTilezedMap(xml: string): Promise<TilezedMap> {
   for (const group of children(root, 'objectgroup')) {
     const { level } = layerName(group);
     if (group.getAttribute('visible') === '0') continue;
+    // TileZed: object type colour (user preference, unavailable here), then group colour, then Qt::gray.
+    const color = worldedColor(group.getAttribute('color'), TILEZED_OBJECT_COLOR);
+    const groupName = group.getAttribute('name') ?? '';
     for (const object of children(group, 'object')) {
-      if (object.getAttribute('name') !== 'lot' || object.getAttribute('visible') === '0') continue;
+      if (object.getAttribute('visible') === '0') continue;
+      const value = (name: string, raw = object.getAttribute(name) ?? '0') => {
+        const number = Number(raw);
+        if (!Number.isFinite(number) || Math.abs(number) > 1_000_000) throw new Error(`Invalid object ${name}: ${raw}`);
+        return number / map.tileHeight;
+      };
+      if (object.getAttribute('name') !== 'lot') {
+        if (object.hasAttribute('gid')) {
+          skippedTileObjects++;
+          continue;
+        }
+        const x = value('x'), y = value('y');
+        const shape = children(object, 'polygon')[0] ?? children(object, 'polyline')[0];
+        const base = { name: object.getAttribute('name') ?? '', group: groupName, type: object.getAttribute('type') ?? '',
+          color, level };
+        if (shape) {
+          const points = (shape.getAttribute('points') ?? '').trim().split(/\s+/).filter(Boolean).map(pair => {
+            const [px, py] = pair.split(',');
+            return [x + value('point', px), y + value('point', py)] as [number, number];
+          });
+          const geometry = shape.tagName === 'polygon' ? 'polygon' : 'polyline';
+          if (points.length < (geometry === 'polygon' ? 3 : 2)) continue;
+          const xs = points.map(point => point[0]), ys = points.map(point => point[1]);
+          const left = Math.min(...xs), top = Math.min(...ys);
+          map.zones!.push({ ...base, geometry, points, x: left, y: top,
+            width: Math.max(...xs) - left, height: Math.max(...ys) - top });
+        } else {
+          map.zones!.push({ ...base, geometry: 'rectangle', points: [], x, y,
+            width: Math.max(0, value('width')), height: Math.max(0, value('height')) });
+        }
+        continue;
+      }
       let path = object.getAttribute('type') ?? '';
       if (!path) throw new Error('A TMX lot is missing its building path.');
       if (!/\.(tbx|tmx)$/i.test(path)) path += '.tmx';
-      const value = (name: string) => {
-        const raw = object.getAttribute(name) ?? '0', number = Number(raw);
-        if (!Number.isFinite(number) || Math.abs(number) > 1_000_000) throw new Error(`Invalid lot ${name}: ${raw}`);
-        return number / map.tileHeight;
-      };
       map.lots!.push({ x: value('x'), y: value('y'), width: value('width'), height: value('height'), level, map: path });
     }
   }
-  if (children(root, 'objectgroup').some(group => children(group, 'object').some(object => object.getAttribute('name') !== 'lot')) ||
-      children(root, 'imagelayer').length || children(root, 'group').length) {
-    map.warnings.push('Non-lot objects, image layers, and layer groups are not shown in this viewer.');
+  map.zones!.sort((a, b) => a.level - b.level);
+  if (skippedTileObjects) map.warnings.push(`${skippedTileObjects} tile objects are not shown in this viewer.`);
+  if (children(root, 'imagelayer').length || children(root, 'group').length) {
+    map.warnings.push('Image layers and layer groups are not shown in this viewer.');
   }
   return map;
 }

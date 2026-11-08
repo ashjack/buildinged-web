@@ -67,7 +67,7 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
     const position = this.workspace?.selectedCell;
     if (!position || !this.workspace) return undefined;
     return this.workspace.world.cells.get(worldedCellKey(position.x, position.y)) ??
-      { ...position, map: '', lots: [], objectCount: 0, featureCount: 0 };
+      { ...position, map: '', lots: [], zones: [], objectCount: 0, featureCount: 0 };
   }
 
   get selectedMapFile(): File | undefined {
@@ -286,7 +286,7 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
     }
     this.error = '';
     this.openingCell = true;
-    const buildingContext = this.workspace ? { lots: cell.lots, files: this.workspace.files } : undefined;
+    const buildingContext = this.workspace ? { lots: cell.lots, files: this.workspace.files, zones: cell.zones } : undefined;
     this.handoff.send(file, buildingContext);
     try {
       if (!await this.router.navigate(['/tilezed'])) {
