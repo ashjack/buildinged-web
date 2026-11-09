@@ -1,6 +1,7 @@
 import { TilezedMap, tilesetForGid } from './tilezed-map';
 import { TilezedScene } from './tilezed-terrain';
 import { TilezedSheetLayout } from './tilezed-sheets';
+import type { TilePoint, TileRectangle, TileStamp } from './tilezed-edit';
 
 export interface TilezedCamera { x: number; y: number; zoom: number; }
 export interface TilezedViewport { width: number; height: number; }
@@ -55,6 +56,40 @@ interface Sprite {
   height: number;
 }
 
+function spriteForGid(gid: number, map: TilezedMap, images: ReadonlyMap<number, TilezedImage>): Sprite | null {
+  const tileset = tilesetForGid(map.tilesets, gid);
+  const image = tileset ? images.get(tileset.firstGid) : undefined;
+  if (!tileset || !image) return null;
+  const index = gid - tileset.firstGid;
+  const sourceX = (index % tileset.columns) * image.layout.tileWidth;
+  const sourceY = Math.floor(index / tileset.columns) * image.layout.tileHeight;
+  if (sourceX + image.layout.tileWidth > image.bitmap.width || sourceY + image.layout.tileHeight > image.bitmap.height) return null;
+  return { image, sourceX, sourceY, width: tileset.tileWidth, height: tileset.tileHeight };
+}
+
+/** Draws the pending stamp in world coordinates without changing the document. */
+export function drawTilezedStamp(context: CanvasRenderingContext2D, map: TilezedMap,
+                                 images: ReadonlyMap<number, TilezedImage>, stamp: TileStamp,
+                                 origin: TilePoint, selection?: TileRectangle, opacity = 0.65): void {
+  const halfWidth = map.tileWidth / 2, halfHeight = map.tileHeight / 2;
+  context.save(); context.globalAlpha = opacity; context.imageSmoothingEnabled = false;
+  // Match the map's isometric depth order for overlapping tiles in a multi-tile stamp.
+  for (let depth = 0; depth < stamp.width + stamp.height - 1; depth++) {
+    for (let sx = Math.max(0, depth - stamp.height + 1); sx <= Math.min(stamp.width - 1, depth); sx++) {
+      const sy = depth - sx, x = origin.x + sx, y = origin.y + sy;
+      if (x < 0 || y < 0 || x >= map.width || y >= map.height ||
+          (selection && (x < selection.x || y < selection.y || x >= selection.x + selection.width || y >= selection.y + selection.height))) continue;
+      const gid = stamp.gids[sy * stamp.width + sx];
+      const sprite = gid ? spriteForGid(gid, map, images) : null;
+      if (!sprite) continue;
+      context.drawImage(sprite.image.bitmap, sprite.sourceX, sprite.sourceY, sprite.image.layout.tileWidth, sprite.image.layout.tileHeight,
+        map.height * halfWidth + (x - y) * halfWidth - halfWidth,
+        (x + y) * halfHeight + map.tileHeight - sprite.height, sprite.width, sprite.height);
+    }
+  }
+  context.restore();
+}
+
 /** Maps world pixels to canvas pixels for the current camera. */
 export function applyTilezedCamera(context: CanvasRenderingContext2D, camera: TilezedCamera,
                                    viewport: TilezedViewport, pixelRatio: number): void {
@@ -91,20 +126,7 @@ export function drawTilezedScene(context: CanvasRenderingContext2D, scene: Tilez
   const spriteFor = (gid: number): Sprite | null => {
     const cached = sprites.get(gid);
     if (cached !== undefined) return cached;
-    const tileset = tilesetForGid(map.tilesets, gid);
-    const image = tileset ? images.get(tileset.firstGid) : undefined;
-    if (!tileset || !image) {
-      sprites.set(gid, null);
-      return null;
-    }
-    const index = gid - tileset.firstGid;
-    const sprite: Sprite = {
-      image,
-      sourceX: (index % tileset.columns) * image.layout.tileWidth,
-      sourceY: Math.floor(index / tileset.columns) * image.layout.tileHeight,
-      width: tileset.tileWidth,
-      height: tileset.tileHeight,
-    };
+    const sprite = spriteForGid(gid, map, images);
     sprites.set(gid, sprite);
     return sprite;
   };

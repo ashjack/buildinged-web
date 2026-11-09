@@ -15,6 +15,7 @@ import { WorldedViewerComponent } from './worlded-viewer.component';
   { provide: WorldedViewerComponent, useExisting: forwardRef(() => WorldViewerStub) },
 ] })
 class WorldViewerStub {
+  @Input() worldRevision?: number;
   @Input() hosted = false;
   @Input() minimal = false;
   @Input() projectId?: string;

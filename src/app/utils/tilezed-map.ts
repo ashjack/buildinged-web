@@ -59,6 +59,8 @@ export interface TilezedMap {
   lots?: WorldedLot[];
   /** Non-lot objects from the TMX's own object groups, drawn as zones. */
   zones?: WorldedZone[];
+  /** Native TileZed per-layer overrides of generated BMP tiles. */
+  noBlend?: Map<string, Uint8Array>;
 }
 
 /** TileZed's MapObjectItem::objectColor fallback (Qt::gray). */
@@ -96,7 +98,7 @@ function words(value: string | null): string[] {
   return value?.trim().split(/\s+/).filter(Boolean) ?? [];
 }
 
-function layerName(element: Element): { name: string; level: number } {
+export function tilezedLayerName(element: Element): { name: string; level: number } {
   const name = required(element, 'name');
   const explicitLevel = element.getAttribute('level');
   const prefixed = /^(\d+)_(.+)$/.exec(name);
@@ -281,8 +283,9 @@ export function tilesetForGid(tilesets: TilezedTileset[], gid: number): TilezedT
   return match && gid - match.firstGid < match.columns * match.rows ? match : undefined;
 }
 
-/** Reads the standalone, finite TileZed maps supported by the read-only viewer. */
+/** Reads supported finite, level-isometric TileZed maps. */
 export async function readTilezedMap(xml: string): Promise<TilezedMap> {
+  if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new Error('TMX documents cannot contain DTDs or entities.');
   const document = new DOMParser().parseFromString(xml, 'application/xml');
   const root = document.documentElement;
   if (root.tagName === 'parsererror' || document.querySelector('parsererror')) throw new Error('The TMX file is not valid XML.');
@@ -306,6 +309,7 @@ export async function readTilezedMap(xml: string): Promise<TilezedMap> {
     warnings: [],
     lots: [],
     zones: [],
+    noBlend: new Map(),
   };
   let skippedTileObjects = 0;
   for (let i = 1; i < map.tilesets.length; i++) {
@@ -315,7 +319,7 @@ export async function readTilezedMap(xml: string): Promise<TilezedMap> {
     }
   }
   for (const layer of children(root, 'layer')) {
-    const { name, level } = layerName(layer);
+    const { name, level } = tilezedLayerName(layer);
     if (level !== 0) {
       if (!map.warnings.includes('Only ground-level layers are shown.')) map.warnings.push('Only ground-level layers are shown.');
       continue;
@@ -336,8 +340,15 @@ export async function readTilezedMap(xml: string): Promise<TilezedMap> {
   }
   const settings = children(root, 'bmp-settings')[0];
   if (settings) readSettings(map, settings);
+  for (const entry of children(root, 'bmp-noblend')) {
+    const name = required(entry, 'layer');
+    if (map.noBlend!.has(name)) throw new Error(`Duplicate BMP override for ${name}.`);
+    const bits = children(entry, 'bits')[0];
+    if (!bits) throw new Error(`BMP override for ${name} has no bits.`);
+    map.noBlend!.set(name, await decodeBytes(bits.textContent ?? '', 'gzip', width * height, `BMP override for ${name}`));
+  }
   for (const group of children(root, 'objectgroup')) {
-    const { level } = layerName(group);
+    const { level } = tilezedLayerName(group);
     if (group.getAttribute('visible') === '0') continue;
     // TileZed: object type colour (user preference, unavailable here), then group colour, then Qt::gray.
     const color = worldedColor(group.getAttribute('color'), TILEZED_OBJECT_COLOR);

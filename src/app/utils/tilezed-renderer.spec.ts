@@ -1,6 +1,6 @@
 import { TilezedMap, TilezedTileset } from './tilezed-map';
 import {
-  constrainTilezedCamera, drawTilezedScene, fitTilezedCamera, TilezedBounds,
+  constrainTilezedCamera, drawTilezedScene, drawTilezedStamp, fitTilezedCamera, TilezedBounds,
   TilezedCamera, TilezedImage, zoomTilezedCamera,
 } from './tilezed-renderer';
 import { TilezedScene } from './tilezed-terrain';
@@ -67,6 +67,65 @@ describe('TileZed canvas navigation and rendering', () => {
         { x: 9600, y: 4800, zoom: 1 }, { width: 128, height: 128 }, 1);
       expect(draw.calls.count()).toBeGreaterThan(0);
       expect(draw.calls.count()).toBeLessThan(200);
+    } finally { bitmap.close(); }
+  });
+
+  it('renders available tiles while skipping references outside the actual sheet image', async () => {
+    const sheet = document.createElement('canvas'); sheet.width = 128; sheet.height = 128;
+    sheet.getContext('2d')!.fillStyle = '#ff0000'; sheet.getContext('2d')!.fillRect(0, 0, 64, 128);
+    const bitmap = await createImageBitmap(sheet);
+    try {
+      const scene = sceneFor(2, 1, Uint32Array.of(1, 3));
+      scene.map.tilesets = [{ ...tileset, rows: 2, imageHeight: 256 }];
+      const canvas = document.createElement('canvas'); canvas.width = 192; canvas.height = 256;
+      const context = canvas.getContext('2d')!;
+      const draw = spyOn(context, 'drawImage').and.callThrough();
+      drawTilezedScene(context, scene, new Map([[1, { bitmap, layout: { tileWidth: 64, tileHeight: 128 } }]]),
+        { x: 48, y: 0, zoom: 1 }, { width: 192, height: 256 }, 1);
+      expect(draw).toHaveBeenCalledTimes(1);
+      expect(Array.from(context.getImageData(53, 128, 1, 1).data)).toEqual([255, 0, 0, 255]);
+    } finally { bitmap.close(); }
+  });
+
+  it('previews the stamp at placement coordinates with transparency and restores the canvas state', async () => {
+    const sheet = document.createElement('canvas'); sheet.width = 128; sheet.height = 128;
+    const bitmap = await createImageBitmap(sheet);
+    try {
+      const scene = sceneFor(4, 1, new Uint32Array(4));
+      const canvas = document.createElement('canvas'), context = canvas.getContext('2d')!;
+      context.globalAlpha = 0.8;
+      const alphas: number[] = [];
+      const draw = spyOn(context, 'drawImage').and.callFake(() => { alphas.push(context.globalAlpha); });
+      drawTilezedStamp(context, scene.map, new Map([[1, { bitmap, layout: { tileWidth: 64, tileHeight: 128 } }]]),
+        { width: 2, height: 1, gids: Uint32Array.of(1, 2) }, { x: 1, y: 0 });
+      expect(draw.calls.allArgs()).toEqual([
+        [bitmap, 0, 0, 64, 128, 32, -80, 64, 128],
+        [bitmap, 64, 0, 64, 128, 64, -64, 64, 128],
+      ]);
+      expect(alphas).toEqual([0.65, 0.65]);
+      expect(context.globalAlpha).toBeCloseTo(0.8);
+      expect(Array.from(scene.layers[0].gids)).toEqual([0,0,0,0]);
+    } finally { bitmap.close(); }
+  });
+
+  it('clips preview tiles to the map and selection, and skips empty or unavailable stamp tiles', async () => {
+    const sheet = document.createElement('canvas'); sheet.width = 128; sheet.height = 128;
+    const bitmap = await createImageBitmap(sheet);
+    try {
+      const scene = sceneFor(2, 2, new Uint32Array(4));
+      scene.map.tilesets = [{ ...tileset, rows: 2, imageHeight: 256 }];
+      const context = document.createElement('canvas').getContext('2d')!;
+      const draw = spyOn(context, 'drawImage');
+      const images = new Map([[1, { bitmap, layout: { tileWidth: 64, tileHeight: 128 } }]]);
+      const stamp = { width: 2, height: 2, gids: Uint32Array.of(1, 0, 2, 3) };
+      drawTilezedStamp(context, scene.map, images, stamp, { x: 0, y: 0 });
+      expect(draw).toHaveBeenCalledTimes(2);
+      draw.calls.reset();
+      drawTilezedStamp(context, scene.map, images, stamp, { x: 1, y: 1 });
+      expect(draw).toHaveBeenCalledTimes(1);
+      draw.calls.reset();
+      drawTilezedStamp(context, scene.map, images, stamp, { x: 0, y: 0 }, { x: 1, y: 0, width: 1, height: 2 });
+      expect(draw).not.toHaveBeenCalled();
     } finally { bitmap.close(); }
   });
 });

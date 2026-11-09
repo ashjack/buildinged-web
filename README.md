@@ -77,8 +77,8 @@ a storage failure is reported while keeping the world usable.
 The editor preserves the original XML outside the fields being edited, including
 native settings, properties, roads, linked-world references and in-game map
 features. Those features retain the existing viewer's rendering limits. Cell
-terrain opens in the read-only TileZed viewer; terrain painting and building
-interior editing are not part of this world editor. Hosted worlds are loaded from
+terrain opens in TileZed, where admins can edit ground-level tile layers. Building
+interiors open in the separate building editor. Hosted worlds are loaded from
 the project, rather than restored from the local WorldEd snapshot; hosted cell
 maps are not saved as TileZed's last local map.
 
@@ -87,13 +87,44 @@ the existing private `BUILDINGED_BUILD_BUCKET`; see the functions repository's
 deployment prerequisites. No direct public bucket access or browser storage
 credentials are required.
 
-## Local TileZed map viewer
+## TileZed map editing
 
 Open **TileZed** from the homepage, then choose a TileZed level-isometric `.tmx`
-file. The read-only viewer generates terrain from embedded BMP rules and draws
-ground-level tile layers. Drag to pan, use the mouse wheel or zoom buttons to
+file. The viewer generates terrain from embedded BMP rules and draws
+ground-level tile layers. Contributors can view maps; admins also have editing tools.
+Choose **Pan**, middle-drag, or hold Space while dragging to pan; use the mouse wheel or zoom buttons to
 zoom, and choose **Fit map** to return to the overview. The canvas also supports
 arrow keys, plus/minus, and Home.
+
+Choose a visible **Layer**, then a tile from the **Tilesets** dock. The dock has a
+searchable tileset list beside a continuous sheet preview, with zoom and background
+color controls below. Drag across tiles or Shift-click a second tile to form a
+rectangular stamp. Arrow keys select tiles; Shift+arrow extends the selection.
+Tools follow the desktop TileZed behavior:
+
+- **Stamp brush (B)** paints a single tile or pattern; dragging draws a continuous stroke.
+- **Bucket (F)** fills orthogonally connected matching tiles on the active layer.
+  Shift-click fills the current selection, or the whole map when no selection exists.
+- **Eraser (E)** removes tiles on the active layer, including generated terrain.
+- **Rectangular select (R)** limits painting, filling, and erasing to a rectangle.
+  **Use selection as stamp** / Ctrl+C captures its visible tiles; Escape clears it.
+- **Pick tile (I)** samples the active layer and switches to the stamp brush.
+
+Undo/redo is available in the toolbar and with Ctrl+Z / Ctrl+Y. Edits remain in
+memory until **Save map to project** (hosted cells) or **Save .tmx** (local map
+download). Ctrl+S also saves. Hosted saves require an invited admin and the world
+revision captured when opening the cell; conflicts keep the edits open for export.
+**Export .tmx** creates a backup without marking hosted edits saved. Leaving or
+opening another map prompts before discarding unsaved work. No editing action
+automatically saves to the project or the browser's last-map snapshot.
+
+Saved edits use TileZed's native per-layer `bmp-noblend` masks, so hand-placed tiles
+and erasures survive BMP regeneration. The writer preserves other layers,
+object groups, embedded BMP images, rules, properties, and unknown XML elements.
+
+Warnings are grouped into a compact **Show warnings** row above the map. Expand it
+to inspect the details, or choose **Hide warnings** to regain map space. The browser
+remembers this preference. Save errors and loading status remain visible.
 
 Tilesheets cached by BuildingEd are reused automatically. Missing sheets are
 retrieved individually from the same enabled tilepacks and cached in the browser;

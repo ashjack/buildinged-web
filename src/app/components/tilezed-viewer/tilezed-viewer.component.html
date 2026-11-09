@@ -35,11 +35,36 @@
     <span class="map-name" *ngIf="scene">{{fileName}} · {{scene.map.width}} × {{scene.map.height}}{{restoredMap ? ' · restored copy' : ''}}</span>
   </div>
 
+  <div class="edit-toolbar" *ngIf="auth.isAdmin && editor && scene as mapScene" aria-label="TileZed editing tools">
+    <div class="tool-buttons" role="group" aria-label="Map tools">
+      <button class="button compact" *ngFor="let item of toolOptions" type="button" [class.active]="tool === item.id"
+              [attr.aria-pressed]="tool === item.id" [title]="item.label + ' (' + item.key + ')'" [disabled]="!canEdit"
+              (click)="setTool(item.id)">{{item.label}}</button>
+    </div>
+    <label>Layer <select aria-label="Active tile layer" [value]="activeLayer" [disabled]="!canEdit" (change)="selectLayer($any($event.target).value)">
+      <option *ngFor="let layer of mapScene.map.layers" [value]="layer.name" [disabled]="!layer.visible || !layer.opacity">{{layer.name}}</option>
+    </select></label>
+    <button class="button compact" type="button" (click)="history()" [disabled]="!canEdit || !editor.canUndo">Undo</button>
+    <button class="button compact" type="button" (click)="history(true)" [disabled]="!canEdit || !editor.canRedo">Redo</button>
+    <button class="button compact" type="button" (click)="captureSelection()" [disabled]="!canEdit || !editor.selection">Use selection as stamp</button>
+    <button class="button compact" type="button" (click)="eraseSelection()" [disabled]="!canEdit || !editor.selection">Erase selection</button>
+    <button class="button compact" type="button" (click)="clearSelection()" [disabled]="!canEdit || !editor.selection">Clear selection</button>
+    <span class="save-state" role="status">{{saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'No unsaved changes'}}</span>
+    <button class="button primary" type="button" (click)="saveMap()" [disabled]="!canEdit || !dirty">{{hostedMap ? 'Save map to project' : 'Save .tmx'}}</button>
+    <button class="button compact" *ngIf="hostedMap" type="button" (click)="exportMap()" [disabled]="saving || loadingMap">Export .tmx</button>
+  </div>
+
   <div class="messages">
+    <p *ngIf="message" class="message" role="status">{{message}}</p>
     <p *ngIf="error" class="message error" role="alert">{{error}}</p>
-    <p *ngIf="storageWarning" class="message warning" role="alert">{{storageWarning}}</p>
     <p *ngIf="loadingSheets" class="message" role="status">Loading tilesheets from your tilepacks…</p>
     <p *ngIf="loadingBuildings" class="message" role="status">Rendering buildings in the background: {{buildings?.loaded}}</p>
+    <section class="warning-panel" *ngIf="warningCount">
+    <button class="warning-toggle" type="button" (click)="toggleWarnings()" [attr.aria-expanded]="warningsExpanded" aria-controls="tilezed-warnings">
+      <span aria-hidden="true">{{warningsExpanded ? '▾' : '▸'}}</span> {{warningsExpanded ? 'Hide warnings' : 'Show warnings'}} <span class="warning-count">{{warningCount}}</span>
+    </button>
+    <div id="tilezed-warnings" *ngIf="warningsExpanded" class="warning-details">
+    <p *ngIf="storageWarning" class="message warning" role="status">{{storageWarning}}</p>
     <details *ngIf="buildings?.warnings?.size" class="message warning">
       <summary>Building warnings ({{buildings?.warnings?.size}})</summary>
       <ul><li *ngFor="let warning of buildings?.warnings">{{warning}}</li></ul>
@@ -48,7 +73,7 @@
       <ul><li *ngFor="let warning of tileWarnings">{{warning}}</li></ul>
     </div>
     <div *ngIf="!loadingSheets && sheetIssues.length" class="message warning" role="alert">
-      <strong>Some tilesheets are unavailable.</strong> Check the tilepack connection or use local tiles as a fallback.
+      <strong>Some tile images are unavailable.</strong> Check the tilepack connection or use local tiles as a fallback.
       <ul><li *ngFor="let issue of sheetIssues">{{issue}}</li></ul>
     </div>
     <p *ngIf="duplicateSheets.length" class="message warning">
@@ -58,15 +83,18 @@
       <summary>Map warnings ({{scene!.warnings.length}})</summary>
       <ul><li *ngFor="let warning of scene!.warnings">{{warning}}</li></ul>
     </details>
+    </div>
+    </section>
   </div>
 
+  <div class="map-workspace">
   <main #viewport class="viewport">
-    <canvas #canvas tabindex="0" [class.dragging]="dragging"
-            aria-label="TileZed map. Drag to pan, use the mouse wheel to zoom, or use arrow keys and plus or minus."
+    <canvas #canvas tabindex="0" [class.dragging]="dragging" [class.editing]="canEdit && tool !== 'pan'"
+            aria-label="TileZed map. Choose a tool to edit. Use Pan, middle-drag, or Space-drag to pan; mouse wheel to zoom."
             (wheel)="onWheel($event)" (pointerdown)="onPointerDown($event)"
             (pointermove)="onPointerMove($event)" (pointerup)="onPointerEnd($event)"
             (pointercancel)="onPointerEnd($event)" (lostpointercapture)="onPointerEnd($event)"
-            (keydown)="onKeyDown($event)" (contextmenu)="onContextMenu($event)"></canvas>
+            (keydown)="onKeyDown($event)" (pointerleave)="onPointerLeave()" (contextmenu)="onContextMenu($event)"></canvas>
     <ng-container *ngIf="auth.isAdmin">
       <div #buildingMenu *ngIf="contextMenu as menu" class="building-context-menu" role="menu" aria-label="Building actions"
            [style.left.px]="menu.x" [style.top.px]="menu.y" (contextmenu)="$event.preventDefault()">
@@ -80,9 +108,14 @@
       <button class="button primary" type="button" (click)="mapInput.click()" [disabled]="loadingMap">Open .tmx</button>
     </div>
   </main>
+  <aside class="tile-palette" aria-label="Tile palette" *ngIf="auth.isAdmin && editor && scene as mapScene" [attr.inert]="!canEdit ? '' : null">
+    <div class="dock-title"><h2>Tilesets</h2><span [title]="selectedTileLabel">{{stamp.width}} × {{stamp.height}}</span></div>
+    <app-tilezed-tile-palette [tilesets]="mapScene.map.tilesets" [selectedGid]="stamp.gids[0]" (stampChange)="chooseStamp($event)"></app-tilezed-tile-palette>
+  </aside>
+  </div>
 
   <footer>
-    <span>Read-only · Drag to pan · Mouse wheel to zoom · Home to fit</span>
+    <span>{{auth.isAdmin ? 'Manual save · Space or middle-drag to pan · Ctrl+S to save' : 'Read-only · Drag to pan'}} · Mouse wheel to zoom · Home to fit</span>
     <span *ngIf="showZones && zoneSummary.length" class="legend" aria-label="Zone legend">
       <span *ngFor="let zone of zoneSummary" class="legend-item">
         <span class="swatch" [style.background]="zone.color" aria-hidden="true"></span>{{zone.group}} ({{zone.count}})

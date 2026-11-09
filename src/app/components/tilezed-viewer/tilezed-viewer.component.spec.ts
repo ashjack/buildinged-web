@@ -12,6 +12,9 @@ import { BuildingPreviewService } from '../../services/building-preview.service'
 import { AuthService } from '../../services/auth.service';
 import { TilezedBuildingContext } from '../../services/tilezed-handoff.service';
 import { tilezedTileToPixel } from '../../utils/tilezed-overlays';
+import { TilezedTilePaletteComponent } from './tilezed-tile-palette.component';
+import { ProjectApiService } from '../../services/project-api.service';
+import { readTilezedMap } from '../../utils/tilezed-map';
 
 const mapXml = `<map version="1.0" orientation="levelisometric" width="1" height="1" tilewidth="64" tileheight="32">
   <tileset firstgid="1" name="sheet_01" tilewidth="64" tileheight="128"><image source="sheet_01.png" width="64" height="128"/></tileset>
@@ -26,6 +29,7 @@ describe('TileZed read-only viewer', () => {
   let changes: Subject<string[]>;
 
   beforeEach(() => {
+    localStorage.removeItem('tilezed:warningsExpanded');
     const previews = jasmine.createSpyObj('BuildingPreviewService', ['preview']);
     previews.preview.and.rejectWith(new Error('Preview unavailable'));
     assets = jasmine.createSpyObj<TilezedAssetsService>('TilezedAssetsService', ['load']);
@@ -41,10 +45,11 @@ describe('TileZed read-only viewer', () => {
     changes = new Subject<string[]>();
     TestBed.configureTestingModule({
       declarations: [TilezedViewerComponent],
-      imports: [CommonModule, RouterTestingModule],
+      imports: [CommonModule, RouterTestingModule, TilezedTilePaletteComponent],
       providers: [
         { provide: BuildingPreviewService, useValue: previews },
         { provide: AuthService, useValue: { isAdmin: false } },
+        { provide: ProjectApiService, useValue: jasmine.createSpyObj('ProjectApiService', ['saveWorldMap']) },
         { provide: DbService, useValue: { sheetsChanged: changes } },
         { provide: TilezedAssetsService, useValue: assets },
         { provide: TilezedStorageService, useValue: storage },
@@ -55,7 +60,31 @@ describe('TileZed read-only viewer', () => {
     fixture.detectChanges();
   });
 
-  afterEach(() => { fixture.destroy(); changes.complete(); });
+  afterEach(() => { fixture.destroy(); changes.complete(); localStorage.removeItem('tilezed:warningsExpanded'); });
+
+  it('collapses stacked warnings into a counted row and remembers the show/hide preference', async () => {
+    component.tileWarnings = ['One', 'Two'];
+    component.sheetIssues = ['Missing sheet'];
+    component.storageWarning = 'Storage unavailable';
+    component.error = 'Save failed';
+    fixture.detectChanges();
+    const toggle = fixture.nativeElement.querySelector('.warning-toggle') as HTMLButtonElement;
+    expect(toggle.textContent).toContain('Show warnings');
+    expect(toggle.textContent).toContain('4');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(fixture.nativeElement.querySelector('#tilezed-warnings')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.message.error').textContent).toContain('Save failed');
+    toggle.click(); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('#tilezed-warnings').textContent).toContain('Missing sheet');
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(localStorage.getItem('tilezed:warningsExpanded')).toBe('1');
+    const reopened = TestBed.createComponent(TilezedViewerComponent);
+    expect(reopened.componentInstance.warningsExpanded).toBeTrue();
+    reopened.destroy();
+    toggle.click(); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('#tilezed-warnings')).toBeNull();
+    expect(localStorage.getItem('tilezed:warningsExpanded')).toBe('0');
+  });
 
   async function openBuilding(projectId: string | null = 'project'): Promise<void> {
     const context: TilezedBuildingContext = { projectId: projectId ?? undefined,
@@ -153,6 +182,138 @@ describe('TileZed read-only viewer', () => {
     expect(bounds.bottom).toBeLessThanOrEqual(window.innerHeight);
   });
 
+  async function openEditableMap(hosted = false): Promise<void> {
+    Object.assign(TestBed.inject(AuthService), { isAdmin: true });
+    const editableXml = mapXml.replace('width="1" height="1"', 'width="4" height="1"')
+      .replace('<layer name="0_Floor" width="1"', '<layer name="0_Floor" width="4"').replace('>1</data>', '>0,0,0,0</data>');
+    await component.openMap(new File([editableXml], 'editable.tmx'), true, hosted
+      ? { projectId: 'project', mapPath: 'maps/editable.tmx', worldRevision: 7, lots: [], files: new Map() } : undefined);
+    fixture.detectChanges();
+    const canvas = component.canvas.nativeElement;
+    spyOn(canvas, 'setPointerCapture');
+    spyOn(canvas, 'hasPointerCapture').and.returnValue(false);
+    storage.rememberMap.calls.reset();
+  }
+  function pointerAt(type: string, x: number, y = 0, extra: PointerEventInit = {}): void {
+    const camera = (component as any).camera, viewport = (component as any).viewport;
+    const rect = component.canvas.nativeElement.getBoundingClientRect();
+    const [px, py] = tilezedTileToPixel(component.scene!.map, x + 0.5, y + 0.5, 0);
+    component.canvas.nativeElement.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 123,
+      button: 0, clientX: rect.left + viewport.width / 2 + (px - camera.x) * camera.zoom,
+      clientY: rect.top + viewport.height / 2 + (py - camera.y) * camera.zoom, ...extra }));
+  }
+
+  it('paints a continuous stamp stroke with undo and does not save automatically', async () => {
+    await openEditableMap();
+    component.chooseStamp({ width: 1, height: 1, gids: Uint32Array.of(1) });
+    pointerAt('pointerdown', 0); pointerAt('pointermove', 3); pointerAt('pointerup', 3);
+    expect(Array.from(component.scene!.layers[0].gids)).toEqual([1,1,1,1]);
+    expect(component.dirty).toBeTrue();
+    expect(storage.rememberMap).not.toHaveBeenCalled();
+    expect(TestBed.inject(ProjectApiService).saveWorldMap).not.toHaveBeenCalled();
+    component.history();
+    expect(Array.from(component.scene!.layers[0].gids)).toEqual([0,0,0,0]);
+    expect(component.dirty).toBeFalse();
+    component.history(true);
+    expect(component.dirty).toBeTrue();
+  });
+
+  it('loads an unused stamp sheet and previews it on hover without editing or saving the map', async () => {
+    await openEditableMap();
+    const sheet = document.createElement('canvas'); sheet.width = 64; sheet.height = 128;
+    sheet.getContext('2d')!.fillStyle = '#ff0000'; sheet.getContext('2d')!.fillRect(0, 0, 64, 128);
+    const blob = await new Promise<Blob>(resolve => sheet.toBlob(value => resolve(value!), 'image/png'));
+    assets.load.and.resolveTo({ sheets: new Map([[1, blob]]), errors: new Map(), warnings: [] });
+    component.chooseStamp({ width: 1, height: 1, gids: Uint32Array.of(1) });
+    for (let attempt = 0; attempt < 50 && !(component as any).images.has(1); attempt++) {
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    }
+    expect((component as any).images.has(1)).toBeTrue();
+    const bitmap = (component as any).images.get(1).bitmap;
+    const context = component.canvas.nativeElement.getContext('2d')!;
+    const draw = spyOn(context, 'drawImage').and.callThrough();
+    pointerAt('pointermove', 1);
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    expect(draw.calls.allArgs().some(args => args[0] === bitmap)).toBeTrue();
+    expect(Array.from(component.scene!.layers[0].gids)).toEqual([0,0,0,0]);
+    expect(component.dirty).toBeFalse();
+    expect(component.editor!.canUndo).toBeFalse();
+    expect(storage.rememberMap).not.toHaveBeenCalled();
+    expect(TestBed.inject(ProjectApiService).saveWorldMap).not.toHaveBeenCalled();
+    draw.calls.reset();
+    component.canvas.nativeElement.dispatchEvent(new PointerEvent('pointerleave'));
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    expect(draw.calls.allArgs().some(args => args[0] === bitmap)).toBeFalse();
+  });
+
+  it('selects a rectangle, limits bucket fill to that selection, picks a tile, and erases on the active layer', async () => {
+    await openEditableMap();
+    component.setTool('select'); pointerAt('pointerdown', 1); pointerAt('pointermove', 2); pointerAt('pointerup', 2);
+    expect(component.editor!.selection).toEqual({ x: 1, y: 0, width: 2, height: 1 });
+    component.stamp = { width: 1, height: 1, gids: Uint32Array.of(1) };
+    component.setTool('bucket'); pointerAt('pointerdown', 1);
+    expect(Array.from(component.scene!.layers[0].gids)).toEqual([0,1,1,0]);
+    component.setTool('pick'); pointerAt('pointerdown', 1);
+    expect(component.stamp.gids[0]).toBe(1);
+    expect(component.tool).toBe('stamp');
+    component.setTool('eraser'); pointerAt('pointerdown', 1); pointerAt('pointerup', 1);
+    expect(Array.from(component.scene!.layers[0].gids)).toEqual([0,0,1,0]);
+    expect(storage.rememberMap).not.toHaveBeenCalled();
+  });
+
+  it('publishes a hosted map only when Save is requested and keeps failed saves dirty', async () => {
+    await openEditableMap(true);
+    component.chooseStamp({ width: 1, height: 1, gids: Uint32Array.of(1) });
+    pointerAt('pointerdown', 0); pointerAt('pointerup', 0);
+    const save = TestBed.inject(ProjectApiService).saveWorldMap as jasmine.Spy;
+    expect(save).not.toHaveBeenCalled();
+    save.and.rejectWith(new Error('Revision conflict'));
+    await component.saveMap();
+    expect(component.dirty).toBeTrue();
+    expect(component.error).toContain('Revision conflict');
+    expect(storage.rememberMap).not.toHaveBeenCalled();
+    save.and.resolveTo({ projectId: 'project', path: 'maps/editable.tmx', revision: 8 });
+    await component.saveMap();
+    const args = save.calls.mostRecent().args;
+    expect(args[0]).toBe('project'); expect(args[1]).toBe('maps/editable.tmx'); expect(args[3]).toBe(7);
+    expect((await readTilezedMap(args[2])).layers[0].gids[0]).toBe(1);
+    expect(component.dirty).toBeFalse();
+    pointerAt('pointerdown', 1); pointerAt('pointerup', 1);
+    await component.saveMap();
+    expect(save.calls.mostRecent().args[3]).toBe(8);
+  });
+
+  it('downloads and remembers local edits only on manual Save', async () => {
+    await openEditableMap();
+    component.chooseStamp({ width: 1, height: 1, gids: Uint32Array.of(1) });
+    pointerAt('pointerdown', 0); pointerAt('pointerup', 0);
+    const download = spyOn(HTMLAnchorElement.prototype, 'click');
+    expect(storage.rememberMap).not.toHaveBeenCalled();
+    await component.saveMap();
+    expect(download).toHaveBeenCalledTimes(1);
+    expect(storage.rememberMap).toHaveBeenCalledTimes(1);
+    expect((await readTilezedMap(await storage.rememberMap.calls.mostRecent().args[0].text())).layers[0].gids[0]).toBe(1);
+    expect(component.dirty).toBeFalse();
+  });
+
+  it('prompts before replacing or leaving an unsaved map and blocks contributors from editing or saving', async () => {
+    await openEditableMap();
+    component.chooseStamp({ width: 1, height: 1, gids: Uint32Array.of(1) });
+    pointerAt('pointerdown', 0); pointerAt('pointerup', 0);
+    spyOn(window, 'confirm').and.returnValue(false);
+    expect(component.canLeave()).toBeFalse();
+    await component.openMap(new File([mapXml], 'other.tmx'));
+    expect(component.fileName).toBe('editable.tmx');
+    const event = new Event('beforeunload', { cancelable: true });
+    component.beforeUnload(event as BeforeUnloadEvent);
+    expect(event.defaultPrevented).toBeTrue();
+    Object.assign(TestBed.inject(AuthService), { isAdmin: false });
+    expect(component.canEdit).toBeFalse();
+    await component.saveMap();
+    expect(TestBed.inject(ProjectApiService).saveWorldMap).not.toHaveBeenCalled();
+    expect(storage.rememberMap).not.toHaveBeenCalled();
+  });
+
   it('opens a map, reports missing sheets, and loads a selected 1x folder without changing the map', async () => {
     const file = new File([mapXml], 'map.tmx');
     await component.openMap(file);
@@ -213,6 +374,21 @@ describe('TileZed read-only viewer', () => {
     spyOn(window, 'createImageBitmap').and.rejectWith(new Error('Invalid PNG'));
     await component.openMap(new File([mapXml], 'map.tmx'));
     expect(component.sheetIssues).toEqual(['sheet_01: Invalid PNG']);
+  });
+
+  it('retains a partial sheet and reports only missing tile references instead of dropping every tile', async () => {
+    const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 128;
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/png'));
+    assets.load.and.resolveTo({ sheets: new Map([[1, blob]]), errors: new Map(), warnings: [] });
+    const xml = mapXml.replace('width="1" height="1"', 'width="2" height="1"')
+      .replace('width="64" height="128"', 'width="128" height="256"')
+      .replace('<layer name="0_Floor" width="1"', '<layer name="0_Floor" width="2"').replace('>1</data>', '>1,3</data>');
+    await component.openMap(new File([xml], 'partial.tmx'));
+    expect((component as any).images.size).toBe(1);
+    expect(component.sheetIssues.length).toBe(1);
+    expect(component.sheetIssues[0]).toContain('1 referenced tile(s)');
+    expect(component.sheetIssues[0]).toContain('(2)');
+    expect(component.sheetIssues[0]).toContain('Available tiles are still shown');
   });
 
   it('uses automatically resolved tiles without selecting a folder', async () => {

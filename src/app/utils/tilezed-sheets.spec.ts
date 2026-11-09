@@ -1,5 +1,5 @@
 import { TilezedTileset } from './tilezed-map';
-import { indexTilezedSheets, localTilezedSheet, tilezedSheetLayout } from './tilezed-sheets';
+import { indexTilezedSheets, localTilezedSheet, tilezedSheetGeometry, tilezedSheetLayout } from './tilezed-sheets';
 
 describe('TileZed local tilesheets', () => {
   const tileset: TilezedTileset = {
@@ -40,5 +40,12 @@ describe('TileZed local tilesheets', () => {
     const natural = { ...tileset, name: 'blends_natural_01', imageHeight: 2560, rows: 20 };
     expect(tilezedSheetLayout(natural, 62, 1024, 4096)).toEqual({ tileWidth: 128, tileHeight: 256 });
     expect(() => tilezedSheetLayout(natural, 129, 1024, 4096)).toThrowError(/does not contain tile 129/);
+  });
+
+  it('loads the available advertising sheet rows independently of a missing declared tile 127', () => {
+    const advertising = { ...tileset, name: 'advertising_01', rows: 16, imageHeight: 2048 };
+    expect(tilezedSheetGeometry(advertising, 512, 1024)).toEqual({ tileWidth: 64, tileHeight: 128, rows: 8, tileCount: 64 });
+    expect(tilezedSheetGeometry(advertising, 1024, 2048)).toEqual({ tileWidth: 128, tileHeight: 256, rows: 8, tileCount: 64 });
+    expect(() => tilezedSheetLayout(advertising, 127, 1024, 2048)).toThrowError(/does not contain tile 127/);
   });
 });

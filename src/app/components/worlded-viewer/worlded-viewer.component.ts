@@ -22,6 +22,7 @@ const MAX_WORLD_FILE_BYTES = 32 * 1024 * 1024;
   styleUrls: ['./worlded-viewer.component.scss'],
 })
 export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
+  @Input() worldRevision?: number;
   @Input() hosted = false;
   @Input() minimal = false;
   @Input() projectId?: string;
@@ -314,7 +315,7 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
     this.error = '';
     this.openingCell = true;
     const buildingContext = this.workspace ? { lots: cell.lots, files: this.workspace.files, zones: cell.zones,
-      ...(this.hosted && this.projectId ? { projectId: this.projectId } : {}) } : undefined;
+      ...(this.hosted && this.projectId ? { projectId: this.projectId, mapPath: cell.map.replace(/\\/g, '/'), worldRevision: this.worldRevision } : {}) } : undefined;
     this.handoff.send(file, buildingContext);
     try {
       if (!await this.router.navigate(['/tilezed'])) {

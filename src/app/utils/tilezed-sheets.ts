@@ -10,6 +10,11 @@ export interface TilezedSheetLayout {
   tileHeight: number;
 }
 
+export interface TilezedSheetGeometry extends TilezedSheetLayout {
+  rows: number;
+  tileCount: number;
+}
+
 export function tilezedSheetName(path: string): string {
   return (path.split(/[\\/]/).pop() ?? path).replace(/\.png$/i, '').toLowerCase();
 }
@@ -41,7 +46,8 @@ export function localTilezedSheet(index: TilezedSheetIndex, tileset: TilezedTile
   return index.files.get(tilezedSheetName(tileset.source)) ?? index.files.get(tileset.name.toLowerCase());
 }
 
-export function tilezedSheetLayout(tileset: TilezedTileset, maxIndex: number, width: number, height: number): TilezedSheetLayout {
+/** Decode image geometry independently of any particular tile reference. */
+export function tilezedSheetGeometry(tileset: TilezedTileset, width: number, height: number): TilezedSheetGeometry {
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) {
     throw new Error(`Sheet ${tileset.name} has invalid dimensions.`);
   }
@@ -49,10 +55,16 @@ export function tilezedSheetLayout(tileset: TilezedTileset, maxIndex: number, wi
   if (!scale) {
     throw new Error(`Sheet ${tileset.name} does not match the columns recorded in the TMX (at 1x or 2x).`);
   }
-  const availableRows = Math.floor(height / (tileset.tileHeight * scale));
+  const rows = Math.min(tileset.rows, Math.floor(height / (tileset.tileHeight * scale)));
+  return { tileWidth: tileset.tileWidth * scale, tileHeight: tileset.tileHeight * scale, rows, tileCount: tileset.columns * rows };
+}
+
+/** Strict check for callers that need one specific tile. Whole-sheet previews use geometry instead. */
+export function tilezedSheetLayout(tileset: TilezedTileset, maxIndex: number, width: number, height: number): TilezedSheetLayout {
+  const geometry = tilezedSheetGeometry(tileset, width, height);
   if (!Number.isSafeInteger(maxIndex) || maxIndex < 0 ||
-      maxIndex >= tileset.columns * tileset.rows || maxIndex >= tileset.columns * availableRows) {
+      maxIndex >= geometry.tileCount) {
     throw new Error(`Sheet ${tileset.name} does not contain tile ${maxIndex}.`);
   }
-  return { tileWidth: tileset.tileWidth * scale, tileHeight: tileset.tileHeight * scale };
+  return { tileWidth: geometry.tileWidth, tileHeight: geometry.tileHeight };
 }

@@ -17,7 +17,7 @@
   </div>
 
   <div class="world-stage">
-    <app-worlded-viewer [hosted]="true" [minimal]="true" [projectId]="projectId" [hidden]="!ready || !cloud"></app-worlded-viewer>
+    <app-worlded-viewer [hosted]="true" [minimal]="true" [projectId]="projectId" [worldRevision]="cloud?.revision" [hidden]="!ready || !cloud"></app-worlded-viewer>
     <div class="world-empty" *ngIf="!ready || !cloud">
       <ng-container *ngIf="!ready && !error">
         <h1>Opening project world…</h1><p role="status">{{progress || 'Checking for the latest saved world.'}}</p>
@@ -70,7 +70,7 @@
       <button type="button" (click)="selectCell()" [disabled]="busy">Edit selected cell</button>
       <button type="button" (click)="refreshPreview()" [disabled]="busy || !dirty">Update map preview</button>
     </div>
-    <p>Click a cell on the map, then choose “Edit selected cell”. Coordinates below are tiles within the cell. Cell maps open in the read-only TileZed viewer.</p>
+    <p>Click a cell on the map, then choose “Edit selected cell”. Coordinates below are tiles within the cell. Open a cell in TileZed to edit its tiles, then save the map manually.</p>
     <fieldset *ngIf="cell as cell" [disabled]="busy">
       <legend>Cell {{attr(cell, 'x')}}, {{attr(cell, 'y')}}</legend>
       <label>Cell map <select [value]="attr(cell, 'map')" (change)="set(cell, 'map', $event)">

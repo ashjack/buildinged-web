@@ -142,6 +142,18 @@ describe('WorldEd read-only viewer', () => {
     expect(component.selectedMapFile).toBe(copiedMap);
   });
 
+  it('hands the hosted map path and world revision to TileZed for conflict-checked manual saves', async () => {
+    await component.openWorld(new File([worldXml], 'world.pzw'));
+    const map = projectFile('Project/maps/cell.tmx', '<map/>');
+    await component.connectProject([projectFile('Project/world.pzw', worldXml), map]);
+    component.hosted = true; component.projectId = 'shared'; component.worldRevision = 12;
+    component.selectCell({ x: 1, y: 0 });
+    await component.openSelectedCell();
+    expect(handoff.send.calls.mostRecent().args[1]).toEqual(jasmine.objectContaining({
+      projectId: 'shared', mapPath: 'maps/cell.tmx', worldRevision: 12,
+    }));
+  });
+
   it('restores the current world and selected cell when returning from TileZed', async () => {
     await component.openWorld(new File([worldXml], 'world.pzw'));
     component.selectCell({ x: 1, y: 0 });

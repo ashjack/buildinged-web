@@ -47,6 +47,9 @@ export class ProjectApiService {
   saveWorldBuilding(projectId: string, path: string, xml: string, revision: number): Promise<Omit<WorldBuildingDocument, 'xml'>> {
     return this.request('PUT', `/projects/${encodeURIComponent(projectId)}/world-building`, { path, xml, revision });
   }
+  saveWorldMap(projectId: string, path: string, xml: string, revision: number): Promise<{ projectId: string; path: string; revision: number }> {
+    return this.request('PUT', `/projects/${encodeURIComponent(projectId)}/world-map`, { path, xml, revision });
+  }
   start(taskId: string, name: string, requestId: string): Promise<Contribution> {
     return this.request('POST', `/tasks/${encodeURIComponent(taskId)}/contributions`, { name, requestId });
   }

@@ -239,7 +239,8 @@ export function generateTilezedScene(map: TilezedMap): TilezedScene {
     const additions = generated.get(layer.name);
     if (!additions) return layer;
     const gids = new Uint32Array(count);
-    for (let i = 0; i < count; i++) gids[i] = additions[i] || layer.gids[i];
+    const noBlend = map.noBlend?.get(layer.name);
+    for (let i = 0; i < count; i++) gids[i] = noBlend?.[i] ? layer.gids[i] : (additions[i] || layer.gids[i]);
     return { ...layer, gids };
   });
   const used = new Map<number, { tileset: TilezedTileset; maxIndex: number }>();
