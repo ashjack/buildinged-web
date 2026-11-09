@@ -83,6 +83,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   private context: CanvasRenderingContext2D | null = null;
   private resizeObserver?: ResizeObserver;
   private readonly sheetsChanged: Subscription;
+  private readonly assetChanges: Subscription;
   private frame?: number;
   // Building loads redraw often; terrain is reused while the camera, size, scene and sheets are unchanged.
   private terrain?: {
@@ -107,6 +108,11 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     private readonly router: Router,
     private readonly api: ProjectApiService,
   ) {
+    this.assetChanges = this.assets.changes$?.subscribe(names => {
+      if (!this.scene) return;
+      void this.reloadSheets();
+      void this.buildings?.refresh(names, () => { this.requestDraw(); this.changeDetector.markForCheck(); });
+    }) ?? new Subscription();
     this.sheetsChanged = this.db.sheetsChanged.subscribe(names => {
       const changed = new Set(names.map(name => name.toLowerCase()));
       if (this.scene?.usedSheets.some(({ tileset }) =>
@@ -171,6 +177,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     this.mapGeneration++;
     this.sheetGeneration++;
     this.sheetsChanged.unsubscribe();
+    this.assetChanges.unsubscribe();
     this.buildings?.dispose();
     this.resizeObserver?.disconnect();
     window.removeEventListener('resize', this.onWindowResize);
@@ -178,6 +185,12 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     if (this.terrain) this.terrain.canvas.width = this.terrain.canvas.height = 0;
     this.terrain = undefined;
     this.releaseImages(this.images);
+  }
+
+  @HostListener('window:focus') async checkTileUpdates(): Promise<void> {
+    if (!this.scene || this.destroyed || !this.assets.checkForUpdates) return;
+    try { await this.assets.checkForUpdates(); }
+    catch { /* Keep the current images when metadata is temporarily unavailable. */ }
   }
 
   async onMapSelected(event: Event): Promise<void> {

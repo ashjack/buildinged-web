@@ -30,6 +30,16 @@ describe('TileZed browser storage', () => {
     expect(await file?.text()).toBe('<map/>');
   });
 
+  it('persists sheet hashes and retires the previous cached version when a sheet changes', async () => {
+    await storage.rememberVersionedSheet('floor_01', 'old', new Blob(['old']));
+    await storage.rememberVersionedSheet('walls_01', 'same', new Blob(['walls']));
+    await storage.rememberVersionedSheet('floor_01', 'new', new Blob(['new']));
+    storage.close(); await storage.open();
+    expect(await storage.versionedSheet('floor_01', 'old')).toBeUndefined();
+    expect(await (await storage.versionedSheet('floor_01', 'new'))?.text()).toBe('new');
+    expect(await (await storage.versionedSheet('walls_01', 'same'))?.text()).toBe('walls');
+  });
+
   it('persists lot placements and copies only their building resources', async () => {
     const file = new File(['<map/>'], 'cell.tmx');
     const lot = { x: 2, y: 3, width: 4, height: 5, level: 1, map: 'Buildings/house.tbx' };

@@ -16,8 +16,9 @@ describe('Background building previews', () => {
   let storage: jasmine.SpyObj<TilezedStorageService>;
 
   beforeEach(() => {
-    assets = jasmine.createSpyObj('TilezedAssetsService', ['load', 'configurationKey']);
+    assets = jasmine.createSpyObj('TilezedAssetsService', ['load', 'configurationKey', 'sheetKeys']);
     assets.configurationKey.and.resolveTo('test');
+    assets.sheetKeys.and.callFake(async names => new Map(names.map(name => [name, 'test'])));
     storage = jasmine.createSpyObj('TilezedStorageService', ['buildingPreview', 'rememberBuildingPreview']);
     storage.buildingPreview.and.resolveTo(undefined);
     storage.rememberBuildingPreview.and.resolveTo();
@@ -101,7 +102,7 @@ describe('Background building previews', () => {
       context.drawImage(image, 0, 0);
       expect([...context.getImageData(32, 64, 1, 1).data]).toEqual([0, 255, 0, 255]);
     } finally { image.close(); }
-    expect(JSON.parse(storage.rememberBuildingPreview.calls.mostRecent().args[0])[0]).toBe('building-preview-v5');
+    expect(JSON.parse(storage.rememberBuildingPreview.calls.mostRecent().args[0])[0]).toBe('building-preview-v6');
   });
 
   it('replaces generated tiles with manual tiles instead of drawing both', async () => {
@@ -131,6 +132,70 @@ describe('Background building previews', () => {
       bounds: { left: 0, right: 1, top: 0, bottom: 1 }, warnings: [] });
     await service.preview(new File([xml], 'house.tbx'));
     expect(assets.load).not.toHaveBeenCalled();
+  });
+
+  it('rebuilds a missing-sheet preview when its hash changes while preserving unrelated previews', async () => {
+    const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 128;
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/png'));
+    let floorRevision = 'missing';
+    assets.sheetKeys.and.callFake(async names => new Map(names.map(name => [name, name === 'floor_01' ? floorRevision : 'unchanged'])));
+    assets.load.and.callFake(async sheets => ({
+      sheets: new Map(sheets.filter(sheet => sheet.name !== 'floor_01' || floorRevision !== 'missing').map(sheet => [sheet.firstGid, blob])),
+      errors: new Map(sheets.filter(sheet => sheet.name === 'floor_01' && floorRevision === 'missing')
+        .map(sheet => [sheet.firstGid, `${sheet.name}: sheet not found in configured tilepacks`])), warnings: [],
+    }));
+    const partlyMissing = xml.replace('width="1"', 'width="2"')
+      .replace('<room Name="Room"', '<tile_entry category="floors"><tile enum="Floor" tile="other_01_000"/></tile_entry><room Name="Other" Floor="2"/><room Name="Room"')
+      .replace('<rooms>1</rooms>', '<rooms>1,2</rooms>');
+    const floor = new File([partlyMissing], 'floor.tbx'), other = new File([xml.replace('floor_01', 'other_01')], 'other.tbx');
+    const before = await service.preview(floor), unrelated = await service.preview(other);
+    expect(before.warnings.length).toBeGreaterThan(0);
+    floorRevision = 'restored';
+    const after = await service.preview(floor);
+    expect(after).not.toBe(before);
+    expect(after.warnings).toEqual([]);
+    expect(await service.preview(other)).toBe(unrelated);
+    expect(assets.load).toHaveBeenCalledTimes(2);
+    expect(assets.load.calls.mostRecent().args[0].map(sheet => sheet.name)).toEqual(['floor_01']);
+  });
+
+  it('retries lots that could not render any tiles when their sheet is restored', async () => {
+    const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 128;
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/png'));
+    let restored = false;
+    assets.sheetKeys.and.callFake(async names => new Map(names.map(name => [name, restored ? 'restored' : 'missing'])));
+    assets.load.and.callFake(async sheets => ({ sheets: new Map(restored ? sheets.map(sheet => [sheet.firstGid, blob]) : []),
+      errors: new Map(restored ? [] : sheets.map(sheet => [sheet.firstGid, `${sheet.name}: sheet not found in configured tilepacks`])), warnings: [] }));
+    const file = new File([xml], 'floor.tbx'), lots = new BuildingLots(service);
+    await lots.load([{ lot: { x: 0, y: 0, width: 1, height: 1, level: 0, map: 'floor.tbx' }, x: 0, y: 0, scale: 1 }],
+      new Map([['floor.tbx', file]]), () => undefined);
+    expect(lots.loaded).toBe(0);
+    restored = true;
+    expect(await lots.refresh(new Set(['floor_01']), () => undefined)).toBeTrue();
+    expect(lots.loaded).toBe(1); expect(lots.warnings.size).toBe(0);
+    lots.dispose();
+  });
+
+  it('keeps current lot images visible until affected replacements are ready', async () => {
+    const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 128;
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/png'));
+    assets.load.and.callFake(async sheets => ({ sheets: new Map(sheets.map(sheet => [sheet.firstGid, blob])), warnings: [], errors: new Map() }));
+    const floor = new File([xml], 'floor.tbx'), other = new File([xml.replace('floor_01', 'other_01')], 'other.tbx');
+    const lots = new BuildingLots(service);
+    const placements = ['floor', 'other'].map((name, i) => ({ lot: { x: i, y: 0, width: 1, height: 1, level: 0, map: `${name}.tbx` }, x: i, y: 0, scale: 1 }));
+    await lots.load(placements, new Map([['floor.tbx', floor], ['other.tbx', other]]), () => undefined);
+    const old = lots.sprites[0], unaffected = lots.sprites[1], close = spyOn(old.bitmap, 'close').and.callThrough();
+    const preview = await service.preview(floor);
+    let release!: (value: typeof preview) => void;
+    const render = spyOn(service, 'preview').and.returnValue(new Promise(resolve => { release = resolve; }));
+    const refreshing = lots.refresh(new Set(['floor_01']), () => undefined);
+    await new Promise(resolve => setTimeout(resolve));
+    expect(lots.sprites[0]).toBe(old); expect(close).not.toHaveBeenCalled();
+    release(preview); expect(await refreshing).toBeTrue();
+    expect(render).toHaveBeenCalledOnceWith(floor, 0, 2048);
+    expect(lots.sprites[0]).not.toBe(old); expect(lots.sprites[1]).toBe(unaffected);
+    expect(close).toHaveBeenCalledTimes(1);
+    lots.dispose();
   });
 
   it('rejects oversized buildings before generating squares', async () => {

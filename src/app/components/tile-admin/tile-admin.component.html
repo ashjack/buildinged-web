@@ -29,7 +29,7 @@
       <label class="file">Zip<input type="file" accept=".zip,application/zip" (change)="onNewFile($any($event.target))" required></label>
     </div>
     <p class="hint" [class.error]="newId && !newIdValid">
-      <ng-container *ngIf="!newId || newIdValid">Uploaded to <code>{{newId || 'folder'}}/{{newId || 'folder'}}.zip</code>. The zip must contain <code>Tiles/2x/*.png</code> sheets.</ng-container>
+      <ng-container *ngIf="!newId || newIdValid">The zip must contain <code>Tiles/2x/*.png</code> sheets. Tile updates become available after publishing finishes.</ng-container>
       <ng-container *ngIf="newId && !newIdValid">Use lowercase letters, numbers, dashes or underscores.</ng-container>
     </p>
     <div class="tools">

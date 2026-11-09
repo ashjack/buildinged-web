@@ -7,6 +7,7 @@ import { TilezedTileset } from '../utils/tilezed-map';
 import { TilezedBounds } from '../utils/tilezed-renderer';
 import { TilezedAssets, TilezedAssetsService } from './tilezed-assets.service';
 import { TilezedStorageService } from './tilezed-storage.service';
+import { parseTileName } from '../utils/sheet-atlas';
 
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const MAX_BUILDING_CELLS = 65536;
@@ -37,7 +38,7 @@ export class BuildingPreviewService implements OnDestroy {
   private workerIdle?: ReturnType<typeof setTimeout>;
   private workerJobId = 0;
   private readonly missingSheets = new Map<string, { configuration: string; expires: number; error: string }>();
-  private configuration = '';
+  private readonly descriptions = new WeakMap<File, Promise<{ hash: string; xml?: Document; dependencies: string[] }>>();
   // Decoded sheets are shared between buildings so common roof/wall sheets are decoded once per load.
   private readonly decoded = new Map<string, DecodedSheet>();
   private readonly decoding = new Map<string, Promise<DecodedSheet>>();
@@ -48,6 +49,31 @@ export class BuildingPreviewService implements OnDestroy {
 
   constructor(private readonly assets: TilezedAssetsService, private readonly storage: TilezedStorageService) { }
 
+  get sheetChanges$() { return this.assets.changes$; }
+  checkForTileUpdates(force = true): Promise<ReadonlySet<string>> { return this.assets.checkForUpdates(force); }
+  async usesSheets(file: File, names: ReadonlySet<string>): Promise<boolean> {
+    return (await this.describe(file)).dependencies.some(name => names.has(name));
+  }
+  private describe(file: File): Promise<{ hash: string; xml?: Document; dependencies: string[] }> {
+    let request = this.descriptions.get(file);
+    if (!request) {
+      request = (async () => {
+        if (file.size > MAX_FILE_BYTES) throw new Error('Building files larger than 4 MiB are not supported.');
+        const bytes = await file.arrayBuffer();
+        const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(value => value.toString(16).padStart(2, '0')).join('');
+        const xml = new DOMParser().parseFromString(new TextDecoder().decode(bytes), 'application/xml');
+        const dependencies = new Set<string>();
+        for (const element of Array.from(xml.querySelectorAll('[tile]'))) {
+          const tile = parseTileName(element.getAttribute('tile')!);
+          if (tile) dependencies.add(tile.sheet.toLowerCase());
+        }
+        return { hash, xml, dependencies: [...dependencies].sort() };
+      })();
+      this.descriptions.set(file, request);
+    }
+    return request;
+  }
+
   ngOnDestroy(): void {
     if (this.workerIdle) clearTimeout(this.workerIdle);
     if (this.worker) this.stopWorker(this.worker, 'The building preview service was destroyed.');
@@ -56,20 +82,14 @@ export class BuildingPreviewService implements OnDestroy {
   }
 
   /** `maxWidth` limits the stored image width, like WorldEd's fixed-width lot thumbnails. */
-  preview(file: File, firstLevel = 0, maxWidth = MAX_PREVIEW_SIDE): Promise<BuildingPreview> {
-    const variant = `${firstLevel}:${maxWidth}`;
+  async preview(file: File, firstLevel = 0, maxWidth = MAX_PREVIEW_SIDE): Promise<BuildingPreview> {
+    const description = await this.describe(file);
+    const keys = await this.assets.sheetKeys(description.dependencies);
+    const configuration = JSON.stringify([...keys].sort(([a], [b]) => a.localeCompare(b)));
+    const variant = `${firstLevel}:${maxWidth}:${configuration}`;
     const inFlight = this.pending.get(file)?.get(variant);
     if (inFlight) return inFlight;
     const job = this.run(async () => {
-      const configuration = await this.assets.configurationKey();
-      if (this.configuration !== configuration) {
-        this.cache.clear();
-        this.cacheBytes = 0;
-        this.missingSheets.clear();
-        this.configuration = configuration;
-        this.trimDecoded(0);
-        this.sheetLoads.clear();
-      }
       const existing = this.cache.get(file)?.get(variant);
       if (existing) {
         const variants = this.cache.get(file)!;
@@ -77,7 +97,7 @@ export class BuildingPreviewService implements OnDestroy {
         this.cache.set(file, variants);
         return existing;
       }
-      const preview = await this.createPreview(file, firstLevel, maxWidth);
+      const preview = await this.createPreview(file, firstLevel, maxWidth, description, keys, configuration);
       const variants = this.cache.get(file) ?? new Map<string, BuildingPreview>();
       variants.set(variant, preview);
       this.cache.delete(file);
@@ -125,8 +145,7 @@ export class BuildingPreviewService implements OnDestroy {
   }
 
   /** Shares sheet lookups between overlapping previews so each sheet is fetched once per load. */
-  private async loadSheets(sheets: readonly TilezedTileset[], configuration: string): Promise<TilezedAssets> {
-    const keyOf = (name: string) => `${configuration}\n${name}`;
+  private async loadSheets(sheets: readonly TilezedTileset[], keyOf: (name: string) => string): Promise<TilezedAssets> {
     const fresh = sheets.filter(sheet => !this.sheetLoads.has(keyOf(sheet.name)));
     if (fresh.length) {
       const batch = this.assets.load(fresh);
@@ -239,24 +258,24 @@ export class BuildingPreviewService implements OnDestroy {
     current.jobs.clear();
   }
 
-  private async createPreview(file: File, firstLevel: number, maxWidth: number): Promise<BuildingPreview> {
+  private async createPreview(file: File, firstLevel: number, maxWidth: number,
+    description: { hash: string; xml?: Document }, keys: Map<string, string>, configuration: string): Promise<BuildingPreview> {
     if (!Number.isSafeInteger(maxWidth) || maxWidth < 1 || maxWidth > MAX_PREVIEW_SIDE) {
       throw new Error('Invalid building preview width.');
     }
     if (!/\.tbx$/i.test(file.name)) throw new Error('Only TBX building lots are currently supported.');
     if (file.size > MAX_FILE_BYTES) throw new Error('Building files larger than 4 MiB are not supported.');
-    const bytes = await file.arrayBuffer();
-    const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)))
-      .map(byte => byte.toString(16).padStart(2, '0')).join('');
-    const cacheKey = JSON.stringify(['building-preview-v5', hash, firstLevel, maxWidth, this.configuration]);
+    const cacheKey = JSON.stringify(['building-preview-v6', description.hash, firstLevel, maxWidth, configuration]);
     const cacheWarnings: string[] = [];
     try {
       const cached = await this.storage.buildingPreview(cacheKey);
-      if (cached) return cached;
+      if (cached) { delete description.xml; return cached; }
     } catch (error) {
       cacheWarnings.push(`Could not read the building preview cache: ${error instanceof Error ? error.message : String(error)}`);
     }
-    const xml = new DOMParser().parseFromString(new TextDecoder().decode(bytes), 'application/xml');
+    const xml = description.xml ?? new DOMParser().parseFromString(await file.text(), 'application/xml');
+    // Retain hashes and dependencies without keeping every building's DOM for the whole session.
+    delete description.xml;
     const root = xml.documentElement;
     const width = Number(root.getAttribute('width')), height = Number(root.getAttribute('height'));
     const floors = Array.from(root.children).filter(child => child.tagName === 'floor').length;
@@ -272,8 +291,9 @@ export class BuildingPreviewService implements OnDestroy {
       name, source: `${name}.png`, firstGid: i + 1, tileWidth: 64, tileHeight: 128,
       columns: 8, rows: Math.ceil((index + 1) / 8), imageWidth: 512, imageHeight: Math.ceil((index + 1) / 8) * 128,
     }));
-    const configuration = this.configuration;
-    const keyOf = (name: string) => `${configuration}\n${name}`;
+    const missingKeys = sheets.map(sheet => sheet.name).filter(name => !keys.has(name));
+    if (missingKeys.length) for (const [name, key] of await this.assets.sheetKeys(missingKeys)) keys.set(name, key);
+    const keyOf = (name: string) => `${keys.get(name)}\n${name}`;
     const pinned = [...new Set(sheets.map(sheet => keyOf(sheet.name)))];
     pinned.forEach(key => this.pins.set(key, (this.pins.get(key) ?? 0) + 1));
     try {
@@ -281,19 +301,19 @@ export class BuildingPreviewService implements OnDestroy {
       const requested = sheets.filter(sheet => {
         if (this.decoded.has(keyOf(sheet.name))) return false;
         const missing = this.missingSheets.get(sheet.name);
-        if (missing && missing.configuration === configuration && missing.expires > Date.now()) {
+        if (missing && missing.configuration === keyOf(sheet.name) && missing.expires > Date.now()) {
           skipped.set(sheet.firstGid, missing.error);
           return false;
         }
         return true;
       });
-      const resolved = requested.length ? await this.loadSheets(requested, configuration) :
+      const resolved = requested.length ? await this.loadSheets(requested, keyOf) :
         { sheets: new Map<number, Blob>(), errors: new Map<number, string>(), warnings: [] };
       for (const [gid, error] of skipped) resolved.errors.set(gid, error);
       for (const sheet of requested) {
         const error = resolved.errors.get(sheet.firstGid);
         if (error?.endsWith(MISSING_SHEET_SUFFIX)) {
-          this.missingSheets.set(sheet.name, { configuration, expires: Date.now() + 600000, error });
+          this.missingSheets.set(sheet.name, { configuration: keyOf(sheet.name), expires: Date.now() + 600000, error });
         }
       }
       const warnings = [...resolved.warnings, ...cacheWarnings];

@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, Input, NgZone, OnDestroy, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, Input, NgZone, OnDestroy, ViewChild } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { BuildingPreviewService } from '../../services/building-preview.service';
@@ -22,6 +22,12 @@ const MAX_WORLD_FILE_BYTES = 32 * 1024 * 1024;
   styleUrls: ['./worlded-viewer.component.scss'],
 })
 export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
+  updatingTiles = false;
+  tileUpdateMessage = '';
+  private tileChanges?: Subscription;
+  private tileTimer?: ReturnType<typeof setInterval>;
+  private checkingTiles = false;
+  private readonly retryTileSheets = new Set<string>();
   @Input() worldRevision?: number;
   @Input() hosted = false;
   @Input() minimal = false;
@@ -95,6 +101,10 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   ngAfterViewInit(): void {
+    this.tileChanges = this.buildingPreviews.sheetChanges$?.subscribe(names => { void this.refreshTilePreviews(names); });
+    this.zone.runOutsideAngular(() => { this.tileTimer = setInterval(() => {
+      if (document.visibilityState === 'visible') this.zone.run(() => { void this.checkTileUpdates(false); });
+    }, 60000); });
     this.sessionChanges = this.sessions.changes$.subscribe(session => {
       if (!this.destroyed && this.workspace === session) this.changeDetector.detectChanges();
     });
@@ -124,6 +134,7 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
     this.destroyed = true;
     this.generation++;
     this.sessionChanges?.unsubscribe();
+    this.tileChanges?.unsubscribe(); if (this.tileTimer) clearInterval(this.tileTimer);
     this.buildings?.dispose();
     this.resizeObserver?.disconnect();
     window.removeEventListener('resize', this.onWindowResize);
@@ -476,6 +487,10 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   private loadBuildings(workspace: WorldedSession): void {
+    this.updatingTiles = false;
+    this.tileUpdateMessage = '';
+    this.retryTileSheets.clear();
+    void this.checkTileUpdates(true);
     this.buildings?.dispose();
     // Like WorldEd's fixed-width lot thumbnails, sized to the 256 px bitmaps the overview draws.
     const buildings = this.buildings = new BuildingLots(this.buildingPreviews, 256, 256);
@@ -501,6 +516,42 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
         this.changeDetector.markForCheck();
       }
     });
+  }
+
+  @HostListener('window:focus') onTileFocus(): void { void this.checkTileUpdates(); }
+  async checkTileUpdates(force = true): Promise<void> {
+    if (this.checkingTiles || !this.workspace || !this.buildingPreviews.checkForTileUpdates) return;
+    this.checkingTiles = true;
+    try {
+      const changed = await this.buildingPreviews.checkForTileUpdates(force);
+      if (!this.destroyed && !changed.size && force) {
+        if (this.retryTileSheets.size) await this.refreshTilePreviews(new Set(this.retryTileSheets));
+        else this.tileUpdateMessage = 'Tile images are up to date.';
+      }
+    } catch { if (!this.destroyed) this.tileUpdateMessage = 'Could not check tile updates. Current previews are kept; try again.'; }
+    finally { this.checkingTiles = false; this.changeDetector.markForCheck(); }
+  }
+  private async refreshTilePreviews(names: ReadonlySet<string>): Promise<void> {
+    const buildings = this.buildings;
+    if (!buildings || this.destroyed) return;
+    names.forEach(name => this.retryTileSheets.add(name));
+    this.updatingTiles = true; this.tileUpdateMessage = 'Updating building previews…';
+    const visible = (sprite: import('../../utils/building-preview').BuildingSprite) => {
+      const left = this.camera.x - this.viewport.width / (2 * this.camera.zoom), top = this.camera.y - this.viewport.height / (2 * this.camera.zoom);
+      return sprite.bounds.right >= left && sprite.bounds.left <= left + this.viewport.width / this.camera.zoom &&
+        sprite.bounds.bottom >= top && sprite.bounds.top <= top + this.viewport.height / this.camera.zoom;
+    };
+    let complete = false;
+    try { complete = await buildings.refresh(names, () => { this.requestDraw(); this.changeDetector.markForCheck(); }, visible); }
+    catch { /* Preserve the current images and offer another check. */ }
+    finally {
+      if (!this.destroyed && buildings === this.buildings) {
+        if (complete) this.retryTileSheets.clear();
+        this.updatingTiles = false;
+        this.tileUpdateMessage = complete ? 'Updated tile images and affected buildings.' : 'Some buildings could not be refreshed. Check for tile updates to retry.';
+        this.changeDetector.markForCheck();
+      }
+    }
   }
 
   private isCurrent(generation: number): boolean {

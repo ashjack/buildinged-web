@@ -8,7 +8,8 @@ export function parseTilepackManifest(value: unknown): Tilepack[] {
     if (typeof entry !== 'object' || entry === null || !('Name' in entry) || !('Url' in entry) ||
         typeof entry.Name !== 'string' || !entry.Name || typeof entry.Url !== 'string' || !entry.Url) continue;
     const version = 'Version' in entry && entry.Version != null ? String(entry.Version) : undefined;
-    packs.push({ name: entry.Name, url: entry.Url, enabled: false, version });
+    const sheetIndexUrl = 'SheetIndexUrl' in entry && typeof entry.SheetIndexUrl === 'string' ? entry.SheetIndexUrl : undefined;
+    packs.push({ name: entry.Name, url: entry.Url, enabled: false, version, ...(sheetIndexUrl ? { sheetIndexUrl } : {}) });
   }
   return packs;
 }

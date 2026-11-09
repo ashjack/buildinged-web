@@ -188,9 +188,8 @@ that require per-tile compositing produce a warning. Desktop TileZed also draws
 every lot's level 0 before any lot's level 1; whole-building images cannot
 interleave floors this way.
 PNG previews are cached by
-file contents, width and tilepack configuration (the published pack list and
-saved enabled flags, so the cache is shared whether or not the BuildingEd
-editor was opened first), with a 256 MiB LRU limit so a
+file contents, width, floor and the content hashes of their referenced sheets,
+with a 256 MiB LRU limit so a
 whole world's thumbnails stay cached between visits. Previews whose only gaps
 are sheets missing from the configured tilepacks are cached too (a published
 pack that returns 403/404/410 counts as supplying no sheets, and is not
@@ -208,6 +207,21 @@ initial building preview supports TBX v2-v7 (room ceiling tiles are not drawn),
 not TMX lot submaps, and does not
 perform desktop TileZed's per-tile lot compositing, so terrain objects in front
 of a building are drawn behind it.
+
+ZIP uploads through Tile Administration publish an immutable release ZIP and a
+matching `SheetIndexUrl` sidecar containing each selected PNG's SHA-256 and size.
+The manifest switches only after both are ready. Existing packs keep working;
+upload their ZIP once through Tile Administration to enable per-sheet updates.
+Old release ZIPs are retained so in-flight readers can finish safely.
+WorldEd checks the small manifest/index on opening, focus and once a minute while
+visible; its toolbar also has **Check for tile updates**. TileZed checks on focus.
+Unchanged PNGs remain cached even when the ZIP is repacked. Changed sheets are
+read using ZIP byte ranges, verified against the index and cached by content
+hash. Only buildings referencing those sheets are rebuilt, visible ones first,
+with their current images retained until replacements are ready. These image
+refreshes do not save or change the world, buildings or unsaved TileZed edits.
+ZIP servers must support HTTP byte ranges. Legacy packs without an index retain
+their previous cache behavior until republished.
 Restart an already-running development server after this update so Angular
 picks up the Web Worker build configuration.
 

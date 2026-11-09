@@ -9,6 +9,7 @@
     <span class="zoom-value" aria-label="Zoom level">{{zoomPercent}}%</span>
     <button class="zoom-button" type="button" (click)="viewer.zoom(1.25)" [disabled]="!ready || !cloud" aria-label="Zoom in">+</button>
     <button class="fit-button" type="button" (click)="viewer.fit()" [disabled]="!ready || !cloud">Fit world</button>
+    <button class="fit-button" type="button" (click)="viewer.checkTileUpdates()" [disabled]="!ready || !cloud || viewer.updatingTiles">Check for tile updates</button>
     <button #controlsToggle class="panel-toggle" type="button" (click)="toggleControls()"
             aria-controls="project-world-controls" [attr.aria-expanded]="controlsOpen"
             [attr.aria-label]="dirty ? 'Project controls, unsaved changes' : 'Project controls'">
@@ -17,6 +18,7 @@
   </div>
 
   <div class="world-stage">
+    <p *ngIf="!!viewer?.tileUpdateMessage" class="workspace-alert" role="status">{{viewer.tileUpdateMessage}}</p>
     <app-worlded-viewer [hosted]="true" [minimal]="true" [projectId]="projectId" [worldRevision]="cloud?.revision" [hidden]="!ready || !cloud"></app-worlded-viewer>
     <div class="world-empty" *ngIf="!ready || !cloud">
       <ng-container *ngIf="!ready && !error">

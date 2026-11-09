@@ -8,6 +8,7 @@ import { TileService, TILEPACK_MANIFEST_URL } from './tile.service';
 import { TilezedArchiveService } from './tilezed-archive.service';
 import { TilezedAssetsService } from './tilezed-assets.service';
 import { TilezedStorageService } from './tilezed-storage.service';
+import { TileAssetCatalogService } from './tile-asset-catalog.service';
 
 describe('TileZed tile sources', () => {
   let service: TilezedAssetsService;
@@ -31,9 +32,12 @@ describe('TileZed tile sources', () => {
     oldPackSetting = localStorage.getItem('TilezedTestPack');
     localStorage.removeItem('TilezedTestPack');
     getBuildingEdSheet = jasmine.createSpy('get').and.resolveTo(undefined);
-    storage = jasmine.createSpyObj<TilezedStorageService>('TilezedStorageService', ['sheet', 'rememberSheet']);
+    storage = jasmine.createSpyObj<TilezedStorageService>('TilezedStorageService', ['sheet', 'rememberSheet', 'versionedSheet', 'rememberVersionedSheet']);
     storage.sheet.and.resolveTo(undefined);
     storage.rememberSheet.and.resolveTo();
+    const versions = new Map<string, Blob>();
+    storage.versionedSheet.and.callFake(async (name, revision) => versions.get(`${name}:${revision}`));
+    storage.rememberVersionedSheet.and.callFake(async (name, revision, blob) => { versions.set(`${name}:${revision}`, blob); });
     archives = jasmine.createSpyObj<TilezedArchiveService>('TilezedArchiveService', ['load']);
     archives.load.and.resolveTo({ sheets: new Map(), errors: new Map() });
     tileService = jasmine.createSpyObj<TileService>('TileService', ['fetchTilesheet'], { tilepacks: [] });
@@ -58,10 +62,12 @@ describe('TileZed tile sources', () => {
     else localStorage.setItem('TilezedTestPack', oldPackSetting);
   });
 
-  it('reuses BuildingEd sheets without requesting the manifest or a folder', async () => {
+  it('reuses BuildingEd sheets after checking lightweight metadata without requesting a ZIP', async () => {
     getBuildingEdSheet.and.resolveTo({ name: 'grass_01', blob: png });
 
-    const result = await service.load([sheet('grass_01', 1)]);
+    const pending = service.load([sheet('grass_01', 1)]);
+    await settle(); http.expectOne(TILEPACK_MANIFEST_URL).flush([{ Name: 'Vanilla', Url: vanillaUrl }]);
+    const result = await pending;
 
     expect(result.sheets.get(1)).toBe(png);
     expect(result.errors.size).toBe(0);
@@ -74,10 +80,12 @@ describe('TileZed tile sources', () => {
     const name = `tilezed-test-${Date.now()}-${Math.random()}`;
     const db = new DbService();
     const viewerStorage = new TilezedStorageService(`${name}-storage`);
-    const loader = new TilezedAssetsService(db, viewerStorage, TestBed.inject(HttpClient), tileService, archives);
+    const loader = new TilezedAssetsService(db, viewerStorage, TestBed.inject(HttpClient), tileService, archives, TestBed.inject(TileAssetCatalogService));
     try {
       await db.sheetImages.put({ name, blob: png });
-      const result = await loader.load([sheet(name, 1)]);
+      const pending = loader.load([sheet(name, 1)]);
+      await settle(); http.expectOne(TILEPACK_MANIFEST_URL).flush([{ Name: 'Vanilla', Url: vanillaUrl }]);
+      const result = await pending;
       expect(await result.sheets.get(1)?.text()).toBe('image');
       http.expectNone(TILEPACK_MANIFEST_URL);
     } finally {
@@ -90,7 +98,9 @@ describe('TileZed tile sources', () => {
   it('reuses a previously fetched 1x sheet when BuildingEd did not cache it', async () => {
     storage.sheet.and.resolveTo(png);
 
-    const result = await service.load([sheet('vegetation_01', 1)]);
+    const pending = service.load([sheet('vegetation_01', 1)]);
+    await settle(); http.expectOne(TILEPACK_MANIFEST_URL).flush([{ Name: 'Vanilla', Url: vanillaUrl }]);
+    const result = await pending;
 
     expect(result.sheets.get(1)).toBe(png);
     expect(archives.load).not.toHaveBeenCalled();
@@ -245,5 +255,51 @@ describe('TileZed tile sources', () => {
 
     expect(result.sheets.get(1)).toBe(png);
     expect(result.warnings.join(' ')).toContain('Storage is full');
+  });
+
+  it('ignores stale sheets and downloads only the changed PNG after an indexed ZIP update', async () => {
+    const hash = async (blob: Blob) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()))]
+      .map(value => value.toString(16).padStart(2, '0')).join('');
+    const newer = new Blob(['new image'], { type: 'image/png' });
+    const originalHash = await hash(png), newerHash = await hash(newer);
+    const respond = async (version: string, grass: Blob, grassHash: string) => {
+      await settle();
+      http.expectOne(TILEPACK_MANIFEST_URL).flush([{ Name: 'Vanilla', Url: `https://example.test/${version}.zip`,
+        Version: version, SheetIndexUrl: `https://example.test/${version}.json` }]);
+      await settle();
+      http.expectOne(`https://example.test/${version}.json`).flush({ format: 1, version, sheets: [
+        { name: 'grass_01', path: 'Tiles/2x/grass_01.png', size: grass.size, sha256: grassHash },
+        { name: 'vegetation_01', path: 'Tiles/2x/vegetation_01.png', size: png.size, sha256: originalHash },
+      ] });
+    };
+    getBuildingEdSheet.and.resolveTo({ name: 'grass_01', blob: new Blob(['stale']) });
+    archives.load.and.resolveTo({ sheets: new Map([['grass_01', png], ['vegetation_01', png]]), errors: new Map() });
+    const tiles = [sheet('grass_01', 1), sheet('vegetation_01', 2)];
+    const first = service.load(tiles); await respond('1', png, originalHash); await first;
+    await service.load(tiles);
+    expect(archives.load).toHaveBeenCalledTimes(1);
+
+    const checking = service.checkForUpdates(); await respond('2', newer, newerHash);
+    expect([...await checking]).toEqual(['grass_01']);
+    archives.load.and.resolveTo({ sheets: new Map([['grass_01', newer]]), errors: new Map() });
+    const result = await service.load(tiles);
+    expect(archives.load.calls.mostRecent().args).toEqual(['https://example.test/2.zip', ['grass_01']]);
+    expect(result.sheets.get(1)).toBe(newer);
+    expect(result.sheets.get(2)).toBe(png);
+    expect(result.errors.size).toBe(0);
+  });
+
+  it('rejects ZIP bytes that do not match their published sheet hash', async () => {
+    archives.load.and.resolveTo({ sheets: new Map([['grass_01', png]]), errors: new Map() });
+    const loading = service.load([sheet('grass_01', 1)]);
+    await settle(); http.expectOne(TILEPACK_MANIFEST_URL).flush([{ Name: 'Vanilla', Url: vanillaUrl,
+      Version: '1', SheetIndexUrl: 'https://example.test/index.json' }]);
+    await settle(); http.expectOne('https://example.test/index.json').flush({ format: 1, version: '1', sheets: [
+      { name: 'grass_01', path: 'Tiles/2x/grass_01.png', size: png.size, sha256: 'a'.repeat(64) },
+    ] });
+    const result = await loading;
+    expect(result.sheets.size).toBe(0);
+    expect(result.errors.get(1)).toContain('do not match');
+    expect(storage.rememberVersionedSheet).not.toHaveBeenCalled();
   });
 });

@@ -35,6 +35,7 @@
     <p *ngIf="storageWarning" class="message warning" role="alert">{{storageWarning}}</p>
     <p *ngIf="!minimal && loadingFolder" class="message" role="status">Reading referenced project files locally...</p>
     <p *ngIf="!minimal && loadingBuildings" class="message" role="status">Rendering buildings in the background: {{buildings?.loaded}} / {{workspace?.world?.lotCount}}</p>
+    <p *ngIf="!minimal && tileUpdateMessage" class="message" role="status">{{tileUpdateMessage}} <button type="button" (click)="checkTileUpdates()" [disabled]="updatingTiles">Check for tile updates</button></p>
     <details *ngIf="!minimal && warnings.length" class="message warning">
       <summary>World warnings ({{warnings.length}})</summary>
       <ul><li *ngFor="let warning of warnings">{{warning}}</li></ul>

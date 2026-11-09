@@ -3,12 +3,12 @@ import { Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Tilepack } from '../models/app.models';
 import { TilezedTileset } from '../utils/tilezed-map';
-import { parseTilepackManifest } from '../utils/tilepack-manifest';
 import { tilezedSheetName } from '../utils/tilezed-sheets';
 import { DbService } from './db.service';
-import { TileService, TILEPACK_MANIFEST_URL } from './tile.service';
+import { TileService } from './tile.service';
 import { TilepackHttpError, TilezedArchiveService, TilezedArchiveSheets } from './tilezed-archive.service';
 import { TilezedStorageService } from './tilezed-storage.service';
+import { TileAssetCatalog, TileAssetCatalogService } from './tile-asset-catalog.service';
 
 export interface TilezedAssets {
   sheets: Map<number, Blob>;
@@ -36,7 +36,6 @@ function isMissingPack(error: unknown): boolean {
 
 @Injectable({ providedIn: 'root' })
 export class TilezedAssetsService {
-  private manifestRequest?: { packs: Promise<Tilepack[]>; expires: number };
   private readonly packFailures = new Map<string, { detail: string; permanent: boolean; expires: number }>();
   private readonly jsonPacks = new Map<string, { list: Promise<unknown>; expires: number }>();
 
@@ -46,7 +45,12 @@ export class TilezedAssetsService {
     private readonly http: HttpClient,
     private readonly tileService: TileService,
     private readonly archives: TilezedArchiveService,
+    private readonly catalog: TileAssetCatalogService,
   ) { }
+
+  get changes$() { return this.catalog.changes$; }
+  sheetKeys(names: readonly string[]): Promise<Map<string, string>> { return this.catalog.keys(names); }
+  checkForUpdates(force = true): Promise<ReadonlySet<string>> { return this.catalog.check(force); }
 
   /**
    * Identifies the tilepacks `load` can use. Built only from the published manifest and the saved
@@ -64,6 +68,14 @@ export class TilezedAssetsService {
   }
 
   async load(tilesets: readonly TilezedTileset[]): Promise<TilezedAssets> {
+    try {
+      await this.catalog.keys(tilesets.map(sheet => sheet.name));
+      const catalog = await this.catalog.current();
+      if (catalog.indexes.size) return this.loadIndexed(tilesets, catalog);
+    } catch (error) {
+      return { sheets: new Map(), warnings: [], errors: new Map(tilesets.map(sheet =>
+        [sheet.firstGid, `${sheet.name}: Could not check tile asset versions: ${errorText(error)}`])) };
+    }
     const sheets = new Map<number, Blob>();
     const errors = new Map<number, string>();
     const warnings = new Set<string>();
@@ -151,16 +163,72 @@ export class TilezedAssetsService {
 
   /** Shared briefly so a burst of building previews does not refetch the manifest for every lot. */
   private manifest(): Promise<Tilepack[]> {
-    const now = Date.now();
-    if (!this.manifestRequest || this.manifestRequest.expires <= now) {
-      const packs = firstValueFrom(this.http.get<unknown>(TILEPACK_MANIFEST_URL, {
-        headers: { 'Cache-Control': 'no-cache' },
-      })).then(parseTilepackManifest);
-      const request = { packs, expires: now + MANIFEST_TTL_MS };
-      this.manifestRequest = request;
-      packs.catch(() => { if (this.manifestRequest === request) this.manifestRequest = undefined; });
+    return this.catalog.packs();
+  }
+
+  private async hash(blob: Blob): Promise<string> {
+    return [...new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()))]
+      .map(value => value.toString(16).padStart(2, '0')).join('');
+  }
+  private async loadIndexed(tilesets: readonly TilezedTileset[], catalog: TileAssetCatalog): Promise<TilezedAssets> {
+    const sheets = new Map<number, Blob>(), errors = new Map<number, string>(), warnings: string[] = [];
+    const pending = new Map(tilesets.map(sheet => [sheet.firstGid, sheet]));
+    for (const pack of catalog.packs) {
+      if (!pending.size) break;
+      const index = catalog.indexes.get(pack.url);
+      const requests = new Map<string, { tiles: TilezedTileset[]; revision: string; size?: number }>();
+      for (const tile of pending.values()) {
+        const name = index ? sheetNames(tile).find(name => index.has(name)) : sheetNames(tile)[0];
+        if (!name) continue;
+        const entry = index?.get(name), revision = entry?.sha256 ?? `legacy:${pack.url}:${pack.version ?? 'unversioned'}`;
+        let blob: Blob | undefined;
+        try { blob = await this.storage.versionedSheet(name, revision); } catch { warnings.push(`Could not read the tile cache for ${name}.`); }
+        if (blob && entry && blob.size !== entry.size) blob = undefined;
+        if (!blob && entry) {
+          // Upgrade already-downloaded sheets in place when their bytes still match.
+          const old = await this.db.sheetImages.get(name).catch(() => undefined);
+          if (old?.blob?.size === entry.size && await this.hash(old.blob) === entry.sha256) {
+            blob = old.blob;
+            try { await this.storage.rememberVersionedSheet(name, revision, blob); }
+            catch { warnings.push(`Could not cache ${name}.`); }
+          }
+        }
+        if (blob) { sheets.set(tile.firstGid, blob); pending.delete(tile.firstGid); }
+        else {
+          const request = requests.get(name) ?? { tiles: [], revision, size: entry?.size };
+          request.tiles.push(tile); requests.set(name, request);
+        }
+      }
+      if (!requests.size) continue;
+      let found: TilezedArchiveSheets;
+      try { found = /\.zip(?:[?#]|$)/i.test(pack.url) ? await this.archives.load(pack.url, [...requests.keys()]) : await this.loadJsonPack(pack.url, [...requests.keys()]); }
+      catch (error) {
+        // Never substitute a lower-priority pack for a sheet explicitly owned by this index.
+        for (const request of requests.values()) for (const tile of request.tiles) {
+          errors.set(tile.firstGid, `${tile.name}: ${errorText(error)}`); if (index) pending.delete(tile.firstGid);
+        }
+        continue;
+      }
+      for (const [name, request] of requests) {
+        const blob = found.sheets.get(name);
+        if (!blob) {
+          if (index || found.errors.has(name)) for (const tile of request.tiles) {
+            errors.set(tile.firstGid, `${name}: ${found.errors.get(name) ?? 'The indexed tilesheet is missing from its ZIP.'}`);
+            if (index) pending.delete(tile.firstGid);
+          }
+          continue;
+        }
+        if (index && (blob.size !== request.size || await this.hash(blob) !== request.revision)) {
+          for (const tile of request.tiles) { errors.set(tile.firstGid, `${name}: The ZIP contents do not match the published tilesheet index. Retry checking for updates.`); pending.delete(tile.firstGid); }
+          continue;
+        }
+        for (const tile of request.tiles) { sheets.set(tile.firstGid, blob); pending.delete(tile.firstGid); errors.delete(tile.firstGid); }
+        try { await this.storage.rememberVersionedSheet(name, request.revision, blob); }
+        catch { warnings.push(`Could not cache ${name}.`); }
+      }
     }
-    return this.manifestRequest.packs;
+    for (const tile of pending.values()) if (!errors.has(tile.firstGid)) errors.set(tile.firstGid, `${tile.name}: ${MISSING_SHEET}`);
+    return { sheets, errors, warnings };
   }
 
   private async cachedSheet(tileset: TilezedTileset, warnings: Set<string>): Promise<Blob | undefined> {

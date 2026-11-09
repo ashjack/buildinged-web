@@ -4,6 +4,7 @@ import { TilezedTileset, tilesetForGid } from '../../utils/tilezed-map';
 import { TileStamp } from '../../utils/tilezed-edit';
 import { TilezedAssetsService } from '../../services/tilezed-assets.service';
 import { tilezedSheetGeometry } from '../../utils/tilezed-sheets';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-tilezed-tile-palette', standalone: true, imports: [CommonModule],
@@ -74,7 +75,10 @@ export class TilezedTilePaletteComponent implements OnChanges, OnDestroy {
   private generation = 0;
   private pointerId?: number;
   private revealFrame?: number;
-  constructor(private assets: TilezedAssetsService) { }
+  private changes: Subscription;
+  constructor(private assets: TilezedAssetsService) {
+    this.changes = this.assets.changes$?.subscribe(names => { if (this.sheet && names.has(this.sheet.name.toLowerCase())) void this.load(); }) ?? new Subscription();
+  }
   get filteredTilesets(): TilezedTileset[] {
     const items = this.tilesets.filter(item => item.name.toLowerCase().includes(this.filter.trim().toLowerCase()));
     return this.sortByName ? items.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })) : items;
@@ -200,6 +204,7 @@ export class TilezedTilePaletteComponent implements OnChanges, OnDestroy {
   }
   ngOnDestroy(): void {
     this.generation++;
+    this.changes.unsubscribe();
     if (this.url) URL.revokeObjectURL(this.url);
     if (this.revealFrame !== undefined) cancelAnimationFrame(this.revealFrame);
   }

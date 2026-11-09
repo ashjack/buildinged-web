@@ -44,6 +44,7 @@ export const TILEZED_STORAGE_DATABASE = new InjectionToken<string>('TileZed stor
 export class TilezedStorageService extends Dexie {
   private maps!: Table<StoredTilezedMap, string>;
   private sheets!: Table<CachedTilezedSheet, string>;
+  private sheetVersions!: Table<{ key: string; name: string; sha256: string; blob: Blob }, string>;
   private buildingPreviews!: Table<StoredBuildingPreview, string>;
   private mapWrites: Promise<void> = Promise.resolve();
   private buildingPreviewBytes?: number;
@@ -52,6 +53,7 @@ export class TilezedStorageService extends Dexie {
     super(databaseName);
     this.version(1).stores({ maps: '&id', sheets: '&name, packName' });
     this.version(2).stores({ buildingPreviews: '&key, lastUsed' });
+    this.version(3).stores({ sheetVersions: '&key, name' });
   }
 
   async buildingPreview(key: string): Promise<BuildingPreview | undefined> {
@@ -188,6 +190,17 @@ export class TilezedStorageService extends Dexie {
     if (!(stored.blob instanceof Blob)) throw new Error(`The cached sheet ${name} is invalid.`);
     const installedVersion = localStorage.getItem(`tilepack-version:${stored.packName}`);
     return installedVersion === stored.installedVersion ? stored.blob : undefined;
+  }
+
+  async versionedSheet(name: string, sha256: string): Promise<Blob | undefined> {
+    const entry = await this.sheetVersions.get(`${name}:${sha256}`);
+    return entry?.blob instanceof Blob ? entry.blob : undefined;
+  }
+  async rememberVersionedSheet(name: string, sha256: string, blob: Blob): Promise<void> {
+    await this.transaction('rw', this.sheetVersions, async () => {
+      await this.sheetVersions.where('name').equals(name).delete();
+      await this.sheetVersions.put({ key: `${name}:${sha256}`, name, sha256, blob });
+    });
   }
 
   async rememberSheet(sheet: StoredTilezedSheet): Promise<void> {
