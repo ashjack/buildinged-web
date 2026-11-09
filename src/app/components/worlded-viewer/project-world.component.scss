@@ -1,0 +1,58 @@
+@import '../../styles/page';
+:host { display: block; min-height: 100vh; background: $bg; color: $text; font: 14px/1.5 system-ui, sans-serif; color-scheme: dark; }
+.project-world { max-width: 1500px; margin: auto; padding: 24px; }
+h1 { margin: 16px 0 8px; font-size: 26px; }
+h2 { margin: 16px 0 8px; font-size: 18px; }
+p { margin: 8px 0 16px; }
+a { color: $accent; }
+.actions, .entry { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.upload, .editor { margin: 20px 0; padding: 18px; border: 1px solid $line; background: $surface; }
+.entry { padding: 14px 0; border-bottom: 1px solid $line; margin-bottom: 12px; }
+label { display: inline-flex; flex-direction: column; gap: 5px; max-width: 100%; margin: 6px 12px 6px 0; }
+input, select { padding: 7px; background: $bg; color: $text; border: 1px solid $line-strong; max-width: 100%; }
+input[type=number] { width: 85px; }
+select { max-width: 300px; }
+button { padding: 8px 12px; border: 1px solid $line-strong; border-radius: 4px; background: $surface; color: $text; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+.error { color: $danger; }
+.muted { color: $muted; font-size: 12px; }
+fieldset { padding: 16px; margin-top: 16px; border: 1px solid $line; }
+@media (max-width: 640px) { .project-world { padding: 12px; } .upload, .editor { padding: 12px; } }
+
+.project-world.fullscreen { position: fixed; inset: 0; display: flex; flex-direction: column; width: 100%; max-width: none; height: 100dvh; margin: 0; padding: 0; overflow: hidden; }
+[hidden] { display: none !important; }
+.workspace-toolbar { display: flex; flex: 0 0 48px; align-items: center; gap: 8px; padding: 0 16px; border-bottom: 1px solid $line; background: $surface; }
+.workspace-navigation { display: flex; flex-shrink: 0; align-items: center; gap: 16px; margin-right: 8px; font-size: 12px; white-space: nowrap; }
+.workspace-title { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; font-size: 13px; }
+.workspace-title strong { font-weight: 600; }
+.workspace-title span { color: $muted; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-toolbar .zoom-button { width: 28px; height: 30px; padding: 0; font-size: 18px; }
+.zoom-value { width: 38px; text-align: center; color: $muted; font-size: 12px; }
+.workspace-toolbar .fit-button { height: 30px; padding: 0 9px; font-size: 12px; }
+.panel-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 32px; padding: 0 12px; font-size: 13px; white-space: nowrap; }
+.panel-toggle[aria-expanded=true] { color: $accent; border-color: $accent; }
+.unsaved-dot { width: 6px; height: 6px; border-radius: 50%; background: $accent; }
+.world-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.world-stage app-worlded-viewer { display: block; width: 100%; height: 100%; }
+.world-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px; text-align: center; background: $bg; }
+.world-empty h1 { font-size: 22px; }
+.world-empty p { max-width: 560px; color: $muted; }
+.workspace-alert { position: absolute; top: 12px; left: 16px; right: 16px; width: fit-content; max-width: calc(100% - 32px); margin: 0 auto; padding: 10px 14px; border: 1px solid $line-strong; border-radius: 6px; background: $surface; }
+.project-controls { position: absolute; z-index: 3; top: 56px; bottom: 8px; right: 8px; width: min(560px, calc(100% - 16px)); padding: 20px; overflow: auto; overscroll-behavior: contain; border: 1px solid $line-strong; border-radius: 8px; background: $bg; box-shadow: 0 12px 40px #0008; }
+.project-controls:focus { outline: none; }
+.panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid $line; }
+.panel-heading h2 { margin: 0; }
+.panel-heading button { padding: 5px 10px; font-size: 12px; }
+.project-controls .actions span { flex-basis: 100%; color: $muted; font-size: 12px; }
+.world-warnings { margin: 16px 0; color: $accent; font-size: 12px; }
+@media (max-width: 700px) {
+  .workspace-toolbar { gap: 4px; padding: 0 8px; }
+  .workspace-title { display: none; }
+  .panel-toggle { margin-left: auto; }
+  .project-controls { padding: 16px; }
+}
+@media (max-width: 480px) {
+  .workspace-toolbar { flex-basis: 84px; flex-wrap: wrap; align-content: center; row-gap: 4px; }
+  .workspace-navigation { flex-basis: 100%; line-height: 24px; }
+  .project-controls { top: 92px; }
+}

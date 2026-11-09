@@ -1,0 +1,18 @@
+<main class="project-world">
+  <header>
+    <a routerLink="/">← Back to buildings</a>
+    <h1>WorldEd</h1>
+    <p>Choose a project to open its uploaded world. WorldEd loads the saved world and project files from the website.</p>
+  </header>
+  <p *ngIf="loading" role="status">Loading projects…</p>
+  <p *ngIf="error" class="error" role="alert">{{error}}</p>
+  <button *ngIf="error" type="button" (click)="load()" [disabled]="loading">Try again</button>
+  <section class="editor" *ngIf="!loading && projects.length" aria-label="Project worlds">
+    <h2>Project worlds</h2>
+    <p>Invited contributors can view the uploaded world. Only admins can edit or upload worlds.</p>
+    <a class="entry" *ngFor="let project of projects" [routerLink]="['/worlded/project', project.id]">
+      <strong>{{project.name}}</strong><span *ngIf="project.description">{{project.description}}</span>
+    </a>
+  </section>
+  <p *ngIf="!loading && !error && !projects.length">No projects are available. Ask the project owner to invite you, then open WorldEd again.</p>
+</main>

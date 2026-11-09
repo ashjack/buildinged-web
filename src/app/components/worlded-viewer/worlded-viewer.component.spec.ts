@@ -8,6 +8,9 @@ import { WorldedSnapshotResult, WorldedStorageService } from '../../services/wor
 import { WorldedCellPanelComponent } from './worlded-cell-panel.component';
 import { BuildingPreviewService } from '../../services/building-preview.service';
 import { WorldedViewerComponent } from './worlded-viewer.component';
+import { readWorldedWorld } from '../../utils/worlded-world';
+import { fitTilezedCamera } from '../../utils/tilezed-renderer';
+import { worldedBounds } from '../../utils/worlded-renderer';
 
 const worldXml = `<world version="1.0" width="2" height="1" cellFormat="legacy-300">
   <cell x="1" y="0" map="maps/cell.tmx">
@@ -54,6 +57,45 @@ describe('WorldEd read-only viewer', () => {
   });
 
   afterEach(() => fixture.destroy());
+
+  it('fits and paints a world loaded while hidden as soon as it becomes visible, without wheel input', async () => {
+    const hosted = TestBed.createComponent(WorldedViewerComponent);
+    hosted.componentInstance.hosted = true;
+    hosted.componentInstance.minimal = true;
+    const host = hosted.nativeElement as HTMLElement;
+    host.style.cssText = 'position:fixed;top:0;left:0;width:800px;height:600px;display:none';
+    hosted.detectChanges();
+    const xml = '<world version="1.0" width="2" height="2"/>';
+    const world = readWorldedWorld(xml);
+    try {
+      await hosted.componentInstance.openHosted({ world, worldFile: new File([xml], 'uploaded.pzw'),
+        files: new Map(), folderName: 'Uploaded', warnings: [], omittedResources: 0, restored: false });
+      host.style.display = 'block';
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      const canvas = hosted.nativeElement.querySelector('canvas') as HTMLCanvasElement;
+      const rect = canvas.getBoundingClientRect();
+      const expected = fitTilezedCamera(worldedBounds(world), { width: rect.width, height: rect.height });
+      expect(hosted.componentInstance.zoomPercent).toBe(Math.round(expected.zoom * 100));
+      const pixel = canvas.getContext('2d')!.getImageData(Math.floor(canvas.width * .625), Math.floor(canvas.height * .6), 1, 1).data;
+      expect(pixel[3]).toBe(255);
+      expect(Array.from(pixel).slice(0, 3)).not.toEqual([32, 35, 39]);
+    } finally { hosted.destroy(); }
+  });
+
+  it('keeps unchanged buildings and camera when a hosted world receives only zone edits', async () => {
+    await component.openWorld(new File([worldXml], 'world.pzw'));
+    const previous = sessions.current!;
+    const buildings = component.buildings;
+    component.zoom(1.25);
+    const zoom = component.zoomPercent;
+    const updated = worldXml.replace('</cell>', '<object name="New zone" x="1" y="2" width="3" height="4" level="0"/></cell>');
+    await component.openHosted({ ...previous, world: readWorldedWorld(updated), worldFile: new File([updated], 'world.pzw') });
+    expect(component.workspace?.world.objectCount).toBe(1);
+    expect(component.buildings).toBe(buildings);
+    expect(component.zoomPercent).toBe(zoom);
+  });
 
   it('opens a world and keeps it when a later file is invalid', async () => {
     const file = new File([worldXml], 'world.pzw');

@@ -5,7 +5,6 @@ import * as fromRoot from '../../../app.reducers';
 import { BuildingService } from '../../../services/building.service';
 import { ProjectApiService } from '../../../services/project-api.service';
 import { AuthService } from '../../../services/auth.service';
-import { isAdmin } from '../../../services/admin.guard';
 import { Project } from '../../../models/project.models';
 import { Router } from '@angular/router';
 
@@ -16,7 +15,6 @@ import { Router } from '@angular/router';
 })
 export class BuildingSelectionWindowComponent implements OnInit, OnDestroy {
   @ViewChild('setupDialog') setupDialog: ElementRef<HTMLDialogElement>;
-  readonly isAdmin = isAdmin;
   readonly openBuilding$ = this.store.select(fromRoot.getBuilding);
   private readonly destroyed$ = new Subject<void>();
   readonly presets = [

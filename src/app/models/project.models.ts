@@ -21,6 +21,8 @@ export interface ProjectBuild {
   projectId: string;
   name: string;
   revisionId: string;
+  worldFileId?: string;
+  worldPath?: string;
 }
 
 export interface TaskReference {

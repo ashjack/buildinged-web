@@ -1,0 +1,99 @@
+<main class="project-world fullscreen" aria-label="Project WorldEd workspace">
+  <div class="workspace-toolbar" role="toolbar" aria-label="World map controls">
+    <nav class="workspace-navigation" aria-label="Project navigation">
+      <a class="back-to-project" [routerLink]="['/projects', projectId]">&larr; Back to project</a>
+      <a [routerLink]="['/projects', projectId]" [queryParams]="{view: 'buildings'}">Buildings</a>
+    </nav>
+    <div class="workspace-title"><a routerLink="/worlded"><strong>WorldEd</strong></a><span *ngIf="projectName">{{projectName}}</span></div>
+    <button class="zoom-button" type="button" (click)="viewer.zoom(1 / 1.25)" [disabled]="!ready || !cloud" aria-label="Zoom out">−</button>
+    <span class="zoom-value" aria-label="Zoom level">{{zoomPercent}}%</span>
+    <button class="zoom-button" type="button" (click)="viewer.zoom(1.25)" [disabled]="!ready || !cloud" aria-label="Zoom in">+</button>
+    <button class="fit-button" type="button" (click)="viewer.fit()" [disabled]="!ready || !cloud">Fit world</button>
+    <button #controlsToggle class="panel-toggle" type="button" (click)="toggleControls()"
+            aria-controls="project-world-controls" [attr.aria-expanded]="controlsOpen"
+            [attr.aria-label]="dirty ? 'Project controls, unsaved changes' : 'Project controls'">
+      Project controls<span *ngIf="dirty" class="unsaved-dot" aria-hidden="true"></span>
+    </button>
+  </div>
+
+  <div class="world-stage">
+    <app-worlded-viewer [hosted]="true" [minimal]="true" [projectId]="projectId" [hidden]="!ready || !cloud"></app-worlded-viewer>
+    <div class="world-empty" *ngIf="!ready || !cloud">
+      <ng-container *ngIf="!ready && !error">
+        <h1>Opening project world…</h1><p role="status">{{progress || 'Checking for the latest saved world.'}}</p>
+      </ng-container>
+      <ng-container *ngIf="error"><h1>Could not open the world</h1><p class="error" role="alert">{{error}}</p><button type="button" (click)="load()" [disabled]="busy">Try again</button></ng-container>
+      <ng-container *ngIf="ready && !cloud && !error">
+        <h1>No uploaded world</h1>
+        <p>{{isAdmin ? 'Open project controls to upload a world.' : 'The admin has not uploaded a world to this project yet.'}}</p>
+        <button *ngIf="isAdmin" type="button" (click)="toggleControls()">Open project controls</button>
+      </ng-container>
+    </div>
+    <p *ngIf="error && ready && cloud && !controlsOpen" class="workspace-alert error" role="alert">{{error}}</p>
+    <p *ngIf="busy && ready && cloud && progress && !controlsOpen" class="workspace-alert" role="status">{{progress}}</p>
+  </div>
+
+  <aside #controlsPanel id="project-world-controls" class="project-controls" [hidden]="!controlsOpen"
+         tabindex="-1" aria-labelledby="project-controls-title">
+    <div class="panel-heading"><h2 id="project-controls-title">Project controls</h2><button type="button" (click)="closeControls()" aria-label="Close project controls">Close</button></div>
+    <header>
+    <h1>{{projectName || 'Project'}} world</h1>
+    <p>{{isAdmin ? 'Edit the shared world here. Save your changes so project members can view them.' : 'Read-only world view. Only admins can change the shared world.'}}</p>
+    <div class="actions" *ngIf="ready">
+      <button type="button" (click)="load()" [disabled]="busy">Check for updates</button>
+      <button *ngIf="isAdmin" type="button" (click)="save()" [disabled]="busy || !cloud || !dirty">Save world to project</button>
+      <button *ngIf="cloud" type="button" (click)="viewer.openSelectedCell()" [disabled]="busy || !viewer.selectedMapFile || viewer.openingCell">Open cell in TileZed</button>
+      <span *ngIf="cloud">{{cloud.name}} · Revision {{cloud.revision}} · {{dirty ? 'Unsaved edits' : 'Saved'}} · {{cloud.updatedAt | date:'medium'}}</span>
+    </div>
+  </header>
+  <p class="muted" *ngIf="ready && viewer.workspace as session">{{session.world.width}} × {{session.world.height}} cells · {{session.world.cellSize}} tiles per cell</p>
+  <p class="error" role="alert" *ngIf="error">{{error}}</p>
+  <p role="status" *ngIf="message || progress">{{progress || message}}</p>
+  <p role="status" *ngIf="syncMessage">{{syncMessage}}</p>
+  <p class="error" role="alert" *ngIf="cacheWarning">{{cacheWarning}}</p>
+  <section *ngIf="ready && isAdmin" class="upload">
+    <h2>{{cloud ? 'Replace hosted world' : 'Upload a world'}}</h2>
+    <p>Choose the .pzw, then the folder containing that world and its referenced images, maps and buildings. Only admin accounts can upload or replace world files.</p>
+    <label>World .pzw <input type="file" accept=".pzw" (change)="chooseWorld($event)" [disabled]="busy"></label>
+    <label>Project folder <input type="file" webkitdirectory multiple (change)="chooseFolder($event)" [disabled]="busy || !pending"></label>
+    <p *ngIf="pending">{{pending.worldFile.name}} · {{pending.files.size}} referenced files {{pending.folderName ? 'ready' : '— choose project folder'}}</p>
+    <p class="muted">Up to 8 MiB for the PZW, 16 MiB per resource and 512 MiB total. Existing cloud data stays available until the complete upload succeeds.</p>
+    <button type="button" (click)="upload()" [disabled]="busy || !pending?.folderName">{{cloud ? 'Replace cloud world' : 'Upload to project'}}</button>
+  </section>
+  <p *ngIf="ready && !cloud && !isAdmin">The admin has not uploaded a world to this project yet.</p>
+  <details class="world-warnings" *ngIf="controlsOpen && ready && viewer.warnings.length">
+    <summary>World warnings ({{viewer.warnings.length}})</summary>
+    <ul><li *ngFor="let warning of viewer.warnings">{{warning}}</li></ul>
+  </details>
+  <section *ngIf="ready && cloud && isAdmin" class="editor">
+    <div class="actions">
+      <button type="button" (click)="selectCell()" [disabled]="busy">Edit selected cell</button>
+      <button type="button" (click)="refreshPreview()" [disabled]="busy || !dirty">Update map preview</button>
+    </div>
+    <p>Click a cell on the map, then choose “Edit selected cell”. Coordinates below are tiles within the cell. Cell maps open in the read-only TileZed viewer.</p>
+    <fieldset *ngIf="cell as cell" [disabled]="busy">
+      <legend>Cell {{attr(cell, 'x')}}, {{attr(cell, 'y')}}</legend>
+      <label>Cell map <select [value]="attr(cell, 'map')" (change)="set(cell, 'map', $event)">
+        <option value="">No map</option><option *ngFor="let path of mapPaths" [value]="path">{{path}}</option>
+      </select></label>
+      <h2>Building lots</h2>
+      <div class="entry" *ngFor="let lot of lots">
+        <label>Building <select [value]="attr(lot, 'map')" (change)="set(lot, 'map', $event)"><option value="">Choose a building</option><option *ngFor="let path of lotPaths" [value]="path">{{path}}</option></select></label>
+        <label *ngFor="let key of ['x', 'y', 'width', 'height', 'level']">{{key}}<input type="number" step="1" [value]="attr(lot, key)" (input)="set(lot, key, $event)"></label>
+        <button type="button" (click)="remove(lot)">Remove lot</button>
+      </div>
+      <button type="button" (click)="add('lot')" [disabled]="!lotPaths.length">Add building lot</button>
+      <h2>Zones</h2>
+      <div class="entry" *ngFor="let zone of zones">
+        <label *ngFor="let key of ['name', 'type']">{{key}}<input [value]="attr(zone, key)" (input)="set(zone, key, $event)"></label>
+        <label>Group <select [value]="attr(zone, 'group')" (change)="set(zone, 'group', $event)"><option value="">No group</option><option *ngFor="let group of groups" [value]="group">{{group}}</option></select></label>
+        <ng-container *ngIf="!attr(zone, 'geometry')"><label *ngFor="let key of ['x', 'y', 'width', 'height']">{{key}}<input type="number" [value]="attr(zone, key)" (input)="set(zone, key, $event)"></label></ng-container>
+        <label *ngIf="attr(zone, 'geometry')">{{attr(zone, 'geometry')}} points (x,y pairs)<input [value]="attr(zone, 'points')" (input)="set(zone, 'points', $event)"></label>
+        <label>level<input type="number" step="1" [value]="attr(zone, 'level') || '0'" (input)="set(zone, 'level', $event)"></label>
+        <button type="button" (click)="remove(zone)">Remove zone</button>
+      </div>
+      <button type="button" (click)="add('object')">Add rectangular zone</button>
+    </fieldset>
+  </section>
+  </aside>
+</main>

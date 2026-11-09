@@ -25,8 +25,12 @@
         <span class="meta">{{project.visibility}} · {{project.role}}</span>
       </section>
 
+      <nav class="project-views" aria-label="Project views">
+        <button class="button" type="button" (click)="selectView('tasks')" [attr.aria-current]="view === 'tasks' ? 'page' : null">Tasks ({{tasks.length}})</button>
+        <button *ngIf="auth.canViewWorlds" class="button" type="button" (click)="selectView('buildings')" [attr.aria-current]="view === 'buildings' ? 'page' : null">World buildings</button>
+      </nav>
       <div class="layout">
-        <section class="main-col tasks" aria-labelledby="tasks-title">
+        <section class="main-col tasks" aria-labelledby="tasks-title" *ngIf="view === 'tasks'">
           <div class="section-head">
             <div><h2 id="tasks-title">Tasks</h2><p class="muted">Pick a task and start your own contribution. Nobody owns the task exclusively.</p></div>
             <button class="button primary" *ngIf="canManage && !showTaskForm" (click)="showTaskForm = true">Create a task</button>
@@ -48,7 +52,47 @@
           <p class="empty muted" *ngIf="!loading && !filteredTasks.length">No matching tasks.</p>
         </section>
 
+        <section class="main-col world-buildings" aria-labelledby="world-buildings-title" *ngIf="view === 'buildings'">
+          <div class="section-head">
+            <div><h2 id="world-buildings-title">World buildings ({{worldBuildings.length}})</h2><p class="muted">Uploaded buildings, sorted by their full project path.</p></div>
+            <button class="button compact" type="button" (click)="loadWorldBuildings()" [disabled]="buildingsLoading || busy">Refresh list</button>
+          </div>
+          <p class="muted" role="status" *ngIf="buildingsLoading">Loading building list…</p>
+          <p class="error" role="alert" *ngIf="buildingsError">{{buildingsError}}</p>
+          <div class="filters"><input type="search" [(ngModel)]="buildingSearch" (ngModelChange)="buildingPage = 0" placeholder="Search building paths" aria-label="Filter buildings by path"></div>
+          <ul class="list building-list" *ngIf="visibleBuildings.length">
+            <li class="building-row" *ngFor="let building of visibleBuildings">
+              <div class="building-summary">
+                <div class="building-path"><strong>{{building.path}}</strong><span class="fine muted">{{building.size / 1024 | number:'1.0-1'}} KiB</span>
+                  <a class="fine" *ngFor="let task of buildingTasks(building)" [routerLink]="['/projects', project.id, 'tasks', task.id]">{{task.title}} · {{task.status.replace('_', ' ')}}</a>
+                </div>
+                <div class="tools"><button class="button compact" type="button" (click)="viewBuilding(building)" [attr.aria-expanded]="previewBuilding?.id === building.id" [attr.aria-controls]="previewBuilding?.id === building.id ? 'building-preview' : null">View</button><button class="button compact" *ngIf="canManage" type="button" (click)="taskFromBuilding(building)" [disabled]="busy">Create task</button></div>
+              </div>
+              <section id="building-preview" class="panel building-preview" *ngIf="previewBuilding?.id === building.id" aria-labelledby="building-preview-title">
+                <div class="section-head"><h3 id="building-preview-title">{{building.path}}</h3><button class="link" type="button" (click)="closeBuildingPreview()">Close preview</button></div>
+                <p role="status" *ngIf="previewLoading">Rendering building…</p>
+                <p class="error" role="alert" *ngIf="previewError">{{previewError}}</p>
+                <img *ngIf="previewUrl" [src]="previewUrl" [alt]="'Building preview: ' + building.path">
+                <details *ngIf="previewWarnings.length"><summary>Preview warnings ({{previewWarnings.length}})</summary><ul><li *ngFor="let warning of previewWarnings">{{warning}}</li></ul></details>
+                <button class="button primary" *ngIf="canManage" type="button" (click)="taskFromBuilding(building)" [disabled]="busy">Create task</button>
+              </section>
+            </li>
+          </ul>
+          <p class="empty muted" *ngIf="!buildingsLoading && !buildingsError && !worldBuildings.length">{{worldCatalog === null ? 'No world has been uploaded to this project yet.' : 'No TBX buildings are included in the uploaded world.'}}</p>
+          <p class="empty muted" *ngIf="worldBuildings.length && !filteredBuildings.length">No buildings match this path.</p>
+          <nav class="building-pagination" aria-label="Building list pages" *ngIf="buildingPages > 1">
+            <button class="button compact" type="button" (click)="buildingPage = buildingPage - 1" [disabled]="buildingPage === 0">Previous</button>
+            <span class="muted">Page {{buildingPage + 1}} of {{buildingPages}} · {{filteredBuildings.length}} buildings</span>
+            <button class="button compact" type="button" (click)="buildingPage = buildingPage + 1" [disabled]="buildingPage + 1 >= buildingPages">Next</button>
+          </nav>
+        </section>
+
         <aside class="side-col">
+          <section class="panel" aria-labelledby="world-title" *ngIf="auth.canViewWorlds">
+            <h2 id="world-title">Shared world</h2>
+            <p class="muted fine">Contributors can view the shared world. Only admins can change or upload it.</p>
+            <a class="button primary" [routerLink]="['/worlded/project', project.id]">Open project world</a>
+          </section>
           <section class="panel" aria-labelledby="builds-title">
             <h2 id="builds-title">Original builds</h2>
             <p class="muted fine">Contributions are stored separately and never overwrite these.</p>
@@ -56,13 +100,13 @@
               <li *ngFor="let build of builds"><span>{{build.name}}</span><button class="link" (click)="download(build)" [disabled]="busy">Download</button></li>
             </ul>
             <p class="muted fine" *ngIf="!builds.length">No builds added yet.</p>
-            <div class="stack" *ngIf="project.role === 'owner'">
+            <div class="stack" *ngIf="auth.isAdmin && project.role === 'owner'">
               <label>Build name (optional)<input [(ngModel)]="buildName" maxlength="200"></label>
               <label>Upload original .tbx<input type="file" accept=".tbx" [disabled]="busy" (change)="uploadBuild($event)"></label>
             </div>
           </section>
 
-          <section class="panel" *ngIf="project.role === 'owner'" aria-labelledby="access-title">
+          <section class="panel" *ngIf="auth.isAdmin && project.role === 'owner'" aria-labelledby="access-title">
             <h2 id="access-title">Project access</h2>
             <div class="inline">
               <p class="muted fine">{{project.visibility === 'public' ? 'Any signed-in Google user can see and contribute.' : 'Only invited members can see this project.'}}</p>
@@ -176,8 +220,9 @@
         <label>Title<input name="title" [(ngModel)]="draft.title" required maxlength="200"></label>
         <label>Priority<select name="priority" [(ngModel)]="draft.priority"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option></select></label>
         <label>Type<select name="type" [(ngModel)]="draft.type" [disabled]="editingBrief"><option value="furnish">Furnish a build</option><option value="tile">Make tiles</option></select></label>
-        <label *ngIf="draft.type === 'furnish'">Source build<select name="source" [(ngModel)]="draft.sourceBuildId" [disabled]="editingBrief"><option *ngFor="let build of builds" [value]="build.id">{{build.name}}</option></select></label>
+        <label *ngIf="draft.type === 'furnish' && !draftWorldBuilding">Source build<select name="source" [(ngModel)]="draft.sourceBuildId" [disabled]="editingBrief"><option *ngFor="let build of builds" [value]="build.id">{{build.worldPath || build.name}}</option></select></label>
       </div>
+      <p class="source-world-path" *ngIf="draft.type === 'furnish' && draftWorldBuilding">World building: <strong>{{draftWorldBuilding.path}}</strong>. Contributions use a saved copy of this building.</p>
       <label>Brief<textarea name="description" [(ngModel)]="draft.description" required maxlength="10000"></textarea></label>
       <label>Requirements and acceptance checklist<textarea name="requirements" [(ngModel)]="draft.requirements" maxlength="10000" placeholder="Dimensions, orientations, anything reviewers should check"></textarea></label>
       <fieldset *ngFor="let reference of draft.references; let i = index">
@@ -193,7 +238,7 @@
         <button type="button" class="link" (click)="addReference()" [disabled]="busy || draft.references.length >= 12">+ Add reference image</button>
         <span class="spacer"></span>
         <button type="button" class="button" (click)="cancelTaskForm()" [disabled]="busy">Cancel</button>
-        <button class="button primary" [disabled]="busy || !draft.title.trim() || !draft.description.trim() || (draft.type === 'furnish' && !draft.sourceBuildId)">{{editingBrief ? 'Save brief' : 'Create task'}}</button>
+        <button class="button primary" [disabled]="busy || !draft.title.trim() || !draft.description.trim() || (draft.type === 'furnish' && !draft.sourceBuildId && !draftWorldBuilding)">{{editingBrief ? 'Save brief' : 'Create task'}}</button>
       </div>
     </form>
   </section>

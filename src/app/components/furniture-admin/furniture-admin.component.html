@@ -4,6 +4,7 @@
     <nav class="tabs" aria-label="Admin sections">
       <a routerLink="/admin" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Tile packs</a>
       <a routerLink="/admin/furniture" routerLinkActive="active">Furniture</a>
+      <a routerLink="/admin/accounts" routerLinkActive="active">Accounts</a>
     </nav>
     <span class="user">{{auth.user?.displayName || 'Signed in'}}</span>
   </div>

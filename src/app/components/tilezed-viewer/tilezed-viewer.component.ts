@@ -88,6 +88,9 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   get zoomPercent(): number { return Math.round(this.camera.zoom * 100); }
+  get worldLink(): string[] {
+    return this.buildingContext?.projectId ? ['/worlded/project', this.buildingContext.projectId] : ['/worlded'];
+  }
   get duplicateSheets(): string[] {
     const needed = new Set(this.scene?.usedSheets.flatMap(({ tileset }) =>
       [tileset.name.toLowerCase(), tilezedSheetName(tileset.source)]) ?? []);
@@ -200,6 +203,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   private async rememberMap(file: File, scene: TilezedScene): Promise<void> {
+    if (this.buildingContext?.projectId) return;
     try {
       if (this.buildingContext?.lots.length || this.buildingContext?.zones?.length) {
         await this.storage.rememberMap(file, this.buildingContext);

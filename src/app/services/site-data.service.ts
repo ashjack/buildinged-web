@@ -5,6 +5,7 @@ import { DbService } from './db.service';
 import { TileService } from './tile.service';
 import { TilezedStorageService } from './tilezed-storage.service';
 import { WorldedStorageService } from './worlded-storage.service';
+import { ProjectWorldCacheService } from './project-world-cache.service';
 
 /** Marks a tilepack as fully downloaded; meaningless once the tiles are gone. */
 const TILEPACK_VERSION_PREFIX = 'tilepack-version:';
@@ -12,7 +13,8 @@ const TILEPACK_VERSION_PREFIX = 'tilepack-version:';
 /**
  * Clears data the site downloaded or cached: tilesheets and their metadata, TileZed/WorldEd tile and
  * building preview caches, and the viewers' saved copies of the last map and world (the originals on
- * disk are untouched). Building drafts, the sign-in session, tilepack choices and preferences are kept.
+ * disk are untouched), plus downloaded project-world resources. Server worlds, building drafts,
+ * the sign-in session, tilepack choices and preferences are kept.
  */
 @Injectable({ providedIn: 'root' })
 export class SiteDataService {
@@ -21,6 +23,7 @@ export class SiteDataService {
     private readonly tilezed: TilezedStorageService,
     private readonly worlded: WorldedStorageService,
     private readonly tileService: TileService,
+    private readonly projectWorlds: ProjectWorldCacheService,
   ) { }
 
   get downloading(): boolean { return this.tileService.isDownloading; }
@@ -33,7 +36,7 @@ export class SiteDataService {
     for (const key of Object.keys(localStorage)) {
       if (key.startsWith(TILEPACK_VERSION_PREFIX)) localStorage.removeItem(key);
     }
-    const databases: Dexie[] = [this.tiles, this.tilezed, this.worlded];
+    const databases: Dexie[] = [this.tiles, this.tilezed, this.worlded, this.projectWorlds];
     await Promise.all(databases.map(db =>
       db.transaction('rw', db.tables, () => Promise.all(db.tables.map(table => table.clear())))));
   }

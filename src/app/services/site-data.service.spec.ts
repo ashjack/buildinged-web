@@ -5,6 +5,7 @@ import { SiteDataService } from './site-data.service';
 import { TileService } from './tile.service';
 import { TILEZED_STORAGE_DATABASE, TilezedStorageService } from './tilezed-storage.service';
 import { WORLDED_STORAGE_DATABASE, WorldedStorageService } from './worlded-storage.service';
+import { PROJECT_WORLD_CACHE_DATABASE, ProjectWorldCacheService } from './project-world-cache.service';
 
 describe('SiteDataService', () => {
   const suffix = `${Date.now()}-${Math.random()}`;
@@ -32,6 +33,7 @@ describe('SiteDataService', () => {
         { provide: TileService, useValue: tileService },
         { provide: TILEZED_STORAGE_DATABASE, useValue: `site-data-tilezed-${suffix}` },
         { provide: WORLDED_STORAGE_DATABASE, useValue: `site-data-worlded-${suffix}` },
+        { provide: PROJECT_WORLD_CACHE_DATABASE, useValue: `site-data-project-worlds-${suffix}` },
       ],
     });
     service = TestBed.inject(SiteDataService);
@@ -43,12 +45,14 @@ describe('SiteDataService', () => {
       else localStorage.setItem(key, value);
     }
     await Promise.all([tiles.delete(), TestBed.inject(TilezedStorageService).delete(),
-      TestBed.inject(WorldedStorageService).delete()]);
+      TestBed.inject(WorldedStorageService).delete(), TestBed.inject(ProjectWorldCacheService).delete()]);
   });
 
   it('clears downloaded tiles and viewer caches but keeps drafts, choices and preferences', async () => {
     const tilezed = TestBed.inject(TilezedStorageService);
     const worlded = TestBed.inject(WorldedStorageService);
+    const projectWorlds = TestBed.inject(ProjectWorldCacheService);
+    await projectWorlds.table('blobs').put({ scope: 'user', projectId: 'p', hash: 'hash', blob: new Blob(['world']) });
     await tiles.table('tilesets').put({ name: 'walls_01', packName: 'Vanilla' });
     await tiles.table('sheetImages').put({ name: 'walls_01', blob: new Blob(['png']) });
     await tilezed.table('sheets').put({ name: 'walls_01', blob: new Blob(['png']), packName: 'Vanilla', version: '1' });
@@ -60,7 +64,7 @@ describe('SiteDataService', () => {
 
     await service.clear();
 
-    for (const db of [tiles, tilezed, worlded]) {
+    for (const db of [tiles, tilezed, worlded, projectWorlds]) {
       for (const table of db.tables) expect(await table.count()).withContext(`${db.name}.${table.name}`).toBe(0);
     }
     expect(localStorage.getItem(versionKey)).toBeNull();

@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, NgZone, OnDestroy, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, Input, NgZone, OnDestroy, ViewChild } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { BuildingPreviewService } from '../../services/building-preview.service';
@@ -6,7 +6,7 @@ import { BuildingLots, PlacedBuildingLot } from '../../services/building-lots';
 import { TilezedHandoffService } from '../../services/tilezed-handoff.service';
 import { WorldedSession, WorldedSessionService } from '../../services/worlded-session.service';
 import { WorldedStorageService } from '../../services/worlded-storage.service';
-import { resolveWorldedProject, worldedFileFor } from '../../utils/worlded-files';
+import { resolveWorldedProject, worldedFileFor, worldedVegetationPath } from '../../utils/worlded-files';
 import { loadWorldedPreviews, WorldedTerrainImage } from '../../utils/worlded-preview';
 import { drawWorldedOverview, worldedBounds, worldedCellAt, worldedProject, WorldedPoint } from '../../utils/worlded-renderer';
 import { readWorldedWorld, WorldedCell, worldedCellKey } from '../../utils/worlded-world';
@@ -22,6 +22,9 @@ const MAX_WORLD_FILE_BYTES = 32 * 1024 * 1024;
   styleUrls: ['./worlded-viewer.component.scss'],
 })
 export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
+  @Input() hosted = false;
+  @Input() minimal = false;
+  @Input() projectId?: string;
   @ViewChild('canvas') canvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('viewport') viewportElement!: ElementRef<HTMLElement>;
 
@@ -43,6 +46,7 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
   private resizeObserver?: ResizeObserver;
   private sessionChanges?: Subscription;
   private frame?: number;
+  private fitPending = false;
   private generation = 0;
   private destroyed = false;
   private restoreWarning = '';
@@ -105,6 +109,7 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
       this.resizeObserver.observe(this.viewportElement.nativeElement);
     }
     window.addEventListener('resize', this.onWindowResize);
+    if (this.hosted) return;
     const current = this.sessions.current;
     if (current) {
       const generation = ++this.generation;
@@ -166,6 +171,25 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  async openHosted(project: WorldedSession): Promise<void> {
+    const previous = this.workspace;
+    const sameSize = !!previous && previous.world.width === project.world.width &&
+      previous.world.height === project.world.height && previous.world.cellSize === project.world.cellSize;
+    const sameTerrain = sameSize && JSON.stringify(previous!.world.bitmaps) === JSON.stringify(project.world.bitmaps) &&
+      project.world.bitmaps.every(bitmap => [bitmap.path, worldedVegetationPath(bitmap.path)].every(path =>
+        worldedFileFor(previous!.files, path) === worldedFileFor(project.files, path)));
+    let sameBuildings = sameSize && previous!.world.lotCount === project.world.lotCount;
+    for (const [key, cell] of project.world.cells) {
+      const old = previous?.world.cells.get(key);
+      if (old && JSON.stringify(old.lots) === JSON.stringify(cell.lots) && cell.lots.every(lot =>
+        worldedFileFor(previous!.files, lot.map) === worldedFileFor(project.files, lot.map))) {
+        cell.lots = old.lots;
+      } else if (cell.lots.length || old?.lots.length) { sameBuildings = false; }
+    }
+    this.resize();
+    await this.installSession(project, ++this.generation, !!sameTerrain, !!sameBuildings, sameSize);
+  }
+
   async onFolderSelected(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
     const files = Array.from(input.files ?? []);
@@ -224,17 +248,20 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  private async installSession(workspace: WorldedSession, generation: number): Promise<void> {
+  private async installSession(workspace: WorldedSession, generation: number,
+    keepTerrain = false, keepBuildings = false, keepCamera = false): Promise<void> {
     if (!this.isCurrent(generation)) return;
-    this.releaseImages(this.images);
-    this.images = [];
+    if (!keepTerrain) { this.releaseImages(this.images); this.images = []; }
     this.workspace = workspace;
-    this.sessions.current = workspace;
+    if (!this.hosted) this.sessions.current = workspace;
     this.restoreWarning = '';
-    this.loadBuildings(workspace);
-    this.previewWarnings = [];
-    this.fit();
-    await this.loadPreviews(workspace, generation);
+    if (!keepBuildings) this.loadBuildings(workspace);
+    if (!keepCamera) this.fit();
+    else this.requestDraw();
+    if (!keepTerrain) {
+      this.previewWarnings = [];
+      await this.loadPreviews(workspace, generation);
+    }
   }
 
   private async loadPreviews(workspace: WorldedSession, generation: number): Promise<void> {
@@ -286,7 +313,8 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
     }
     this.error = '';
     this.openingCell = true;
-    const buildingContext = this.workspace ? { lots: cell.lots, files: this.workspace.files, zones: cell.zones } : undefined;
+    const buildingContext = this.workspace ? { lots: cell.lots, files: this.workspace.files, zones: cell.zones,
+      ...(this.hosted && this.projectId ? { projectId: this.projectId } : {}) } : undefined;
     this.handoff.send(file, buildingContext);
     try {
       if (!await this.router.navigate(['/tilezed'])) {
@@ -307,8 +335,10 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
 
   fit(): void {
     if (!this.workspace) return;
-    this.camera = fitTilezedCamera(worldedBounds(this.workspace.world), this.viewport);
-    this.requestDraw();
+    // Hidden project viewers have no usable size yet. Keep the fit pending
+    // until ResizeObserver measures the visible viewport.
+    this.fitPending = true;
+    this.resize();
   }
 
   zoom(factor: number, x = this.viewport.width / 2, y = this.viewport.height / 2): void {
@@ -421,7 +451,13 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
     const height = Math.round(rect.height * this.pixelRatio);
     if (canvas.width !== width) canvas.width = width;
     if (canvas.height !== height) canvas.height = height;
-    if (this.workspace) this.camera = constrainTilezedCamera(this.camera, worldedBounds(this.workspace.world), this.viewport);
+    if (this.workspace) {
+      const bounds = worldedBounds(this.workspace.world);
+      this.camera = this.fitPending
+        ? fitTilezedCamera(bounds, this.viewport)
+        : constrainTilezedCamera(this.camera, bounds, this.viewport);
+      this.fitPending = false;
+    }
     this.requestDraw();
   }
 

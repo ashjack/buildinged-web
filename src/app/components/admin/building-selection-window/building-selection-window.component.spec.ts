@@ -38,8 +38,8 @@ describe('Project-list homepage', () => {
     expect(api.projects).not.toHaveBeenCalled();
     expect(fixture.nativeElement.textContent).toContain('Sign in with Google');
     expect(fixture.nativeElement.textContent).toContain('New building');
-    expect(fixture.nativeElement.querySelector('a[href="/tilezed"]')?.textContent).toContain('TileZed');
-    expect(fixture.nativeElement.querySelector('a[href="/worlded"]')?.textContent).toContain('WorldEd');
+    expect(fixture.nativeElement.querySelector('a[href="/tilezed"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('a[href="/worlded"]')).toBeNull();
   });
 
   it('shows routed project links after sign-in and clears them on sign-out', async () => {

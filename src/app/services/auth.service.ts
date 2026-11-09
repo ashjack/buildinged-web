@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { BehaviorSubject, firstValueFrom } from 'rxjs';
 import type { FirebaseOptions } from 'firebase/app';
 import type { Auth, User } from 'firebase/auth';
+import { AccountType, PROTECTED_ADMIN_UID } from '../models/account.models';
 
 interface BrowserConfig {
   firebase: FirebaseOptions;
@@ -16,12 +17,38 @@ export class AuthService {
   readonly user$ = this.userSubject.asObservable();
   private auth?: Auth;
   private config?: BrowserConfig;
+  accountType: AccountType = 'normal';
+  private profileGeneration = 0;
   error = '';
   busy = false;
 
   constructor(private http: HttpClient, private zone: NgZone) { }
 
   get user(): User | null { return this.userSubject.value; }
+  get isAdmin(): boolean { return !!this.user && (this.user.uid === PROTECTED_ADMIN_UID || this.accountType === 'admin'); }
+  get canViewWorlds(): boolean { return !!this.user && (this.isAdmin || this.accountType === 'contributor'); }
+  async refreshAccount(): Promise<void> { await this.loadAccount(this.user); }
+  private async loadAccount(user: User | null): Promise<void> {
+    const generation = ++this.profileGeneration;
+    if (user?.uid !== this.user?.uid) {
+      this.zone.run(() => { this.accountType = 'normal'; this.userSubject.next(null); });
+    }
+    let type: AccountType = user?.uid === PROTECTED_ADMIN_UID ? 'admin' : 'normal';
+    if (user) {
+      try {
+        const result = await firstValueFrom(this.http.get<{ type: AccountType }>(`${this.apiBaseUrl}/account`, {
+          headers: { Authorization: `Bearer ${await user.getIdToken()}` }
+        }));
+        if (['normal', 'contributor', 'admin'].includes(result.type)) type = result.type;
+      } catch { this.error = 'Account permissions could not be loaded. Refresh to retry.'; }
+    }
+    if (generation !== this.profileGeneration) return;
+    this.zone.run(() => {
+      const changed = this.accountType !== type || this.user !== user;
+      this.accountType = type;
+      if (changed) this.userSubject.next(user);
+    });
+  }
   get apiBaseUrl(): string {
     if (!this.config) throw new Error('Firebase configuration is unavailable.');
     return this.config.apiBaseUrl.replace(/\/$/, '');
@@ -43,10 +70,10 @@ export class AuthService {
       this.auth = getAuth(initializeApp(config.firebase));
       await new Promise<void>((resolve, reject) => {
         onAuthStateChanged(this.auth!, user => {
-          this.zone.run(() => this.userSubject.next(user));
-          resolve();
+          void this.loadAccount(user).finally(resolve);
         }, reject);
       });
+      window.addEventListener('focus', () => { if (this.user) void this.refreshAccount(); });
     } catch (error) {
       this.error = 'Google sign-in is unavailable. Run npm run configure:firebase and check the Firebase setup.';
       console.error(this.error, error);

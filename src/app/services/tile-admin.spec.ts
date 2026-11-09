@@ -22,7 +22,8 @@ describe('admin access', () => {
     router.createUrlTree.and.returnValue(tree);
     expect(new AdminGuard({ user: null } as AuthService, router).canActivate()).toBe(tree);
     expect(new AdminGuard({ user: { uid: 'other' } } as unknown as AuthService, router).canActivate()).toBe(tree);
-    expect(new AdminGuard({ user: { uid: ADMIN } } as unknown as AuthService, router).canActivate()).toBeTrue();
+    expect(new AdminGuard({ user: { uid: ADMIN }, isAdmin: true } as unknown as AuthService, router).canActivate()).toBeTrue();
+    expect(new AdminGuard({ user: { uid: 'promoted-admin' }, isAdmin: true } as unknown as AuthService, router).canActivate()).toBeTrue();
   });
 
   it('builds folder slugs from pack names', () => {

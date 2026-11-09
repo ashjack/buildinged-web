@@ -4,6 +4,8 @@ import { Subject, combineLatest, takeUntil } from 'rxjs';
 import { Contribution, Project, ProjectBuild, ProjectMember, ProjectTask, TaskReference } from '../../models/project.models';
 import { AuthService } from '../../services/auth.service';
 import { ProjectApiService } from '../../services/project-api.service';
+import { ProjectWorldDocument, ProjectWorldFile, ProjectWorldService } from '../../services/project-world.service';
+import { BuildingPreviewService } from '../../services/building-preview.service';
 import { readBuildingFile, writeBuildingFile } from '../../utils/tbx-format';
 
 type TaskDraft = Pick<ProjectTask, 'title' | 'type' | 'description' | 'requirements' | 'priority' | 'references'> & { sourceBuildId: string };
@@ -32,6 +34,21 @@ export class ProjectWorkspaceComponent implements OnInit, OnDestroy {
   draft = emptyTask();
   editingBrief = false;
   showTaskForm = false;
+  view: 'tasks' | 'buildings' = 'tasks';
+  worldBuildings: ProjectWorldFile[] = [];
+  worldCatalog?: ProjectWorldDocument | null;
+  buildingsLoading = false;
+  buildingsError = '';
+  buildingSearch = '';
+  buildingPage = 0;
+  readonly buildingPageSize = 50;
+  draftWorldBuilding?: ProjectWorldFile;
+  previewBuilding?: ProjectWorldFile;
+  previewUrl = '';
+  previewWarnings: string[] = [];
+  previewLoading = false;
+  previewError = '';
+  private previewGeneration = 0;
   memberEmail = '';
   memberRole: 'reviewer' | 'contributor' = 'contributor';
   buildName = '';
@@ -43,13 +60,26 @@ export class ProjectWorkspaceComponent implements OnInit, OnDestroy {
   private generation = 0;
   private readonly destroyed$ = new Subject<void>();
 
-  constructor(private route: ActivatedRoute, private router: Router, public auth: AuthService, private api: ProjectApiService) { }
-  get canManage(): boolean { return this.project?.role === 'owner' || this.project?.role === 'reviewer'; }
-  get accepting(): boolean { return !!this.task && ['available', 'review_pending'].includes(this.task.status); }
+  constructor(private route: ActivatedRoute, private router: Router, public auth: AuthService, private api: ProjectApiService,
+    private worlds: ProjectWorldService, private previews: BuildingPreviewService) { }
+  get canManage(): boolean { return this.auth.isAdmin && (this.project?.role === 'owner' || this.project?.role === 'reviewer'); }
+  get accepting(): boolean { return !!this.task && (this.task.type === 'furnish' || this.auth.canViewWorlds) && ['available', 'review_pending'].includes(this.task.status); }
   get filteredTasks(): ProjectTask[] {
-    return this.tasks.filter(task => task.title.toLowerCase().includes(this.search.trim().toLowerCase()) &&
+    return this.tasks.filter(task => (task.type === 'furnish' || this.auth.canViewWorlds) && task.title.toLowerCase().includes(this.search.trim().toLowerCase()) &&
       (this.statusFilter === 'all' || (this.statusFilter === 'pending'
         ? ['available', 'review_pending'].includes(task.status) : task.status === this.statusFilter)));
+  }
+  get filteredBuildings(): ProjectWorldFile[] {
+    const search = this.buildingSearch.trim().toLowerCase();
+    return this.worldBuildings.filter(building => building.path.toLowerCase().includes(search));
+  }
+  get visibleBuildings(): ProjectWorldFile[] {
+    return this.filteredBuildings.slice(this.buildingPage * this.buildingPageSize, (this.buildingPage + 1) * this.buildingPageSize);
+  }
+  get buildingPages(): number { return Math.max(1, Math.ceil(this.filteredBuildings.length / this.buildingPageSize)); }
+  buildingTasks(building: ProjectWorldFile): ProjectTask[] {
+    const sources = new Set(this.builds.filter(build => build.worldFileId === building.id).map(build => build.id));
+    return this.tasks.filter(task => !!task.sourceBuildId && sources.has(task.sourceBuildId));
   }
 
   ngOnInit(): void {
@@ -60,11 +90,12 @@ export class ProjectWorkspaceComponent implements OnInit, OnDestroy {
         this.task = undefined;
         this.tasks = [];
         this.contributions = [];
+        this.clearBuildings();
         void this.router.navigate(['/']);
       } else { void this.load(); }
     });
   }
-  ngOnDestroy(): void { this.generation++; this.destroyed$.next(); this.destroyed$.complete(); }
+  ngOnDestroy(): void { this.generation++; this.closeBuildingPreview(); this.destroyed$.next(); this.destroyed$.complete(); }
 
   async load(): Promise<void> {
     const generation = ++this.generation;
@@ -72,6 +103,9 @@ export class ProjectWorkspaceComponent implements OnInit, OnDestroy {
     const taskId = this.route.snapshot.paramMap.get('taskId');
     this.loading = true;
     this.error = '';
+    this.clearBuildings();
+    this.cancelTaskForm();
+    this.view = this.auth.canViewWorlds && this.route.snapshot.queryParamMap?.get('view') === 'buildings' ? 'buildings' : 'tasks';
     try {
       const [project, builds, tasks] = await Promise.all([
         this.api.project(projectId), this.api.builds(projectId), this.api.tasks(projectId)
@@ -79,7 +113,7 @@ export class ProjectWorkspaceComponent implements OnInit, OnDestroy {
       const [task, contributions, members] = await Promise.all([
         taskId ? this.api.task(taskId) : Promise.resolve(undefined),
         taskId ? this.api.contributions(taskId) : Promise.resolve([]),
-        project.role === 'owner' ? this.api.members(projectId) : Promise.resolve([])
+        this.auth.isAdmin && project.role === 'owner' ? this.api.members(projectId) : Promise.resolve([])
       ]);
       if (generation !== this.generation) return;
       if (task && task.projectId !== projectId) throw new Error('This task belongs to a different project.');
@@ -90,9 +124,80 @@ export class ProjectWorkspaceComponent implements OnInit, OnDestroy {
       this.contributions = contributions;
       this.members = members;
       this.draft.sourceBuildId ||= builds[0]?.id || '';
+      if (!task && this.view === 'buildings') await this.loadWorldBuildings();
     } catch (error) {
       if (generation === this.generation) this.error = error instanceof Error ? error.message : String(error);
     } finally { if (generation === this.generation) this.loading = false; }
+  }
+
+  selectView(view: 'tasks' | 'buildings'): void {
+    if (view === 'buildings' && !this.auth.canViewWorlds) return;
+    this.view = view;
+    if (view === 'buildings' && this.worldCatalog === undefined) void this.loadWorldBuildings();
+  }
+  private clearBuildings(): void {
+    this.worldBuildings = [];
+    this.worldCatalog = undefined;
+    this.buildingsLoading = false;
+    this.buildingsError = '';
+    this.buildingSearch = '';
+    this.buildingPage = 0;
+    this.closeBuildingPreview();
+  }
+  async loadWorldBuildings(): Promise<void> {
+    if (!this.auth.canViewWorlds || !this.project || this.buildingsLoading) return;
+    const generation = this.generation;
+    const projectId = this.project.id;
+    this.buildingsLoading = true;
+    this.buildingsError = '';
+    try {
+      const world = await this.worlds.world(projectId);
+      if (generation !== this.generation) return;
+      this.worldCatalog = world;
+      this.worldBuildings = (world?.files ?? []).filter(file => /\.tbx$/i.test(file.path))
+        .sort((a, b) => a.path.localeCompare(b.path, 'en', { numeric: true, sensitivity: 'base' }) || a.path.localeCompare(b.path, 'en'));
+      this.buildingPage = 0;
+      this.closeBuildingPreview();
+    } catch (error) {
+      if (generation === this.generation) {
+        this.worldCatalog = undefined;
+        this.worldBuildings = [];
+        this.buildingsError = error instanceof Error ? error.message : String(error);
+      }
+    } finally { if (generation === this.generation) this.buildingsLoading = false; }
+  }
+  closeBuildingPreview(): void {
+    this.previewGeneration++;
+    if (this.previewUrl) URL.revokeObjectURL(this.previewUrl);
+    this.previewUrl = '';
+    this.previewBuilding = undefined;
+    this.previewWarnings = [];
+    this.previewLoading = false;
+    this.previewError = '';
+  }
+  async viewBuilding(building: ProjectWorldFile): Promise<void> {
+    if (!this.worldCatalog) return;
+    this.closeBuildingPreview();
+    const generation = this.previewGeneration;
+    this.previewBuilding = building;
+    this.previewLoading = true;
+    try {
+      const file = await this.worlds.file(this.worldCatalog, building);
+      const preview = await this.previews.preview(file, 0, 1024);
+      if (generation !== this.previewGeneration) return;
+      this.previewUrl = URL.createObjectURL(preview.blob);
+      this.previewWarnings = preview.warnings;
+    } catch (error) {
+      if (generation === this.previewGeneration) this.previewError = error instanceof Error ? error.message : String(error);
+    } finally { if (generation === this.previewGeneration) this.previewLoading = false; }
+  }
+  taskFromBuilding(building: ProjectWorldFile): void {
+    if (!this.canManage || this.busy) return;
+    this.draftWorldBuilding = building;
+    this.draft = { ...emptyTask(), title: `Furnish ${building.path.split('/').pop()!.replace(/\.tbx$/i, '')}`.slice(0, 200),
+      description: `Furnish the building at ${building.path}.` };
+    this.showTaskForm = true;
+    this.view = 'tasks';
   }
 
   async run(action: () => Promise<void>): Promise<void> {
@@ -110,17 +215,36 @@ export class ProjectWorkspaceComponent implements OnInit, OnDestroy {
   imageFailed(reference: TaskReference): void { this.failedImages.add(reference.imageUrl); }
   imageUnavailable(reference: TaskReference): boolean { return this.failedImages.has(reference.imageUrl); }
 
-  createTask(): void {
-    void this.run(async () => {
-      const task = await this.api.request<ProjectTask>('POST', `/projects/${this.project!.id}/tasks`, this.draft);
+  async createTask(): Promise<void> {
+    await this.run(async () => {
+      const generation = this.generation;
+      const projectId = this.project!.id;
+      if (this.draft.type === 'furnish' && this.draftWorldBuilding) {
+        if (!this.worldCatalog) throw new Error('Refresh the world building list before creating a task.');
+        const entry = this.draftWorldBuilding;
+        let source = this.builds.find(build => build.worldFileId === entry.id);
+        if (!source) {
+          const file = await this.worlds.file(this.worldCatalog, entry);
+          const xml = new TextDecoder('utf-8', { ignoreBOM: true }).decode(await file.arrayBuffer());
+          if (generation !== this.generation) return;
+          source = await this.api.request<ProjectBuild>('POST', `/projects/${projectId}/builds`, { worldFileId: entry.id, xml });
+          if (generation !== this.generation) return;
+          this.builds = [...this.builds, source];
+        }
+        this.draft.sourceBuildId = source.id;
+      }
+      const task = await this.api.request<ProjectTask>('POST', `/projects/${projectId}/tasks`, this.draft);
+      if (generation !== this.generation) return;
       this.draft = emptyTask();
+      this.draftWorldBuilding = undefined;
       this.showTaskForm = false;
-      await this.router.navigate(['/projects', this.project!.id, 'tasks', task.id]);
+      await this.router.navigate(['/projects', projectId, 'tasks', task.id]);
     });
   }
   cancelTaskForm(): void {
     this.editingBrief = false;
     this.showTaskForm = false;
+    this.draftWorldBuilding = undefined;
     this.draft = { ...emptyTask(), sourceBuildId: this.builds[0]?.id || '' };
   }
   editBrief(): void {

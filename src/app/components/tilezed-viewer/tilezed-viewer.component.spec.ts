@@ -166,6 +166,14 @@ describe('TileZed read-only viewer', () => {
     expect([...component.buildings!.warnings].join(' ')).toContain('missing.tbx');
   });
 
+  it('returns hosted cells to their project world without saving private files as a local map', async () => {
+    const file = new File([mapXml], 'cell.tmx');
+    await component.openMap(file, true, { projectId: 'shared-project', lots: [], files: new Map() });
+    expect(component.worldLink).toEqual(['/worlded/project', 'shared-project']);
+    expect(storage.rememberMap).not.toHaveBeenCalled();
+    expect(component.restoredMap).toBeFalse();
+  });
+
   it('shows and remembers WorldEd cell zones, with toggles saved as preferences', async () => {
     const file = new File([mapXml], 'cell.tmx');
     const zones = [{ name: '', group: 'FarmLand', type: 'FarmLand', color: '#bcff7d', level: 0,

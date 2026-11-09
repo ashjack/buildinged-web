@@ -1,5 +1,5 @@
-<div class="page">
-  <header class="topbar">
+<div class="page" [class.hosted]="hosted">
+  <header class="topbar" *ngIf="!hosted">
     <div class="bar">
       <a class="brand" routerLink="/">BuildingEd</a>
       <span class="divider" aria-hidden="true">/</span>
@@ -9,16 +9,16 @@
     </div>
   </header>
 
-  <div class="toolbar" aria-label="WorldEd controls">
-    <button class="button primary" type="button" (click)="worldInput.click()" [disabled]="loadingWorld || loadingFolder">
+  <input #worldInput type="file" accept=".pzw" hidden (change)="onWorldSelected($event)">
+  <input #folderInput type="file" accept=".pzw,.tmx,.png,.bmp,.jpg,.jpeg,.webp,.gif" webkitdirectory multiple hidden
+         (change)="onFolderSelected($event)">
+  <div class="toolbar" aria-label="WorldEd controls" *ngIf="!minimal">
+    <button *ngIf="!hosted" class="button primary" type="button" (click)="worldInput.click()" [disabled]="loadingWorld || loadingFolder">
       {{loadingWorld ? 'Opening...' : 'Open .pzw'}}
     </button>
-    <input #worldInput type="file" accept=".pzw" hidden (change)="onWorldSelected($event)">
-    <button class="button" type="button" (click)="folderInput.click()" [disabled]="!workspace || loadingWorld || loadingFolder">
+    <button *ngIf="!hosted" class="button" type="button" (click)="folderInput.click()" [disabled]="!workspace || loadingWorld || loadingFolder">
       {{loadingFolder ? 'Loading project...' : 'Choose project folder'}}
     </button>
-    <input #folderInput type="file" accept=".pzw,.tmx,.png,.bmp,.jpg,.jpeg,.webp,.gif" webkitdirectory multiple hidden
-           (change)="onFolderSelected($event)">
     <span class="toolbar-divider" aria-hidden="true"></span>
     <button class="button compact" type="button" (click)="zoom(1 / 1.25)" [disabled]="!workspace" aria-label="Zoom out">−</button>
     <span class="zoom" aria-label="Zoom level">{{zoomPercent}}%</span>
@@ -30,12 +30,12 @@
     </span>
   </div>
 
-  <div class="messages">
+  <div class="messages" *ngIf="!minimal || error || storageWarning">
     <p *ngIf="error" class="message error" role="alert">{{error}}</p>
     <p *ngIf="storageWarning" class="message warning" role="alert">{{storageWarning}}</p>
-    <p *ngIf="loadingFolder" class="message" role="status">Reading referenced project files locally...</p>
-    <p *ngIf="loadingBuildings" class="message" role="status">Rendering buildings in the background: {{buildings?.loaded}} / {{workspace?.world?.lotCount}}</p>
-    <details *ngIf="warnings.length" class="message warning">
+    <p *ngIf="!minimal && loadingFolder" class="message" role="status">Reading referenced project files locally...</p>
+    <p *ngIf="!minimal && loadingBuildings" class="message" role="status">Rendering buildings in the background: {{buildings?.loaded}} / {{workspace?.world?.lotCount}}</p>
+    <details *ngIf="!minimal && warnings.length" class="message warning">
       <summary>World warnings ({{warnings.length}})</summary>
       <ul><li *ngFor="let warning of warnings">{{warning}}</li></ul>
     </details>
@@ -49,21 +49,21 @@
             (pointercancel)="onPointerEnd($event)" (lostpointercapture)="onPointerEnd($event)"
             (keydown)="onKeyDown($event)" (contextmenu)="$event.preventDefault()"></canvas>
 
-    <div class="empty" *ngIf="!workspace">
+    <div class="empty" *ngIf="!workspace && !hosted">
       <h1>Open a WorldEd world</h1>
       <p>Choose a <code>.pzw</code> file, then its project folder to load the referenced terrain and cell maps.</p>
       <p>Files are read in this browser, not uploaded. The last world is saved locally for next time.</p>
       <button class="button primary" type="button" (click)="worldInput.click()" [disabled]="loadingWorld">Open .pzw</button>
     </div>
 
-    <app-worlded-cell-panel *ngIf="workspace as project" [cell]="selectedCell"
+    <app-worlded-cell-panel *ngIf="!minimal && workspace as project" [cell]="selectedCell"
                             [mapAvailable]="!!selectedMapFile" [busy]="loadingWorld || loadingFolder || openingCell"
                             [lotCount]="project.world.lotCount" (openCell)="openSelectedCell()">
     </app-worlded-cell-panel>
   </main>
 
-  <footer>
-    <span>Read-only · Click a cell · Drag to pan · Mouse wheel to zoom · Shift+arrows to select · Home to fit</span>
+  <footer *ngIf="!minimal">
+    <span>{{hosted ? 'Select a cell to edit below' : 'Read-only'}} · Click a cell · Drag to pan · Mouse wheel to zoom · Shift+arrows to select · Home to fit</span>
     <span *ngIf="workspace?.folderName">Project folder: {{workspace!.folderName}}</span>
   </footer>
 </div>

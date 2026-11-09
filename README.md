@@ -6,7 +6,76 @@ This project was generated with [Angular CLI](https://github.com/angular/angular
 
 Run `npm start` for a dev server. Navigate to `http://localhost:4200/`. The application will automatically reload if you change any of the source files.
 
-## TileZed map viewer
+### Local frontend and API iteration
+
+Run the Functions emulator from the workspace root in one terminal:
+
+```powershell
+firebase emulators:start --only functions --project buildinged-online
+```
+
+In another terminal, from `buildinged-web`, run `npm run start:local`, then open
+`http://localhost:4200/worlded`. Both servers watch their source files. This
+command configures the browser to use the API on `127.0.0.1:5001`; no deployment
+is needed. Google sign-in and the existing cloud Datastore/private bucket are
+still used, so edits saved during local testing update the existing project data.
+Private file reads go through the existing authenticated API using the signed-in
+website account; the developer CLI login does not need direct bucket read access.
+Regular `npm start` uses the deployed API instead. Keep using the same browser
+origin and API URL to reuse the same cached download between iterations.
+
+## Hosted project worlds
+
+From a project, choose **Shared world → Open project world**. Admin accounts
+can upload a `.pzw` and its project folder,
+or replace the hosted world. The folder must contain the same PZW and its
+referenced cell maps, building lots and terrain/vegetation images. Missing or
+absolute resource paths must be fixed before uploading. Uploads support PZWorldEd
+Native256 and Legacy300 worlds, with an 8 MiB PZW, up to 4096 resources, 16 MiB
+per resource and 512 MiB total resources.
+
+Explicitly invited project members with Contributor or Admin accounts can open the world
+without selecting local files. Public-project access alone does not grant hosted
+world access. Invite collaborators through **Project access** first.
+
+The project world opens as a fullscreen map with a compact zoom toolbar. Use
+**Project controls** in the top-right corner to show project details, uploads,
+warnings and the cell editor. The panel starts closed; **Close** or Escape hides
+it without unloading the map or discarding edits.
+
+Admins can click a cell in the overview, open **Project controls**, then **Edit selected cell** to change its map
+assignment, add/move/remove building lots, or edit/add/remove zones. Choose
+**Update map preview** to refresh the overview and **Save world to project** to
+publish edits. WorldEd checks for updates every 30 seconds while visible and when
+the window regains focus. **Check for updates** checks immediately.
+Concurrent saves are checked by revision: a stale save is rejected and its edits
+remain open. Remote changes wait while local edits are unsaved; checking manually
+asks before discarding those edits.
+
+The first visit downloads project resources and keeps their bytes in IndexedDB.
+Later visits verify project access and the current revision, then reuse those
+files. Unchanged worlds require only a small revision response. Changed worlds
+download only missing or changed resources; server-generated SHA-256 hashes allow
+unchanged content to be reused even if a replacement upload has new file IDs.
+Uploads also reuse unchanged resources. Interrupted downloads retain completed
+files and resume the remainder. Cache entries are separated by API, signed-in
+account and project. Cache clearing or browser eviction requires another download;
+a storage failure is reported while keeping the world usable.
+
+The editor preserves the original XML outside the fields being edited, including
+native settings, properties, roads, linked-world references and in-game map
+features. Those features retain the existing viewer's rendering limits. Cell
+terrain opens in the read-only TileZed viewer; terrain painting and building
+interior editing are not part of this world editor. Hosted worlds are loaded from
+the project, rather than restored from the local WorldEd snapshot; hosted cell
+maps are not saved as TileZed's last local map.
+
+The frontend and updated `workspaceApi` must both be deployed. Hosted worlds use
+the existing private `BUILDINGED_BUILD_BUCKET`; see the functions repository's
+deployment prerequisites. No direct public bucket access or browser storage
+credentials are required.
+
+## Local TileZed map viewer
 
 Open **TileZed** from the homepage, then choose a TileZed level-isometric `.tmx`
 file. The read-only viewer generates terrain from embedded BMP rules and draws
@@ -36,17 +105,17 @@ reported rather than silently presented as complete.
 
 ## WorldEd world viewer
 
-Open **WorldEd** from the homepage and choose a `.pzw` world, then choose its
-project folder so the browser can resolve the referenced terrain images and
-cell `.tmx` files. If references leave that folder using `..`, choose a parent
-folder containing the world and those files. Files are read locally, not
-uploaded. BuildingEd's existing tiles and tilepacks are used when a cell is
-opened in TileZed; there is no need to select a tiles folder.
+Open **WorldEd** from the homepage to load an uploaded project world. Sign-in is
+required. When one project is available it opens automatically; with several
+projects, choose one from the list. The world and its referenced project files
+are fetched from the server. Previous local world snapshots are not restored.
+If the project has no uploaded world, the page shows that state and the admin's
+upload controls instead of opening a local file. Existing project invitations
+and admin-only upload permissions still apply.
 
-The read-only overview displays terrain images in an isometric cell grid and
-shows TBX building lots with walls, furniture and roofs. Choose the project
-folder again to add building files to a previously saved terrain-only snapshot.
-Unavailable lots remain footprints and are reported in the warnings.
+The overview displays terrain images in an isometric cell grid and shows TBX
+building lots with walls, furniture and roofs. Unavailable lots remain
+footprints and are reported in the warnings.
 Cell maps may contain changes not reflected in the terrain images.
 Click a cell, then choose **Open terrain in
 TileZed** to inspect its map. Drag to pan, use the mouse wheel or zoom buttons,
@@ -55,12 +124,9 @@ selects or opens a cell, and Shift+arrow keys change the selected cell.
 World objects and zones, road objects, linked worlds and
 in-game map features are not rendered in this initial overview.
 
-The last world and referenced terrain images, cell maps and buildings are saved as
-browser-local copies, up to 64 MiB in total. The viewer warns if some files
-cannot be saved. Re-select the `.pzw` and project folder to pick up external
-changes; clearing browser site data removes the saved copies. Older saved worlds
-are upgraded when reopened; if their source files are unavailable, select the
-world and project folder again.
+Use **Check for updates** to pick up changes saved by another editor immediately.
+Clearing site caches does not remove uploaded project worlds. BuildingEd's
+existing tiles and tilepacks are reused when opening a cell in TileZed.
 
 Building geometry is generated in a Web Worker using the existing BuildingEd
 square/roof projection. Like desktop WorldEd's lot map images, each building is
@@ -137,12 +203,32 @@ the creator becomes the owner. Owners can invite contributors/reviewers by Googl
 account email or make their project public to all signed-in users. Invitees must
 have signed in once before being added.
 
+Use **Admin → Accounts** to assign Normal, Contributor or Admin to existing
+Google users. New users default to Normal. Normal accounts can use the building
+editor and create, save and submit building variations in accessible projects.
+Contributors additionally have read-only WorldEd and TileZed access. Only admins
+can change or upload worlds and use admin tools. Project membership and project
+management roles still apply. The original admin UID
+`gK0MQfxb5XVs8SGlF1GVKUYXQdK2` is permanently Admin and cannot be demoted.
+Account types are stored on the server and checked on every API operation,
+including local private-file forwarding. The browser reloads permissions on
+sign-in and when its window regains focus; no new sign-in token is needed.
+
 The homepage links to routed project workspaces. Shared tasks have no individual
 assignee. Furnishing starts a private variant pinned to the task's original build
 revision. **Save draft** stores a new variant revision, never the original.
 **Submit for review** locks the submission; owners/reviewers can approve, request
 changes or reject it. Approval completes the task. Reopening permits another
 round of contributions without deleting previously approved work.
+
+Open **World buildings** in a project (or **Buildings** in the WorldEd toolbar)
+to browse the uploaded TBX files, sorted by their full relative paths. Search and
+pagination keep large worlds manageable. **View** fetches only that building,
+reuses the world file cache, and renders a preview with the configured tilepacks.
+Owners and reviewers can choose **Create task** to fill in a furnishing brief.
+Submitting the brief saves an immutable source copy, verified against the uploaded
+file's checksum; repeated tasks reuse that copy. Later world replacements do not
+change a task's source or any contribution variants.
 
 Tile tasks display a brief, acceptance requirements and externally embedded HTTPS
 reference images, with source links and an embedding-failure message. Tile work is

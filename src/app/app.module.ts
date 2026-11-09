@@ -3,6 +3,7 @@ import { BrowserModule } from '@angular/platform-browser';
 
 import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
+import { AccountAdminComponent } from './components/account-admin/account-admin.component';
 import { MenuComponent } from './menu/menu.component';
 import { NgxPanZoomModule } from 'ngx-panzoom';
 import { HttpClientModule } from '@angular/common/http';
@@ -36,6 +37,7 @@ import { FurnitureCellComponent } from './components/furniture-admin/furniture-c
   declarations: [
     AutoFurnishingDialogComponent,
     AppComponent,
+    AccountAdminComponent,
     EditorComponent,
     TileAdminComponent,
     FurnitureAdminComponent,

@@ -4,6 +4,10 @@ import { firstValueFrom } from 'rxjs';
 import { AuthService } from './auth.service';
 import { Contribution, Project, ProjectBuild, ProjectMember, ProjectTask, VariantDocument } from '../models/project.models';
 
+export class ProjectRequestError extends Error {
+  constructor(message: string, public readonly status: number) { super(message); }
+}
+
 @Injectable({ providedIn: 'root' })
 export class ProjectApiService {
   constructor(private http: HttpClient, private auth: AuthService) { }
@@ -19,7 +23,7 @@ export class ProjectApiService {
         const payload: unknown = error.error;
         const message = typeof payload === 'object' && payload !== null && 'error' in payload &&
           typeof payload.error === 'string' ? payload.error : `Project request failed (${error.status}).`;
-        throw new Error(message);
+        throw new ProjectRequestError(message, error.status);
       }
       throw error;
     }

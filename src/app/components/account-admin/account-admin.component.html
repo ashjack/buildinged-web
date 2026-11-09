@@ -1,0 +1,38 @@
+<header class="topbar">
+  <div class="shell bar">
+    <a class="brand" routerLink="/">BuildingEd</a>
+    <nav class="tabs" aria-label="Admin sections">
+      <a routerLink="/admin">Tile packs</a><a routerLink="/admin/furniture">Furniture</a><a routerLink="/admin/accounts" class="active" aria-current="page">Accounts</a>
+    </nav>
+    <span class="user">{{auth.user?.displayName || 'Signed in'}}</span>
+  </div>
+</header>
+<main class="shell">
+  <div class="page-head"><div><h1>Accounts</h1><p class="lede">Set access for people who have signed in to BuildingEd.</p></div></div>
+  <dl class="account-types">
+    <div><dt>Normal</dt><dd>Building editor and project building variations.</dd></div>
+    <div><dt>Contributor</dt><dd>Normal access, plus read-only WorldEd and TileZed.</dd></div>
+    <div><dt>Admin</dt><dd>Admin tools, account types, world uploads and world editing. Project membership still applies.</dd></div>
+  </dl>
+  <p class="notice error" role="alert" *ngIf="error">{{error}}</p>
+  <p class="notice" role="status" *ngIf="notice">{{notice}}</p>
+  <form class="account-search" (ngSubmit)="load()">
+    <label>Find by email<input name="email" type="email" [(ngModel)]="email" placeholder="person@example.com"></label>
+    <button class="button" [disabled]="loading || !!saving">{{email.trim() ? 'Find account' : 'Refresh accounts'}}</button>
+    <button class="button" type="button" *ngIf="email" (click)="email = ''; load()" [disabled]="loading || !!saving">Show all</button>
+  </form>
+  <p class="muted" role="status" *ngIf="loading">Loading accounts…</p>
+  <ul class="list">
+    <li class="item" *ngFor="let user of users">
+      <div class="item-main"><strong>{{user.displayName || user.email || user.uid}}</strong><span class="muted">{{user.email}}</span><code>{{user.uid}}</code><span class="muted" *ngIf="user.protected">Original admin · protected</span></div>
+      <div class="account-actions">
+        <select [attr.aria-label]="'Account type for ' + (user.email || user.uid)" [(ngModel)]="drafts[user.uid]" [disabled]="user.protected || !!saving || loading">
+          <option value="normal">Normal</option><option value="contributor">Contributor</option><option value="admin">Admin</option>
+        </select>
+        <button class="button compact" type="button" (click)="save(user)" [disabled]="user.protected || !!saving || loading || drafts[user.uid] === user.type">{{saving === user.uid ? 'Saving…' : 'Save'}}</button>
+      </div>
+    </li>
+  </ul>
+  <p class="muted" *ngIf="!loading && !users.length">No accounts found. They need to sign in once first.</p>
+  <button class="button more" *ngIf="nextPageToken" type="button" (click)="load(true)" [disabled]="loading || !!saving">Load more accounts</button>
+</main>

@@ -17,9 +17,10 @@ try {
     if (!match) throw new Error(`Missing Firebase browser configuration field: ${key}.`);
     firebase[key] = match[1];
   }
-  const apiBaseUrl = process.env.BUILDINGED_API_URL ||
+  const localBase = process.argv.includes('--local') ? `http://127.0.0.1:5001/${firebase.projectId}/us-central1` : '';
+  const apiBaseUrl = process.env.BUILDINGED_API_URL || (localBase && `${localBase}/workspaceApi`) ||
     'https://us-central1-buildinged-online.cloudfunctions.net/workspaceApi';
-  const adminApiBaseUrl = process.env.BUILDINGED_ADMIN_API_URL ||
+  const adminApiBaseUrl = process.env.BUILDINGED_ADMIN_API_URL || (localBase && `${localBase}/adminApi`) ||
     'https://us-central1-buildinged-online.cloudfunctions.net/adminApi';
   for (const value of [apiBaseUrl, adminApiBaseUrl]) {
     const url = new URL(value);

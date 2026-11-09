@@ -21,7 +21,7 @@ export class SettingsComponent implements OnDestroy {
 
   async clearData(): Promise<void> {
     if (this.clearing || !confirm('Clear all saved site data? Downloaded tiles will be downloaded again when needed, ' +
-      'and the TileZed and WorldEd viewers will need their files selected again.')) return;
+      'cached world files will download again, and local TileZed files will need to be selected again. Project worlds on the server will be kept.')) return;
     this.clearing = true;
     this.error = '';
     this.changeDetector.markForCheck();

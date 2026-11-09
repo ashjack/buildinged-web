@@ -24,6 +24,20 @@ h1 { font-size: 28px; line-height: 1.2; font-weight: 600; letter-spacing: -.025e
 .main-col, .side-col { display: flex; flex-direction: column; gap: 32px; min-width: 0; }
 .side-col { gap: 16px; }
 .tasks { gap: 0; }
+.project-views { display: flex; gap: 8px; margin-bottom: 24px; }
+.project-views [aria-current=page] { color: $accent; border-color: $accent; }
+.world-buildings { gap: 16px; }
+.world-buildings .filters { margin: 0; }
+.building-row { padding: 14px 0; }
+.building-summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.building-row .building-preview { margin-top: 16px; }
+.building-path { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.building-path strong { font-size: 13px; font-weight: 500; }
+.building-row .tools { flex-shrink: 0; }
+.building-preview h3, .source-world-path { overflow-wrap: anywhere; }
+.building-preview img { display: block; width: 100%; max-height: 520px; object-fit: contain; margin: 12px 0; background: $bg; }
+.building-preview details { margin: 12px 0; color: $muted; font-size: 12px; }
+.building-pagination { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
 
 .filters { display: flex; gap: 8px; margin-bottom: 12px; }
 .filters input { flex: 1; }
@@ -77,6 +91,7 @@ legend .link { font-size: 12px; }
   .layout { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
+  .building-summary { align-items: flex-start; flex-direction: column; gap: 8px; }
   .page-head { flex-direction: column; padding: 32px 0 24px; gap: 12px; }
   .page-head > .meta { padding-top: 0; }
   .grid-2 { grid-template-columns: 1fr; }
