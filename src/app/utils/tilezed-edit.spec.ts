@@ -16,6 +16,71 @@ async function open(source = xml): Promise<TilezedEditDocument> {
 }
 
 describe('TileZed manual editing document', () => {
+  it('adds an empty layer above the existing stack and saves its tiles without altering other layers', async () => {
+    const editor = await open(), original = editor.scene.map.layers[0].gids.slice();
+    const name = editor.addLayer('Fences');
+    expect(name).toBe('0_Fences'); expect(editor.dirty).toBeTrue();
+    expect(editor.scene.map.layers.at(-1)?.name).toBe(name);
+    expect(editor.scene.layers.at(-1)?.gids.some(gid => gid !== 0)).toBeFalse();
+    let saved = await readTilezedMap(await editor.serialize());
+    expect(saved.layers.map(layer => layer.name)).toEqual(['0_Floor', name]);
+    expect(Array.from(saved.layers[1].gids)).toEqual(Array(12).fill(0));
+    editor.paintCells(name, [{ point: { x: 1, y: 2 }, gid: 3 }]);
+    const source = await editor.serialize(); saved = await readTilezedMap(source);
+    expect(saved.layers[1].gids[9]).toBe(3);
+    expect(Array.from(saved.layers[0].gids)).toEqual(Array.from(original));
+    const document = new DOMParser().parseFromString(source, 'application/xml');
+    expect(document.querySelector('layer[name="1_Floor"] data')?.textContent).toBe('3,0,0,0,0,0,0,0,0,0,0,0');
+    expect(document.querySelector('extension')?.getAttribute('untouched')).toBe('yes');
+  });
+
+  it('undoes and redoes layer creation and painting across manual saves without losing the new layer mask', async () => {
+    const editor = await open(), name = editor.addLayer('Fences');
+    editor.markSaved();
+    editor.paintCells(name, [{ point: { x: 0, y: 0 }, gid: 2 }]);
+    editor.undo(); expect(editor.dirty).toBeFalse();
+    editor.undo(); expect(editor.dirty).toBeTrue();
+    expect((await readTilezedMap(await editor.serialize())).layers.map(layer => layer.name)).toEqual(['0_Floor']);
+    editor.redo(); expect(editor.dirty).toBeFalse();
+    editor.redo(); expect(editor.scene.layers.at(-1)?.gids[0]).toBe(2);
+    const reloaded = await readTilezedMap(await editor.serialize());
+    expect(reloaded.noBlend?.get(name)?.[0]).toBe(1);
+  });
+
+  it('validates new layer names and safely reuses a name after undoing its creation', async () => {
+    const editor = await open();
+    expect(() => editor.addLayer(' ')).toThrowError('Enter a layer name.');
+    expect(() => editor.addLayer('0_Floor')).toThrowError(/already has that name/);
+    expect(() => editor.addLayer('1_Roof')).toThrowError(/ground level/);
+    expect(editor.dirty).toBeFalse();
+    const name = editor.addLayer(editor.suggestedLayerName());
+    editor.paintCells(name, [{ point: { x: 0, y: 0 }, gid: 2 }]);
+    editor.undo(); editor.undo();
+    editor.addLayer(name);
+    expect(editor.canRedo).toBeFalse();
+    expect((await readTilezedMap(await editor.serialize())).layers.at(-1)?.gids[0]).toBe(0);
+  });
+
+  it('counts preserved upper-level layers against the shared map layer limit', async () => {
+    const source = xml.replace('</map>', Array.from({ length: 254 }, (_, i) =>
+      `<layer name="1_Extra ${i}" width="4" height="3"><data encoding="csv">${Array(12).fill(0).join(',')}</data></layer>`).join('') + '</map>');
+    const editor = await open(source);
+    expect(editor.canAddLayer).toBeFalse();
+    expect(() => editor.addLayer('New layer')).toThrowError(/256/);
+    expect(editor.dirty).toBeFalse();
+  });
+  it('saves newly referenced building/fence tilesheets and keeps a fence drag in one undo operation', async () => {
+    const editor = await open();
+    editor.scene.map.tilesets.push({ name: 'fencing_01', source: 'Tiles/fencing_01.png', firstGid: 4,
+      tileWidth: 64, tileHeight: 128, columns: 8, rows: 16, imageWidth: 512, imageHeight: 2048 });
+    editor.selection = { x: 0, y: 0, width: 2, height: 1 };
+    editor.paintCells('0_Floor', [0, 1, 2].map(x => ({ point: { x, y: 0 }, gid: 4 + x })));
+    expect(Array.from(editor.scene.layers[0].gids.slice(0, 3))).toEqual([4, 5, 2]);
+    const reloaded = await readTilezedMap(await editor.serialize());
+    expect(reloaded.tilesets[1].name).toBe('fencing_01'); expect(reloaded.layers[0].gids[1]).toBe(5);
+    editor.undo(); expect(editor.dirty).toBeFalse();
+    expect(Array.from(editor.scene.layers[0].gids.slice(0, 3))).toEqual([1, 1, 2]);
+  });
   it('projects screen positions back into tiles with pan, zoom and both tile scales', () => {
     for (const tileWidth of [64, 128]) for (const zoom of [0.25, 1, 3]) {
       const map = { height: 300, tileWidth, tileHeight: tileWidth / 2 };

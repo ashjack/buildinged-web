@@ -28,6 +28,28 @@ describe('Background building previews', () => {
     service = TestBed.inject(BuildingPreviewService);
   });
 
+  it('picks a building source tile through transparent pixels of a tile in front', async () => {
+    const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 128;
+    const context = canvas.getContext('2d')!;
+    context.fillRect(0, 0, 64, 128);
+    const floor = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/png'));
+    context.clearRect(0, 0, 512, 128); context.fillRect(0, 0, 32, 128);
+    const furniture = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/png'));
+    assets.load.and.callFake(async sheets => ({ sheets: new Map(sheets.map(sheet => [sheet.firstGid, sheet.name === 'floor_01' ? floor : furniture])), errors: new Map(), warnings: [] }));
+    const manual = xml.replace('<floor>', '<user_tiles><tile tile="furniture_01_0"/></user_tiles><floor>')
+      .replace('</floor>', '<tiles layer="Furniture">1,0,0,0</tiles></floor>');
+    const file = new File([manual], 'house.tbx');
+    expect(await service.pickTile(file, 0, -16, -32)).toEqual({ sheet: 'furniture_01', index: 0 });
+    expect(await service.pickTile(file, 0, 16, -32)).toEqual({ sheet: 'floor_01', index: 0 });
+    expect(await service.pickTile(file, 0, 50, -32)).toBeUndefined();
+    const lots = new BuildingLots(service);
+    await lots.load([{ lot: { x: 0, y: 0, width: 1, height: 1, level: 0, map: file.name }, x: 100, y: 200, scale: 2 }],
+      new Map([[file.name, file]]), () => undefined);
+    expect(await lots.pickTile(68, 136)).toEqual({ sheet: 'furniture_01', index: 0 });
+    expect(await lots.pickTile(132, 136)).toEqual({ sheet: 'floor_01', index: 0 });
+    lots.dispose();
+  });
+
   it('generates a preview in a worker and caches repeated buildings without reloading sheets', async () => {
     const canvas = document.createElement('canvas');
     canvas.width = 512; canvas.height = 128;

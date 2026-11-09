@@ -1,11 +1,60 @@
 import { TilezedMap, TilezedTileset } from './tilezed-map';
 import {
   constrainTilezedCamera, drawTilezedScene, drawTilezedStamp, fitTilezedCamera, TilezedBounds,
-  TilezedCamera, TilezedImage, zoomTilezedCamera,
+  TilezedCamera, TilezedImage, zoomTilezedCamera, pickTilezedTile, tilezedLayerAboveLots,
 } from './tilezed-renderer';
 import { TilezedScene } from './tilezed-terrain';
 
 describe('TileZed canvas navigation and rendering', () => {
+  it('recognizes AboveLots with or without its normalized level prefix', () => {
+    expect(tilezedLayerAboveLots('AboveLots')).toBeTrue();
+    expect(tilezedLayerAboveLots('0_AboveLots')).toBeTrue();
+    expect(tilezedLayerAboveLots('0_AboveLotsExtra')).toBeFalse();
+  });
+  it('separates AboveLots from terrain and preserves transparent pixels and layer opacity', async () => {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 128;
+    const source = document.createElement('canvas'); source.width = source.height = 128;
+    const fill = source.getContext('2d')!;
+    fill.fillStyle = '#ff0000'; fill.fillRect(0, 0, 64, 128);
+    fill.fillStyle = '#0000ff'; fill.fillRect(64, 0, 32, 128);
+    const bitmap = await createImageBitmap(source);
+    const scene = sceneFor(1, 1, Uint32Array.of(1));
+    scene.layers.unshift({ name: '0_AboveLots', gids: Uint32Array.of(2), visible: true, opacity: 0.5 });
+    const images = new Map([[1, { bitmap, layout: { tileWidth: 64, tileHeight: 128 } }]]);
+    const camera = { x: 32, y: -32, zoom: 1 }, viewport = { width: 128, height: 128 };
+    const context = canvas.getContext('2d')!;
+    try {
+      drawTilezedScene(context, scene, images, camera, viewport, 1, 'belowLots');
+      expect([...context.getImageData(40, 64, 1, 1).data]).toEqual([255, 0, 0, 255]);
+      drawTilezedScene(context, scene, images, camera, viewport, 1, 'aboveLots');
+      expect([...context.getImageData(40, 64, 1, 1).data]).toEqual([0, 0, 255, 128]);
+      expect(context.getImageData(80, 64, 1, 1).data[3]).toBe(0);
+      expect(pickTilezedTile(scene, images, 10, -50, 'aboveLots')).toEqual({ gid: 2, layer: '0_AboveLots' });
+      expect(pickTilezedTile(scene, images, 40, -50, 'aboveLots')).toBeUndefined();
+      expect(pickTilezedTile(scene, images, 10, -50, 'belowLots')?.gid).toBe(1);
+      scene.layers[0].visible = false;
+      drawTilezedScene(context, scene, images, camera, viewport, 1, 'aboveLots');
+      expect(context.getImageData(40, 64, 1, 1).data[3]).toBe(0);
+      expect(pickTilezedTile(scene, images, 10, -50, 'aboveLots')).toBeUndefined();
+    } finally { bitmap.close(); }
+  });
+  it('picks opaque image overhangs instead of the ground grid and skips transparent foreground pixels', async () => {
+    const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 128;
+    const context = canvas.getContext('2d')!;
+    context.fillRect(0, 0, 64, 128); context.fillRect(64, 0, 32, 128);
+    const bitmap = await createImageBitmap(canvas);
+    const scene = sceneFor(1, 1, Uint32Array.of(1));
+    scene.layers.push({ name: '0_Objects', gids: Uint32Array.of(2), visible: true, opacity: 1 });
+    const images = new Map([[1, { bitmap, layout: { tileWidth: 64, tileHeight: 128 } }]]);
+    try {
+      // These pixels are above the diamond of the only ground square.
+      expect(pickTilezedTile(scene, images, 10, -50)).toEqual({ gid: 2, layer: '0_Objects' });
+      expect(pickTilezedTile(scene, images, 40, -50)).toEqual({ gid: 1, layer: '0_Floor' });
+      scene.layers[1].visible = false;
+      expect(pickTilezedTile(scene, images, 10, -50)?.gid).toBe(1);
+      expect(pickTilezedTile(scene, images, 70, -50)).toBeUndefined();
+    } finally { bitmap.close(); }
+  });
   const tileset: TilezedTileset = {
     name: 'test_01', source: 'test_01.png', firstGid: 1, tileWidth: 64, tileHeight: 128,
     imageWidth: 128, imageHeight: 128, columns: 2, rows: 1,

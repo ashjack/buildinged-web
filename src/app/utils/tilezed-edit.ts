@@ -2,18 +2,27 @@ import { TilezedLayer, tilezedLayerName, tilesetForGid } from './tilezed-map';
 import { TilezedScene } from './tilezed-terrain';
 import { TilezedCamera, TilezedViewport } from './tilezed-renderer';
 
-export type TilezedTool = 'pan' | 'stamp' | 'bucket' | 'eraser' | 'select' | 'pick';
+export type TilezedTool = 'pan' | 'stamp' | 'bucket' | 'eraser' | 'select' | 'pick' | 'fence';
 export interface TilePoint { x: number; y: number; }
 export interface TileRectangle extends TilePoint { width: number; height: number; }
 export interface TileStamp { width: number; height: number; gids: Uint32Array; }
 interface Change { index: number; raw: number; visible: number; mask: number; next: number; }
-interface Edit { layer: string; changes: Change[]; before: number; after: number; }
+interface Edit {
+  layer: string; changes: Change[]; before: number; after: number;
+  newLayer?: { index: number; raw: TilezedLayer; visible: TilezedLayer; mask: Uint8Array };
+}
 
-export function tilezedTileAtPixel(map: { height: number; tileWidth: number; tileHeight: number },
+export function tilezedTilePositionAtPixel(map: { height: number; tileWidth: number; tileHeight: number },
                                   camera: TilezedCamera, viewport: TilezedViewport, x: number, y: number): TilePoint {
   const dx = (camera.x + (x - viewport.width / 2) / camera.zoom - map.height * map.tileWidth / 2) / (map.tileWidth / 2);
   const dy = (camera.y + (y - viewport.height / 2) / camera.zoom) / (map.tileHeight / 2);
-  return { x: Math.floor((dx + dy) / 2), y: Math.floor((dy - dx) / 2) };
+  return { x: (dx + dy) / 2, y: (dy - dx) / 2 };
+}
+
+export function tilezedTileAtPixel(map: { height: number; tileWidth: number; tileHeight: number },
+  camera: TilezedCamera, viewport: TilezedViewport, x: number, y: number): TilePoint {
+  const point = tilezedTilePositionAtPixel(map, camera, viewport, x, y);
+  return { x: Math.floor(point.x), y: Math.floor(point.y) };
 }
 
 export function tileRectangle(a: TilePoint, b: TilePoint): TileRectangle {
@@ -52,10 +61,14 @@ export class TilezedEditDocument {
   private state = 0;
   private nextState = 0;
   private savedState = 0;
+  private readonly initialLayerCount: number;
+  private readonly initialLayerNames: Set<string>;
 
   constructor(xml: string, scene: TilezedScene) {
     this.source = new DOMParser().parseFromString(xml, 'application/xml');
-    this.scene = { ...scene, map: { ...scene.map,
+    this.initialLayerCount = Array.from(this.source.documentElement.children).filter(item => item.tagName === 'layer').length;
+    this.initialLayerNames = new Set(scene.map.layers.map(layer => layer.name));
+    this.scene = { ...scene, map: { ...scene.map, tilesets: scene.map.tilesets.slice(),
       layers: scene.map.layers.map(layer => ({ ...layer, gids: layer.gids.slice() })),
       noBlend: new Map([...(scene.map.noBlend ?? [])].map(([name, bits]) => [name, bits.slice()])) },
       layers: scene.layers.map(layer => ({ ...layer, gids: layer.gids.slice() })) };
@@ -64,6 +77,32 @@ export class TilezedEditDocument {
   get dirty(): boolean { return this.state !== this.savedState || !!this.stroke?.changes.size; }
   get canUndo(): boolean { return this.past.length > 0; }
   get canRedo(): boolean { return this.future.length > 0; }
+  get canAddLayer(): boolean {
+    const added = this.scene.map.layers.filter(layer => !this.initialLayerNames.has(layer.name)).length;
+    return this.initialLayerCount + added < 256;
+  }
+  suggestedLayerName(): string {
+    let number = this.scene.map.layers.length + 1;
+    while (this.scene.map.layers.some(layer => layer.name === `0_Tile Layer ${number}`)) number++;
+    return `Tile Layer ${number}`;
+  }
+  addLayer(value: string): string {
+    const label = value.trim().replace(/^0_/, '');
+    if (!label || /[\x00-\x1f]/.test(label)) throw new Error('Enter a layer name.');
+    if (/^\d+_/.test(label)) throw new Error('New layers must be on the ground level (0).');
+    const name = `0_${label}`;
+    if (this.scene.map.layers.some(layer => layer.name === name)) throw new Error('A tile layer already has that name.');
+    if (!this.canAddLayer) throw new Error('Maps can contain at most 256 tile layers.');
+    this.finish();
+    const count = this.scene.map.width * this.scene.map.height;
+    const raw: TilezedLayer = { name, gids: new Uint32Array(count), visible: true, opacity: 1 };
+    const visible = { ...raw, gids: new Uint32Array(count) }, mask = new Uint8Array(count);
+    const newLayer = { index: this.scene.map.layers.length, raw, visible, mask };
+    this.scene.map.layers.push(raw); this.scene.layers.push(visible);
+    this.scene.map.noBlend!.set(name, mask); this.touched.add(name);
+    this.record({ layer: name, changes: [], newLayer });
+    return name;
+  }
   markSaved(): void { this.finish(); this.savedState = this.state; }
   contains(point: TilePoint): boolean {
     return inside(point, { x: 0, y: 0, width: this.scene.map.width, height: this.scene.map.height });
@@ -103,6 +142,11 @@ export class TilezedEditDocument {
     }
   }
   erase(point: TilePoint): void { this.write(point, 0); }
+  paintCells(layer: string, cells: readonly { point: TilePoint; gid: number }[]): void {
+    this.begin(layer);
+    for (const cell of cells) this.write(cell.point, cell.gid);
+    this.finish();
+  }
   eraseSelection(layer: string): void {
     if (!this.selection) return;
     this.begin(layer);
@@ -157,7 +201,10 @@ export class TilezedEditDocument {
     const stroke = this.stroke;
     this.stroke = undefined;
     if (!stroke?.changes.size) return;
-    const edit = { layer: stroke.layer, changes: [...stroke.changes.values()], before: this.state, after: ++this.nextState };
+    this.record({ layer: stroke.layer, changes: [...stroke.changes.values()] });
+  }
+  private record(change: Omit<Edit, 'before' | 'after'>): void {
+    const edit: Edit = { ...change, before: this.state, after: ++this.nextState };
     this.state = edit.after;
     this.past.push(edit);
     this.future = [];
@@ -168,6 +215,18 @@ export class TilezedEditDocument {
   undo(): void { this.finish(); const edit = this.past.pop(); if (edit) { this.apply(edit, false); this.future.push(edit); } }
   redo(): void { this.finish(); const edit = this.future.pop(); if (edit) { this.apply(edit, true); this.past.push(edit); } }
   private apply(edit: Edit, forward: boolean): void {
+    if (edit.newLayer) {
+      const { index, raw, visible, mask } = edit.newLayer;
+      if (forward) {
+        this.scene.map.layers.splice(index, 0, raw); this.scene.layers.splice(index, 0, visible);
+        this.scene.map.noBlend!.set(raw.name, mask);
+      } else {
+        this.scene.map.layers.splice(index, 1); this.scene.layers.splice(index, 1);
+        this.scene.map.noBlend!.delete(raw.name);
+      }
+      this.state = forward ? edit.after : edit.before;
+      return;
+    }
     const raw = this.scene.map.layers.find(item => item.name === edit.layer)!;
     const visible = this.scene.layers.find(item => item.name === edit.layer)!;
     const mask = this.scene.map.noBlend!.get(edit.layer)!;
@@ -183,8 +242,27 @@ export class TilezedEditDocument {
     this.finish();
     const document = this.source.cloneNode(true) as Document;
     const root = document.documentElement;
+    const existingTilesets = new Set(Array.from(root.children).filter(item => item.tagName === 'tileset').map(item => Number(item.getAttribute('firstgid'))));
+    for (const sheet of this.scene.map.tilesets) {
+      if (existingTilesets.has(sheet.firstGid)) continue;
+      const element = document.createElement('tileset');
+      for (const [key, value] of Object.entries({ firstgid: sheet.firstGid, name: sheet.name, tilewidth: sheet.tileWidth, tileheight: sheet.tileHeight })) element.setAttribute(key, String(value));
+      const image = document.createElement('image');
+      image.setAttribute('source', sheet.source); image.setAttribute('width', String(sheet.imageWidth)); image.setAttribute('height', String(sheet.imageHeight));
+      element.appendChild(image); root.insertBefore(element, Array.from(root.children).find(item => item.tagName === 'layer') ?? null);
+    }
+    for (const layer of this.scene.map.layers) {
+      const groundLayers = Array.from(root.children).filter(item => item.tagName === 'layer' && tilezedLayerName(item).level === 0);
+      if (groundLayers.some(item => tilezedLayerName(item).name === layer.name)) continue;
+      const element = document.createElement('layer');
+      element.setAttribute('name', layer.name); element.setAttribute('width', String(this.scene.map.width)); element.setAttribute('height', String(this.scene.map.height));
+      element.appendChild(document.createElement('data'));
+      const previous = groundLayers.at(-1);
+      root.insertBefore(element, previous?.nextSibling ?? null);
+    }
     for (const name of this.touched) {
-      const layer = this.scene.map.layers.find(item => item.name === name)!;
+      const layer = this.scene.map.layers.find(item => item.name === name);
+      if (!layer) continue; // A newly added layer may have been undone.
       const element = Array.from(root.children).find(item => item.tagName === 'layer' && tilezedLayerName(item).name === name)!;
       const data = Array.from(element.children).find(item => item.tagName === 'data')!;
       data.removeAttribute('compression');

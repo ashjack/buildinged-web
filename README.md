@@ -96,11 +96,19 @@ Choose **Pan**, middle-drag, or hold Space while dragging to pan; use the mouse 
 zoom, and choose **Fit map** to return to the overview. The canvas also supports
 arrow keys, plus/minus, and Home.
 
-Choose a visible **Layer**, then a tile from the **Tilesets** dock. The dock has a
+Choose a visible **Layer**, then a tile from the **Tilesets** dock. The layer list
+shows the topmost layer first, with the lowest layer at the bottom. **Add tile
+layer** beside the list creates a named, empty ground-level tile layer above the
+existing stack and selects it. Creation supports undo/redo and remains unsaved
+until the map is saved manually. A layer named **AboveLots** (`0_AboveLots` in
+the map) renders after buildings; its transparent pixels reveal the lots below.
+The picker follows this same order. Other map layers render before buildings.
+The dock has a
 searchable tileset list beside a continuous sheet preview, with zoom and background
 color controls below. Drag across tiles or Shift-click a second tile to form a
 rectangular stamp. Arrow keys select tiles; Shift+arrow extends the selection.
-Tools follow the desktop TileZed behavior:
+The editing toolbar uses TileZed's native tool icons, with names and shortcuts in
+tooltips and accessible labels. Tools follow the desktop TileZed behavior:
 
 - **Stamp brush (B)** paints a single tile or pattern; dragging draws a continuous stroke.
 - **Bucket (F)** fills orthogonally connected matching tiles on the active layer.
@@ -108,7 +116,16 @@ Tools follow the desktop TileZed behavior:
 - **Eraser (E)** removes tiles on the active layer, including generated terrain.
 - **Rectangular select (R)** limits painting, filling, and erasing to a rectangle.
   **Use selection as stamp** / Ctrl+C captures its visible tiles; Escape clears it.
-- **Pick tile (I)** samples the active layer and switches to the stamp brush.
+- **Pick tile (I)** samples the topmost opaque tile image directly under the cursor,
+  including tiles on buildings and image overhangs. Transparent pixels reveal
+  tiles behind them. It switches to the stamp brush; picking terrain also selects
+  its layer. Building tilesheets not yet referenced by the map are added when needed.
+- **Draw fence (G)** uses the native `Fences.txt` presets. Drag to preview a straight
+  run along the dominant map axis; release to place it as one undoable edit. Sections
+  alternate in native order and join perpendicular sections with corner pieces.
+  Alt-click places a gate space in a fence or a standalone gate door; Ctrl-click
+  toggles a post. Missing optional gate/post shapes do nothing. Escape or right-click
+  cancels a pending run. The selection limits fence placement too.
 
 Undo/redo is available in the toolbar and with Ctrl+Z / Ctrl+Y. Edits remain in
 memory until **Save map to project** (hosted cells) or **Save .tmx** (local map

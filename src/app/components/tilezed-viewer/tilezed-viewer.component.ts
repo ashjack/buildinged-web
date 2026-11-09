@@ -10,13 +10,16 @@ import { drawBuildingSprites, orderTilezedBuildingSprites } from '../../utils/bu
 import { resolveTilezedProject, worldedReferenceKey } from '../../utils/worlded-files';
 import { AuthService } from '../../services/auth.service';
 import { ProjectApiService } from '../../services/project-api.service';
-import { TilezedEditDocument, TilePoint, tileLine, tileRectangle, TileStamp, TilezedTool, tilezedTileAtPixel } from '../../utils/tilezed-edit';
+import { TilezedEditDocument, TilePoint, tileLine, tileRectangle, TileStamp, TilezedTool, tilezedTileAtPixel, tilezedTilePositionAtPixel } from '../../utils/tilezed-edit';
+import { NATIVE_FENCES } from '../../utils/tilezed-fence-presets';
+import { FenceCell, tilezedFenceCells } from '../../utils/tilezed-fence';
+import { parseTileName, readPngSize } from '../../utils/sheet-atlas';
 import { tilezedTileToPixel } from '../../utils/tilezed-overlays';
 import { TilezedStorageService } from '../../services/tilezed-storage.service';
-import { readTilezedMap, TilezedTileset, tilesetForGid } from '../../utils/tilezed-map';
+import { readTilezedMap, TilezedLayer, TilezedTileset, tilesetForGid } from '../../utils/tilezed-map';
 import {
   applyTilezedCamera, constrainTilezedCamera, drawTilezedScene, drawTilezedStamp, fitTilezedCamera, TilezedCamera, TilezedImage,
-  TilezedViewport, tilezedBounds, zoomTilezedCamera,
+  TilezedViewport, tilezedBounds, zoomTilezedCamera, pickTilezedTile, tilezedLayerAboveLots,
 } from '../../utils/tilezed-renderer';
 import { indexTilezedSheets, localTilezedSheet, TilezedSheetIndex, tilezedSheetGeometry, tilezedSheetName } from '../../utils/tilezed-sheets';
 import { generateTilezedScene, TilezedScene } from '../../utils/tilezed-terrain';
@@ -36,14 +39,28 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   @ViewChild('canvas') canvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('viewport') viewportElement!: ElementRef<HTMLElement>;
   @ViewChild('buildingMenu') buildingMenu?: ElementRef<HTMLElement>;
+  @ViewChild('layerDialog') layerDialog?: ElementRef<HTMLDialogElement>;
+  @ViewChild('layerNameInput') layerNameInput?: ElementRef<HTMLInputElement>;
+  newLayerName = '';
+  layerError = '';
   contextMenu?: { x: number; y: number; projectId: string; path: string };
   editor?: TilezedEditDocument;
   tool: TilezedTool = 'pan';
-  readonly toolOptions: { id: TilezedTool; label: string; key: string }[] = [
-    { id: 'pan', label: 'Pan', key: 'H' }, { id: 'stamp', label: 'Stamp brush', key: 'B' },
-    { id: 'bucket', label: 'Bucket', key: 'F' }, { id: 'eraser', label: 'Eraser', key: 'E' },
-    { id: 'select', label: 'Rectangular select', key: 'R' }, { id: 'pick', label: 'Pick tile', key: 'I' },
+  readonly toolOptions: { id: TilezedTool; label: string; key: string; icon: string }[] = [
+    { id: 'pan', label: 'Pan', key: 'H', icon: 'pan.svg' }, { id: 'stamp', label: 'Stamp brush', key: 'B', icon: 'stock-tool-clone.png' },
+    { id: 'bucket', label: 'Bucket', key: 'F', icon: 'stock-tool-bucket-fill.png' }, { id: 'eraser', label: 'Eraser', key: 'E', icon: 'stock-tool-eraser.png' },
+    { id: 'select', label: 'Rectangular select', key: 'R', icon: 'stock-tool-rect-select.png' }, { id: 'pick', label: 'Pick tile', key: 'I', icon: 'icon_eyedrop.png' },
+    { id: 'fence', label: 'Draw fence', key: 'G', icon: 'fence-tool.svg' },
   ];
+  readonly fences = NATIVE_FENCES;
+  fenceIndex = 0;
+  preparingFence = false;
+  private fenceTiles = new Map<string, number>();
+  private fenceGeneration = 0;
+  private fenceStart?: TilePoint;
+  private fenceCursor?: TilePoint;
+  private fenceModifiers = { alt: false, ctrl: false };
+  private pickRequest = 0;
   activeLayer = '';
   stamp: TileStamp = { width: 1, height: 1, gids: new Uint32Array(1) };
   hoverTile?: TilePoint;
@@ -87,7 +104,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   private frame?: number;
   // Building loads redraw often; terrain is reused while the camera, size, scene and sheets are unchanged.
   private terrain?: {
-    canvas: HTMLCanvasElement; scene: TilezedScene; images: Map<number, TilezedImage>; camera: TilezedCamera;
+    canvas: HTMLCanvasElement; aboveLots?: HTMLCanvasElement; scene: TilezedScene; images: Map<number, TilezedImage>; camera: TilezedCamera;
     width: number; height: number; pixelRatio: number;
   };
   private mapGeneration = 0;
@@ -123,13 +140,14 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   get zoomPercent(): number { return Math.round(this.camera.zoom * 100); }
   get warningCount(): number {
     return Number(!!this.storageWarning) + (this.buildings?.warnings.size ?? 0) + this.tileWarnings.length +
-      (this.loadingSheets ? 0 : this.sheetIssues.length) + this.duplicateSheets.length + (this.scene?.warnings.length ?? 0);
+      this.sheetIssues.length + this.duplicateSheets.length + (this.scene?.warnings.length ?? 0);
   }
   toggleWarnings(): void {
     this.warningsExpanded = !this.warningsExpanded;
     localStorage.setItem(WARNINGS_EXPANDED_KEY, this.warningsExpanded ? '1' : '0');
   }
   get dirty(): boolean { return !!this.editor?.dirty; }
+  get layerOptions(): TilezedLayer[] { return this.scene?.map.layers.slice().reverse() ?? []; }
   get canEdit(): boolean { return this.auth.isAdmin && !!this.editor && !!this.activeLayer && !this.loadingMap && !this.saving && this.editUid === this.auth.user?.uid; }
   get hostedMap(): boolean { return !!this.buildingContext?.projectId; }
   get selectedTileLabel(): string {
@@ -183,6 +201,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     window.removeEventListener('resize', this.onWindowResize);
     if (this.frame !== undefined) cancelAnimationFrame(this.frame);
     if (this.terrain) this.terrain.canvas.width = this.terrain.canvas.height = 0;
+    if (this.terrain?.aboveLots) this.terrain.aboveLots.width = this.terrain.aboveLots.height = 0;
     this.terrain = undefined;
     this.releaseImages(this.images);
   }
@@ -220,6 +239,10 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
       this.sheetGeneration++;
       this.releaseImages(this.images);
       this.images = new Map();
+      this.pickRequest++;
+      this.fenceGeneration++;
+      this.fenceStart = this.fenceCursor = undefined;
+      this.fenceTiles.clear(); this.preparingFence = false;
       this.editor = new TilezedEditDocument(xml, scene);
       this.scene = this.editor.scene;
       this.activeLayer = map.layers.find(layer => layer.visible && layer.opacity)?.name ?? '';
@@ -363,7 +386,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     const generation = ++this.sheetGeneration;
     const localSheets = this.localSheets;
     const required = new Map(scene.usedSheets.map(item => [item.tileset.firstGid, { ...item }]));
-    if (this.tool === 'stamp') for (const gid of this.stamp.gids) {
+    if (this.tool === 'stamp' || this.tool === 'fence') for (const gid of this.tool === 'fence' ? this.fenceTiles.values() : this.stamp.gids) {
       const tileset = gid ? tilesetForGid(scene.map.tilesets, gid) : undefined;
       if (!tileset) continue;
       const item = required.get(tileset.firstGid);
@@ -478,8 +501,19 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
       event.preventDefault();
       this.canvas.nativeElement.focus({ preventScroll: true });
       const point = this.tileAtEvent(event);
+      if (this.tool === 'pick') { void this.pickAtEvent(event); return; }
       if (!this.editor.contains(point)) return;
-      if (this.tool === 'pick') { this.pickTile(point); return; }
+      if (this.tool === 'fence') {
+        if (this.preparingFence || !this.fenceTiles.size) return;
+        this.fenceCursor = this.fractionalTileAtEvent(event);
+        this.fenceModifiers = { alt: event.altKey, ctrl: event.ctrlKey || event.metaKey };
+        if (this.fenceModifiers.alt || this.fenceModifiers.ctrl) {
+          this.editor.paintCells(this.activeLayer, this.fenceCells()); this.updateEditedScene(true); return;
+        }
+        this.fenceStart = this.fenceCursor;
+        this.editPointer = { id: event.pointerId, start: point, last: point, selecting: false };
+        this.canvas.nativeElement.setPointerCapture(event.pointerId); this.requestDraw(); return;
+      }
       if (this.tool === 'bucket') {
         this.editor.fill(this.activeLayer, point, this.stamp, event.shiftKey);
         this.updateEditedScene(true); return;
@@ -501,6 +535,13 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   onPointerMove(event: PointerEvent): void {
     if (this.scene && this.canEdit) {
       this.hoverTile = this.tileAtEvent(event);
+      if (this.tool === 'fence') {
+        const map = this.scene.map, position = this.fractionalTileAtEvent(event);
+        this.fenceCursor = { x: Math.max(0, Math.min(map.width - 0.001, position.x)), y: Math.max(0, Math.min(map.height - 0.001, position.y)) };
+        this.fenceModifiers = { alt: event.altKey, ctrl: event.ctrlKey || event.metaKey };
+        this.requestDraw();
+        if (this.editPointer?.id === event.pointerId) return;
+      }
       if (this.editPointer?.id === event.pointerId && this.editor) {
         if (this.editPointer.selecting) {
           const map = this.scene.map;
@@ -528,10 +569,18 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     this.requestDraw();
   }
 
-  onPointerLeave(): void { this.hoverTile = undefined; this.requestDraw(); }
+  onPointerLeave(): void { this.hoverTile = undefined; if (!this.fenceStart) this.fenceCursor = undefined; this.requestDraw(); }
 
   onPointerEnd(event: PointerEvent): void {
     if (this.editPointer?.id === event.pointerId) {
+      if (this.tool === 'fence' && this.fenceStart) {
+        if (event.type === 'pointerup' && this.canEdit) {
+          const point = this.fractionalTileAtEvent(event), map = this.scene!.map;
+          this.fenceCursor = { x: Math.max(0, Math.min(map.width - 0.001, point.x)), y: Math.max(0, Math.min(map.height - 0.001, point.y)) };
+          this.editor!.paintCells(this.activeLayer, this.fenceCells());
+        }
+        this.fenceStart = undefined;
+      }
       this.finishEditing();
       if (this.canvas.nativeElement.hasPointerCapture(event.pointerId)) this.canvas.nativeElement.releasePointerCapture(event.pointerId);
       return;
@@ -555,9 +604,9 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
       if (ctrl && event.key.toLowerCase() === 'c' && this.editor?.selection) { event.preventDefault(); this.captureSelection(); return; }
       if (ctrl && event.key.toLowerCase() === 'v') { event.preventDefault(); this.setTool('stamp'); return; }
       if (event.key === ' ') { event.preventDefault(); this.spaceDown = true; this.requestDraw(); return; }
-      if (event.key === 'Escape') { this.editor!.selection = undefined; this.requestDraw(); return; }
+      if (event.key === 'Escape') { this.fenceStart = undefined; this.finishEditing(); this.editor!.selection = undefined; this.requestDraw(); return; }
       if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); this.eraseSelection(); return; }
-      const shortcuts: Record<string, TilezedTool> = { b: 'stamp', f: 'bucket', e: 'eraser', r: 'select', i: 'pick', h: 'pan' };
+      const shortcuts: Record<string, TilezedTool> = { b: 'stamp', f: 'bucket', e: 'eraser', r: 'select', i: 'pick', h: 'pan', g: 'fence' };
       if (!ctrl && shortcuts[event.key.toLowerCase()]) { event.preventDefault(); this.setTool(shortcuts[event.key.toLowerCase()]); return; }
     }
     const distance = 80 / this.camera.zoom;
@@ -583,27 +632,126 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     const rect = this.canvas.nativeElement.getBoundingClientRect();
     return tilezedTileAtPixel(this.scene!.map, this.camera, this.viewport, event.clientX - rect.left, event.clientY - rect.top);
   }
+  private fractionalTileAtEvent(event: MouseEvent): TilePoint {
+    const rect = this.canvas.nativeElement.getBoundingClientRect();
+    return tilezedTilePositionAtPixel(this.scene!.map, this.camera, this.viewport, event.clientX - rect.left, event.clientY - rect.top);
+  }
   private paintTile(point: TilePoint): void {
     if (this.tool === 'eraser') this.editor!.erase(point);
     else this.editor!.stamp(point, this.stamp);
   }
   setTool(tool: TilezedTool): void {
+    this.pickRequest++;
+    this.fenceStart = undefined;
     this.finishEditing(); this.closeContextMenu(); this.tool = tool; this.requestDraw();
+    if (tool === 'fence') void this.prepareFence();
     if (tool === 'stamp' && this.scene && this.stamp.gids.some(gid => {
       const sheet = gid ? tilesetForGid(this.scene!.map.tilesets, gid) : undefined;
       return sheet && !this.images.has(sheet.firstGid);
     })) void this.reloadSheets();
   }
   selectLayer(name: string): void {
+    this.fenceStart = undefined;
     this.finishEditing(); this.activeLayer = name; this.requestDraw();
   }
+  showAddLayer(): void {
+    if (!this.canEdit || !this.editor?.canAddLayer) return;
+    this.finishEditing(); this.closeContextMenu();
+    this.newLayerName = this.editor.suggestedLayerName(); this.layerError = '';
+    this.changeDetector.detectChanges();
+    this.layerDialog?.nativeElement.showModal();
+    this.layerNameInput?.nativeElement.focus(); this.layerNameInput?.nativeElement.select();
+  }
+  closeAddLayer(): void { this.layerDialog?.nativeElement.close(); this.layerError = ''; }
+  addLayer(event?: Event): void {
+    event?.preventDefault();
+    if (!this.canEdit || !this.editor) return;
+    try {
+      this.activeLayer = this.editor.addLayer(this.newLayerName);
+      this.updateEditedScene(); this.closeAddLayer();
+      this.canvas.nativeElement.focus({ preventScroll: true });
+    } catch (error) { this.layerError = error instanceof Error ? error.message : String(error); }
+  }
   chooseStamp(stamp: TileStamp): void { this.stamp = stamp; this.setTool('stamp'); }
-  pickTile(point: TilePoint): void {
-    const layer = this.scene?.layers.find(layer => layer.name === this.activeLayer);
-    const gid = layer?.gids[point.y * this.scene!.map.width + point.x] ?? 0;
-    if (!gid) { this.message = 'There is no tile on the selected layer at that position.'; return; }
-    this.message = '';
-    this.chooseStamp({ width: 1, height: 1, gids: Uint32Array.of(gid) });
+  async pickAtEvent(event: MouseEvent): Promise<void> {
+    const request = ++this.pickRequest, editor = this.editor, generation = this.mapGeneration;
+    const rect = this.canvas.nativeElement.getBoundingClientRect();
+    const x = this.camera.x + (event.clientX - rect.left - this.viewport.width / 2) / this.camera.zoom;
+    const y = this.camera.y + (event.clientY - rect.top - this.viewport.height / 2) / this.camera.zoom;
+    try {
+      let hit = pickTilezedTile(this.scene!, this.images, x, y, 'aboveLots');
+      const buildingTile = hit ? undefined : await this.buildings?.pickTile(x, y);
+      if (request !== this.pickRequest || editor !== this.editor || generation !== this.mapGeneration || !this.canEdit || this.tool !== 'pick') return;
+      if (!hit && !buildingTile) hit = pickTilezedTile(this.scene!, this.images, x, y, 'belowLots');
+      const gid = buildingTile ? await this.ensureTileSheet(buildingTile.sheet, buildingTile.index) : hit?.gid;
+      if (request !== this.pickRequest || editor !== this.editor || generation !== this.mapGeneration || this.destroyed || !this.canEdit || this.tool !== 'pick') return;
+      if (!gid) { this.message = 'There is no visible tile under the cursor.'; return; }
+      if (hit) this.activeLayer = hit.layer;
+      this.message = ''; this.chooseStamp({ width: 1, height: 1, gids: Uint32Array.of(gid) });
+    } catch (error) { if (request === this.pickRequest) this.message = `Could not pick tile: ${error instanceof Error ? error.message : String(error)}`; }
+    finally { this.changeDetector.markForCheck(); }
+  }
+
+  private async ensureTileSheet(name: string, index: number): Promise<number> {
+    const editor = this.editor!;
+    const map = editor.scene.map;
+    const existing = map.tilesets.find(sheet => tilezedSheetName(sheet.name) === name);
+    if (existing && index < existing.columns * existing.rows) return existing.firstGid + index;
+    if (existing) throw new Error(`${name} tile ${index} is outside this map's tileset range.`);
+    const width = map.tileWidth, height = width * 2;
+    const candidate: TilezedTileset = { name, source: `Tiles/${name}.png`, firstGid: 1, tileWidth: width, tileHeight: height,
+      columns: 8, rows: Math.ceil((index + 1) / 8), imageWidth: width * 8, imageHeight: Math.ceil((index + 1) / 8) * height };
+    const local = localTilezedSheet(this.localSheets, candidate);
+    const resolved = local ? undefined : await this.assets.load([candidate]);
+    const blob = local ?? resolved?.sheets.get(1);
+    if (!blob) throw new Error(resolved?.errors.get(1) ?? `Sheet ${name} is unavailable.`);
+    const size = readPngSize(new Uint8Array(await blob.slice(0, 24).arrayBuffer()));
+    if (!size) throw new Error(`Sheet ${name} is not a PNG.`);
+    candidate.rows = Math.floor(size.height / (height * (size.width / (8 * width))));
+    const geometry = tilezedSheetGeometry(candidate, size.width, size.height);
+    if (index >= geometry.tileCount) throw new Error(`Sheet ${name} does not contain tile ${index}.`);
+    if (editor !== this.editor || this.destroyed) throw new Error('The map changed while loading the tile.');
+    const concurrent = map.tilesets.find(sheet => tilezedSheetName(sheet.name) === name);
+    if (concurrent) return concurrent.firstGid + index;
+    candidate.firstGid = Math.max(1, ...map.tilesets.map(sheet => sheet.firstGid + sheet.columns * sheet.rows));
+    candidate.imageHeight = candidate.rows * height;
+    map.tilesets.push(candidate);
+    this.scene = { ...editor.scene }; this.changeDetector.markForCheck();
+    return candidate.firstGid + index;
+  }
+
+  async prepareFence(): Promise<void> {
+    this.fenceStart = undefined; this.finishEditing();
+    const generation = ++this.fenceGeneration, editor = this.editor, preset = this.fences[this.fenceIndex];
+    if (!editor || !preset) return;
+    this.preparingFence = true; this.fenceTiles = new Map();
+    const tiles = new Map<string, number>();
+    const groups = new Map<string, { role: string; index: number }[]>();
+    for (const [role, reference] of Object.entries(preset)) {
+      if (role === 'label' || !reference) continue;
+      const parsed = parseTileName(reference); if (!parsed) continue;
+      const entries = groups.get(parsed.sheet) ?? []; entries.push({ role, index: parsed.index }); groups.set(parsed.sheet, entries);
+    }
+    const missing: string[] = [];
+    try {
+      for (const [name, entries] of groups) {
+        try {
+          const max = Math.max(...entries.map(item => item.index));
+          const gid = await this.ensureTileSheet(name, max);
+          entries.forEach(item => tiles.set(item.role, gid - max + item.index));
+        } catch { missing.push(name); }
+      }
+      if (generation !== this.fenceGeneration || editor !== this.editor || this.tool !== 'fence') return;
+      this.fenceTiles = tiles;
+      this.message = missing.length ? `Some fence tiles are unavailable: ${missing.join(', ')}.` : '';
+      await this.reloadSheets();
+    } finally { if (generation === this.fenceGeneration) { this.preparingFence = false; this.requestDraw(); this.changeDetector.markForCheck(); } }
+  }
+  private fenceCells(): FenceCell[] {
+    if (!this.editor || !this.fenceCursor) return [];
+    const layer = this.scene!.layers.find(layer => layer.name === this.activeLayer)!;
+    return tilezedFenceCells(this.fenceTiles, this.fenceStart ?? this.fenceCursor, this.fenceStart ? this.fenceCursor : undefined,
+      point => this.editor!.contains(point) ? layer.gids[point.y * this.scene!.map.width + point.x] : 0, this.fenceModifiers);
   }
   captureSelection(): void {
     if (!this.canEdit) return;
@@ -622,10 +770,17 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   history(redo = false): void {
     if (!this.canEdit) return;
     this.finishEditing();
+    const previousLayers = new Set(this.editor!.scene.map.layers.map(layer => layer.name));
     redo ? this.editor!.redo() : this.editor!.undo();
+    const restored = this.editor!.scene.map.layers.find(layer => !previousLayers.has(layer.name));
+    if (restored) this.activeLayer = restored.name;
+    else if (!this.editor!.scene.map.layers.some(layer => layer.name === this.activeLayer)) {
+      this.activeLayer = this.editor!.scene.map.layers.filter(layer => layer.visible && layer.opacity).at(-1)?.name ?? '';
+    }
     this.updateEditedScene(true);
   }
   private finishEditing(): void {
+    this.fenceStart = undefined;
     this.editor?.finish();
     if (this.editPointer) {
       const id = this.editPointer.id;
@@ -726,7 +881,13 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     const selection = this.editor.selection;
     if (selection) rectangle(selection.x, selection.y, selection.width, selection.height, '#3c99ee35');
     const point = this.hoverTile;
-    if (point && this.editor.contains(point) && this.tool !== 'pan' && this.canEdit && !this.spaceDown && !this.dragging) {
+    if (this.tool === 'fence' && this.canEdit && !this.spaceDown && !this.dragging && (point || this.fenceStart)) {
+      for (const cell of this.fenceCells()) {
+        if (cell.gid) drawTilezedStamp(context, this.scene.map, this.images, { width: 1, height: 1, gids: Uint32Array.of(cell.gid) }, cell.point, selection);
+        rectangle(cell.point.x, cell.point.y, 1, 1, '#00ff0018');
+      }
+    }
+    if (point && this.editor.contains(point) && !['pan', 'pick', 'fence'].includes(this.tool) && this.canEdit && !this.spaceDown && !this.dragging) {
       const width = this.tool === 'stamp' ? this.stamp.width : 1, height = this.tool === 'stamp' ? this.stamp.height : 1;
       if (this.tool === 'stamp') {
         const opacity = this.scene.layers.find(layer => layer.name === this.activeLayer)?.opacity ?? 1;
@@ -739,6 +900,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
 
   onContextMenu(event: MouseEvent): void {
     event.preventDefault();
+    if (this.tool === 'fence' && this.fenceStart) { this.fenceStart = undefined; this.finishEditing(); this.requestDraw(); return; }
     this.closeContextMenu();
     const projectId = this.buildingContext?.projectId;
     if (!this.auth.isAdmin || !projectId || !this.scene || !this.showLotOutlines || this.loadingMap) return;
@@ -768,6 +930,10 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   @HostListener('document:keydown', ['$event']) contextMenuKey(event: KeyboardEvent): void {
+    if (this.layerDialog?.nativeElement.open) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') event.preventDefault();
+      return;
+    }
     if (!this.contextMenu && event.target !== this.canvas?.nativeElement && this.canEdit &&
         (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
       event.preventDefault(); void this.saveMap(); return;
@@ -826,8 +992,15 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
             canvas.height = target.height;
             const context = canvas.getContext('2d');
             if (!context) return;
-            drawTilezedScene(context, this.scene, this.images, this.camera, this.viewport, this.pixelRatio);
-            terrain = this.terrain = { canvas, scene: this.scene, images: this.images, camera: this.camera,
+            drawTilezedScene(context, this.scene, this.images, this.camera, this.viewport, this.pixelRatio, 'belowLots');
+            let aboveLots: HTMLCanvasElement | undefined;
+            if (this.scene.layers.some(layer => tilezedLayerAboveLots(layer.name) && layer.visible && layer.opacity)) {
+              aboveLots = terrain?.aboveLots ?? document.createElement('canvas');
+              aboveLots.width = target.width; aboveLots.height = target.height;
+              const foreground = aboveLots.getContext('2d');
+              if (foreground) drawTilezedScene(foreground, this.scene, this.images, this.camera, this.viewport, this.pixelRatio, 'aboveLots');
+            } else if (terrain?.aboveLots) terrain.aboveLots.width = terrain.aboveLots.height = 0;
+            terrain = this.terrain = { canvas, aboveLots, scene: this.scene, images: this.images, camera: this.camera,
               width: target.width, height: target.height, pixelRatio: this.pixelRatio };
           }
           this.context.setTransform(1, 0, 0, 1, 0, 0);
@@ -836,6 +1009,12 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
           this.context.imageSmoothingEnabled = false;
           applyTilezedCamera(this.context, this.camera, this.viewport, this.pixelRatio);
           drawBuildingSprites(this.context, this.buildings?.sprites ?? [], this.camera, this.viewport);
+          if (terrain.aboveLots) {
+            this.context.setTransform(1, 0, 0, 1, 0, 0);
+            this.context.globalAlpha = 1;
+            this.context.drawImage(terrain.aboveLots, 0, 0);
+            applyTilezedCamera(this.context, this.camera, this.viewport, this.pixelRatio);
+          }
           drawTilezedOverlays(this.context, this.scene.map, this.buildingContext?.lots ?? [], this.zones,
             this.camera, this.viewport, { lots: this.showLotOutlines, zones: this.showZones });
           this.drawEditOverlay(this.context);

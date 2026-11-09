@@ -7,6 +7,13 @@ export interface TilezedCamera { x: number; y: number; zoom: number; }
 export interface TilezedViewport { width: number; height: number; }
 export interface TilezedBounds { left: number; right: number; top: number; bottom: number; }
 export interface TilezedImage { bitmap: ImageBitmap; layout: TilezedSheetLayout; }
+export type TilezedLayerPass = 'all' | 'belowLots' | 'aboveLots';
+
+/** Layer names are normalized to include their level when a TMX is read. */
+export function tilezedLayerAboveLots(name: string): boolean { return /^(?:\d+_)?AboveLots$/.test(name); }
+function layersForPass(scene: TilezedScene, pass: TilezedLayerPass) {
+  return pass === 'all' ? scene.layers : scene.layers.filter(layer => tilezedLayerAboveLots(layer.name) === (pass === 'aboveLots'));
+}
 
 export function tilezedBounds(map: TilezedMap): TilezedBounds {
   const maxWidth = Math.max(map.tileWidth, ...map.tilesets.map(tileset => tileset.tileWidth));
@@ -67,6 +74,37 @@ function spriteForGid(gid: number, map: TilezedMap, images: ReadonlyMap<number, 
   return { image, sourceX, sourceY, width: tileset.tileWidth, height: tileset.tileHeight };
 }
 
+/** Sample actual image pixels in reverse draw order, including transparent overhangs. */
+export function pickTilezedTile(scene: TilezedScene, images: ReadonlyMap<number, TilezedImage>, worldX: number, worldY: number, pass: TilezedLayerPass = 'all'):
+  { gid: number; layer: string } | undefined {
+  const { map } = scene, hw = map.tileWidth / 2, hh = map.tileHeight / 2, origin = map.height * hw;
+  const layers = layersForPass(scene, pass);
+  const maxWidth = Math.max(map.tileWidth, ...map.tilesets.map(sheet => sheet.tileWidth));
+  const maxHeight = Math.max(map.tileHeight, ...map.tilesets.map(sheet => sheet.tileHeight));
+  const sample = document.createElement('canvas'); sample.width = sample.height = 1;
+  const context = sample.getContext('2d', { willReadFrequently: true })!;
+  const first = Math.max(0, Math.floor((worldY - map.tileHeight) / hh));
+  const last = Math.min(map.width + map.height - 2, Math.ceil((worldY + maxHeight - map.tileHeight) / hh));
+  for (let row = last; row >= first; row--) {
+    const from = Math.max(0, row - map.height + 1, Math.floor((row + (worldX - origin + hw - maxWidth) / hw) / 2));
+    const to = Math.min(map.width - 1, row, Math.ceil((row + (worldX - origin + hw) / hw) / 2));
+    for (let x = to; x >= from; x--) {
+      const y = row - x, drawX = origin + (x - y) * hw - hw, bottom = row * hh + map.tileHeight;
+      for (let i = layers.length - 1; i >= 0; i--) {
+        const layer = layers[i], gid = layer.gids[y * map.width + x];
+        if (!gid || !layer.visible || !layer.opacity) continue;
+        const sprite = spriteForGid(gid, map, images);
+        if (!sprite || worldX < drawX || worldX >= drawX + sprite.width || worldY < bottom - sprite.height || worldY >= bottom) continue;
+        const sx = sprite.sourceX + Math.floor((worldX - drawX) * sprite.image.layout.tileWidth / sprite.width);
+        const sy = sprite.sourceY + Math.floor((worldY - bottom + sprite.height) * sprite.image.layout.tileHeight / sprite.height);
+        context.clearRect(0, 0, 1, 1); context.drawImage(sprite.image.bitmap, sx, sy, 1, 1, 0, 0, 1, 1);
+        if (context.getImageData(0, 0, 1, 1).data[3]) return { gid, layer: layer.name };
+      }
+    }
+  }
+  return undefined;
+}
+
 /** Draws the pending stamp in world coordinates without changing the document. */
 export function drawTilezedStamp(context: CanvasRenderingContext2D, map: TilezedMap,
                                  images: ReadonlyMap<number, TilezedImage>, stamp: TileStamp,
@@ -101,12 +139,13 @@ export function applyTilezedCamera(context: CanvasRenderingContext2D, camera: Ti
 /** Draws cells in isometric depth order, clipping traversal to the visible viewport. */
 export function drawTilezedScene(context: CanvasRenderingContext2D, scene: TilezedScene,
                                  images: Map<number, TilezedImage>, camera: TilezedCamera,
-                                 viewport: TilezedViewport, pixelRatio: number): void {
+                                 viewport: TilezedViewport, pixelRatio: number, pass: TilezedLayerPass = 'all'): void {
   const { map } = scene;
+  const layers = layersForPass(scene, pass);
   context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   context.globalAlpha = 1;
-  context.fillStyle = '#202327';
-  context.fillRect(0, 0, viewport.width, viewport.height);
+  if (pass === 'aboveLots') context.clearRect(0, 0, viewport.width, viewport.height);
+  else { context.fillStyle = '#202327'; context.fillRect(0, 0, viewport.width, viewport.height); }
   context.imageSmoothingEnabled = false;
   applyTilezedCamera(context, camera, viewport, pixelRatio);
 
@@ -139,7 +178,7 @@ export function drawTilezedScene(context: CanvasRenderingContext2D, scene: Tilez
       const index = y * map.width + x;
       const drawX = originX + (x - y) * halfWidth - halfWidth;
       const drawBottom = row * halfHeight + map.tileHeight;
-      for (const layer of scene.layers) {
+      for (const layer of layers) {
         const gid = layer.gids[index];
         if (!gid || !layer.visible || !layer.opacity) continue;
         const sprite = spriteFor(gid);

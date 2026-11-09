@@ -30,6 +30,16 @@ label.toggle input { width: auto; height: auto; margin: 0; }
 .map-workspace { display: flex; flex: 1; min-height: 0; }
 .edit-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 20px; border-bottom: 1px solid $line; background: $surface; font-size: 12px; }
 .tool-buttons { display: flex; flex-wrap: wrap; gap: 3px; }
+.edit-toolbar .tool-icon { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 4px; }
+.tool-icon img { width: 24px; height: 24px; object-fit: contain; pointer-events: none; }
+.tool-icon:disabled img { opacity: 0.4; }
+.fence-help { color: $muted; font-size: 11px; }
+.layer-dialog { width: min(360px, calc(100vw - 32px)); padding: 20px; color: $text; background: $surface; border: 1px solid $line-strong; border-radius: 6px; }
+.layer-dialog::backdrop { background: #0008; }
+.layer-dialog h2 { margin: 0 0 16px; font-size: 18px; }
+.layer-dialog input { min-width: 0; flex: 1; padding: 7px; color: $text; background: $bg; border: 1px solid $line-strong; }
+.layer-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.layer-error { margin: 10px 0 0; color: #ffb1a6; }
 .tool-buttons .active { border-color: #72b9ff; background: #28445e; }
 .edit-toolbar label { display: flex; flex-direction: row; align-items: center; gap: 5px; margin: 0; }
 .edit-toolbar select { max-width: 180px; padding: 5px; background: $bg; color: $text; border: 1px solid $line-strong; }

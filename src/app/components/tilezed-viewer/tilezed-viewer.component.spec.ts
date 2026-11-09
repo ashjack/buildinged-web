@@ -203,6 +203,196 @@ describe('TileZed read-only viewer', () => {
       clientY: rect.top + viewport.height / 2 + (py - camera.y) * camera.zoom, ...extra }));
   }
 
+  async function opaqueSheet(): Promise<Blob> {
+    const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 1024;
+    canvas.getContext('2d')!.fillRect(0, 0, canvas.width, canvas.height);
+    return new Promise(resolve => canvas.toBlob(blob => resolve(blob!), 'image/png'));
+  }
+
+  it('adds a named tile layer at the top of the reversed list, supports undo, and saves only manually', async () => {
+    await openEditableMap(true);
+    const add = fixture.nativeElement.querySelector('button[aria-label="Add tile layer"]') as HTMLButtonElement;
+    add.click(); fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('.layer-dialog') as HTMLDialogElement;
+    const name = dialog.querySelector('input')!;
+    expect(dialog.open).toBeTrue(); expect(name.value).toBe('Tile Layer 2');
+    name.value = 'Fences'; name.dispatchEvent(new Event('input'));
+    dialog.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+    fixture.detectChanges();
+    expect(dialog.open).toBeFalse(); expect(component.activeLayer).toBe('0_Fences');
+    const layerNames = () => Array.from(fixture.nativeElement.querySelectorAll('select[aria-label="Active tile layer"] option') as NodeListOf<HTMLOptionElement>).map(option => option.value);
+    expect(layerNames()).toEqual(['0_Fences', '0_Floor']);
+    expect(component.scene!.map.layers.map(layer => layer.name)).toEqual(['0_Floor', '0_Fences']);
+    expect(component.dirty).toBeTrue();
+    component.chooseStamp({ width: 1, height: 1, gids: Uint32Array.of(1) });
+    pointerAt('pointerdown', 1); pointerAt('pointerup', 1);
+    expect(component.scene!.layers[0].gids[1]).toBe(0);
+    expect(component.scene!.layers[1].gids[1]).toBe(1);
+    component.history(); component.history(); fixture.detectChanges();
+    expect(layerNames()).toEqual(['0_Floor']); expect(component.activeLayer).toBe('0_Floor');
+    expect(component.dirty).toBeFalse();
+    component.history(true); component.history(true); fixture.detectChanges();
+    expect(layerNames()).toEqual(['0_Fences', '0_Floor']); expect(component.activeLayer).toBe('0_Fences');
+    const save = TestBed.inject(ProjectApiService).saveWorldMap as jasmine.Spy;
+    expect(save).not.toHaveBeenCalled(); expect(storage.rememberMap).not.toHaveBeenCalled();
+    save.and.resolveTo({ projectId: 'project', path: 'maps/editable.tmx', revision: 8 });
+    await component.saveMap();
+    const saved = await readTilezedMap(save.calls.mostRecent().args[2]);
+    expect(saved.layers.map(layer => layer.name)).toEqual(['0_Floor', '0_Fences']);
+    expect(saved.layers[1].gids[1]).toBe(1); expect(component.dirty).toBeFalse();
+  });
+
+  it('keeps duplicate-name errors inside the layer dialog and lets cancellation leave the map unchanged', async () => {
+    await openEditableMap();
+    component.showAddLayer(); component.newLayerName = '0_Floor'; component.addLayer(); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.layer-dialog').open).toBeTrue();
+    expect(fixture.nativeElement.querySelector('.layer-error').textContent).toContain('already has that name');
+    expect(component.dirty).toBeFalse();
+    component.closeAddLayer();
+    expect(fixture.nativeElement.querySelector('.layer-dialog').open).toBeFalse();
+    expect(component.scene!.map.layers.length).toBe(1);
+    Object.assign(TestBed.inject(AuthService), { isAdmin: false });
+    component.newLayerName = 'Forbidden'; component.addLayer();
+    expect(component.scene!.map.layers.length).toBe(1);
+    expect(storage.rememberMap).not.toHaveBeenCalled();
+  });
+
+  it('shows tool icons with accessible names and shortcut tooltips', async () => {
+    await openEditableMap();
+    const button = fixture.nativeElement.querySelector('button[aria-label="Draw fence"]') as HTMLButtonElement;
+    expect(button.textContent?.trim()).toBe('');
+    expect(button.title).toBe('Draw fence (G)');
+    expect(button.querySelector('img')?.getAttribute('src')).toBe('assets/tilezed-tools/fence-tool.svg');
+  });
+
+  it('picks the opaque tile under the actual cursor above the map diamond', async () => {
+    await openEditableMap();
+    const canvas = document.createElement('canvas'); canvas.width = 64; canvas.height = 128;
+    canvas.getContext('2d')!.fillRect(0, 0, 64, 128);
+    const bitmap = await createImageBitmap(canvas);
+    (component as any).images.set(1, { bitmap, layout: { tileWidth: 64, tileHeight: 128 } });
+    component.scene!.layers[0].gids[0] = 1;
+    component.setTool('pick');
+    const camera = (component as any).camera, viewport = (component as any).viewport, rect = component.canvas.nativeElement.getBoundingClientRect();
+    await component.pickAtEvent(new MouseEvent('pointerdown', {
+      clientX: rect.left + viewport.width / 2 + (10 - camera.x) * camera.zoom,
+      clientY: rect.top + viewport.height / 2 + (-50 - camera.y) * camera.zoom,
+    }));
+    expect(component.tool).toBe('stamp'); expect(component.stamp.gids[0]).toBe(1);
+    expect(component.dirty).toBeFalse();
+  });
+
+  it('imports a picked building tile into this map without saving or copying building pixels into the grid', async () => {
+    await openEditableMap();
+    const blob = await opaqueSheet();
+    assets.load.and.callFake(async sheets => ({ sheets: new Map(sheets.map(sheet => [sheet.firstGid, blob])), errors: new Map(), warnings: [] }));
+    spyOn(component.buildings!, 'pickTile').and.resolveTo({ sheet: 'building_floor_01', index: 9 });
+    component.setTool('pick');
+    await component.pickAtEvent(new MouseEvent('pointerdown'));
+    expect(component.tool).toBe('stamp');
+    expect(component.scene!.map.tilesets.at(-1)?.name).toBe('building_floor_01');
+    expect(component.stamp.gids[0]).toBe(11);
+    expect(component.dirty).toBeFalse();
+    expect(Array.from(component.scene!.layers[0].gids)).toEqual([0, 0, 0, 0]);
+    pointerAt('pointerdown', 0); pointerAt('pointerup', 0);
+    const saved = await readTilezedMap(await component.editor!.serialize());
+    expect(saved.layers[0].gids[0]).toBe(11);
+    expect(saved.tilesets[1].name).toBe('building_floor_01');
+    expect(storage.rememberMap).not.toHaveBeenCalled();
+  });
+
+  it('renders AboveLots over buildings and picks it before lots while transparent pixels reveal the building', async () => {
+    await openEditableMap();
+    const source = document.createElement('canvas'); source.width = 64; source.height = 128;
+    const context = source.getContext('2d')!;
+    context.fillStyle = '#ff0000'; context.fillRect(0, 0, 32, 128);
+    const tile = await createImageBitmap(source);
+    context.fillStyle = '#00ff00'; context.fillRect(0, 0, 64, 128);
+    const building = await createImageBitmap(source);
+    const name = component.editor!.addLayer('AboveLots');
+    component.editor!.paintCells(name, [{ point: { x: 0, y: 0 }, gid: 1 }]);
+    component.scene = { ...component.editor!.scene };
+    component.scene.usedSheets = [{ tileset: component.scene.map.tilesets[0], maxIndex: 0 }];
+    (component as any).images.set(1, { bitmap: tile, layout: { tileWidth: 64, tileHeight: 128 } });
+    component.buildings!.sprites.push({ bitmap: building, bounds: { left: 0, top: -96, right: 64, bottom: 32 },
+      level: 0, squares: { minX: 0, minY: 0, maxX: 0, maxY: 0 } });
+    const pickBuilding = spyOn(component.buildings!, 'pickTile').and.resolveTo({ sheet: 'sheet_01', index: 0 });
+    const canvas = component.canvas.nativeElement;
+    const screenPoint = (x: number) => {
+      const camera = (component as any).camera, viewport = (component as any).viewport;
+      return { x: viewport.width / 2 + (x - camera.x) * camera.zoom, y: viewport.height / 2 + (-32 - camera.y) * camera.zoom };
+    };
+    const eventAt = (x: number) => {
+      const point = screenPoint(x), rect = canvas.getBoundingClientRect();
+      return new MouseEvent('pointerdown', { clientX: rect.left + point.x, clientY: rect.top + point.y });
+    };
+    const colorAt = (x: number) => {
+      const point = screenPoint(x), ratio = (component as any).pixelRatio;
+      return [...canvas.getContext('2d')!.getImageData(Math.floor(point.x * ratio), Math.floor(point.y * ratio), 1, 1).data];
+    };
+    try {
+      component.setTool('pan');
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      expect(colorAt(16)).toEqual([255, 0, 0, 255]);
+      expect(colorAt(48)).toEqual([0, 255, 0, 255]);
+      component.setTool('pick'); await component.pickAtEvent(eventAt(16));
+      expect(pickBuilding).not.toHaveBeenCalled(); expect(component.activeLayer).toBe('0_AboveLots');
+      component.selectLayer('0_Floor'); component.setTool('pick'); await component.pickAtEvent(eventAt(48));
+      expect(pickBuilding).toHaveBeenCalledTimes(1); expect(component.activeLayer).toBe('0_Floor');
+      component.scene.layers.find(layer => layer.name === name)!.visible = false;
+      component.scene = { ...component.scene }; component.setTool('pan');
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      expect(colorAt(16)).toEqual([0, 255, 0, 255]);
+    } finally { building.close(); }
+  });
+
+  it('previews native fences, commits a drag on release, supports gates/posts, and leaves saving manual', async () => {
+    await openEditableMap(true);
+    const blob = await opaqueSheet();
+    assets.load.and.callFake(async sheets => ({ sheets: new Map(sheets.map(sheet => [sheet.firstGid, blob])), errors: new Map(), warnings: [] }));
+    component.tool = 'fence'; await component.prepareFence();
+    pointerAt('pointerdown', 0); pointerAt('pointermove', 3);
+    expect(component.dirty).toBeFalse();
+    expect(Array.from(component.scene!.layers[0].gids)).toEqual([0, 0, 0, 0]);
+    pointerAt('pointerup', 3);
+    expect(Array.from(component.scene!.layers[0].gids)).toEqual([34, 35, 34, 35]);
+    pointerAt('pointerdown', 0, 0, { altKey: true });
+    expect(component.scene!.layers[0].gids[0]).toBe(41); // Native north gate space.
+    component.history(); component.history();
+    expect(component.dirty).toBeFalse();
+    pointerAt('pointerdown', 0, 0, { ctrlKey: true });
+    expect(component.scene!.layers[0].gids[0]).toBe(39);
+    pointerAt('pointerdown', 0, 0, { ctrlKey: true });
+    expect(component.scene!.layers[0].gids[0]).toBe(0);
+    pointerAt('pointerdown', 0); pointerAt('pointermove', 3); pointerAt('pointercancel', 3);
+    expect(Array.from(component.scene!.layers[0].gids)).toEqual([0, 0, 0, 0]);
+    expect(storage.rememberMap).not.toHaveBeenCalled();
+    expect(TestBed.inject(ProjectApiService).saveWorldMap).not.toHaveBeenCalled();
+  });
+
+  it('joins a corner at an alternating fence endpoint and preserves earlier segments through undo and retracing', async () => {
+    await openEditableMap(true);
+    const blob = await opaqueSheet();
+    assets.load.and.callFake(async sheets => ({ sheets: new Map(sheets.map(sheet => [sheet.firstGid, blob])), errors: new Map(), warnings: [] }));
+    component.tool = 'fence'; await component.prepareFence();
+    pointerAt('pointerdown', 0); pointerAt('pointermove', 3); pointerAt('pointerup', 3);
+    expect(Array.from(component.scene!.layers[0].gids)).toEqual([34, 35, 34, 35]);
+    // A perpendicular edge at the final North2 section must become a corner.
+    pointerAt('pointerdown', 3); pointerAt('pointerup', 3);
+    expect(Array.from(component.scene!.layers[0].gids)).toEqual([34, 35, 34, 38]);
+    const joined = await component.editor!.serialize();
+    expect(Array.from((await readTilezedMap(joined)).layers[0].gids)).toEqual([34, 35, 34, 38]);
+    // Reversing over the whole run must retain its alternation and its corner.
+    pointerAt('pointerdown', 3); pointerAt('pointermove', 0); pointerAt('pointerup', 0);
+    expect(Array.from(component.scene!.layers[0].gids)).toEqual([34, 35, 34, 38]);
+    component.history();
+    expect(Array.from(component.scene!.layers[0].gids)).toEqual([34, 35, 34, 35]);
+    component.history(true);
+    expect(Array.from(component.scene!.layers[0].gids)).toEqual([34, 35, 34, 38]);
+    expect(storage.rememberMap).not.toHaveBeenCalled();
+    expect(TestBed.inject(ProjectApiService).saveWorldMap).not.toHaveBeenCalled();
+  });
+
   it('paints a continuous stamp stroke with undo and does not save automatically', async () => {
     await openEditableMap();
     component.chooseStamp({ width: 1, height: 1, gids: Uint32Array.of(1) });
@@ -254,8 +444,9 @@ describe('TileZed read-only viewer', () => {
     component.setTool('bucket'); pointerAt('pointerdown', 1);
     expect(Array.from(component.scene!.layers[0].gids)).toEqual([0,1,1,0]);
     component.setTool('pick'); pointerAt('pointerdown', 1);
+    await new Promise(resolve => setTimeout(resolve));
     expect(component.stamp.gids[0]).toBe(1);
-    expect(component.tool).toBe('stamp');
+    expect(component.tool).toBe('pick'); // The test pack has no image pixels to pick.
     component.setTool('eraser'); pointerAt('pointerdown', 1); pointerAt('pointerup', 1);
     expect(Array.from(component.scene!.layers[0].gids)).toEqual([0,0,1,0]);
     expect(storage.rememberMap).not.toHaveBeenCalled();

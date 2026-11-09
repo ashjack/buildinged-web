@@ -36,6 +36,19 @@ export class BuildingLots {
               private readonly previewWidth = 2048,
               private readonly orderSprites?: (sprites: readonly BuildingSprite[]) => BuildingSprite[]) { }
 
+  async pickTile(x: number, y: number): Promise<{ sheet: string; index: number } | undefined> {
+    for (let i = this.sprites.length - 1; i >= 0; i--) {
+      const sprite = this.sprites[i], b = sprite.bounds;
+      if (x < b.left || x >= b.right || y < b.top || y >= b.bottom) continue;
+      const item = [...this.placements.values()].find(item => item.sprite === sprite);
+      if (!item) continue;
+      const hit = await this.previews.pickTile(item.file, Math.max(0, -item.placement.lot.level),
+        (x - item.placement.x) / item.placement.scale, (y - item.placement.y) / item.placement.scale);
+      if (hit) return hit;
+    }
+    return undefined;
+  }
+
   async load(lots: readonly PlacedBuildingLot[], files: ReadonlyMap<string, File>, changed: () => void,
     refreshAfterLoad = true): Promise<void> {
     const ordered = lots.slice().sort((a, b) => a.lot.level - b.lot.level);

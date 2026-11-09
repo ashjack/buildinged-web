@@ -51,6 +51,44 @@ export class BuildingPreviewService implements OnDestroy {
 
   get sheetChanges$() { return this.assets.changes$; }
   checkForTileUpdates(force = true): Promise<ReadonlySet<string>> { return this.assets.checkForUpdates(force); }
+  /** Resolve the topmost opaque source tile at a building-local pixel, independent of thumbnail size. */
+  async pickTile(file: File, firstLevel: number, x: number, y: number): Promise<{ sheet: string; index: number } | undefined> {
+    const description = await this.describe(file);
+    const xml = description.xml ?? new DOMParser().parseFromString(await file.text(), 'application/xml');
+    const prepared = await this.prepare(readBuildingPreviewFile(xml), firstLevel);
+    const candidates = prepared.tiles.slice().reverse().filter(tile => x >= tile.x && x < tile.x + 64 && y >= tile.y && y < tile.y + 128);
+    if (!candidates.length) return undefined;
+    const names = [...new Set(candidates.map(tile => tile.sheet))];
+    const sheets = names.map((name, i) => {
+      const rows = Math.ceil((Math.max(...candidates.filter(tile => tile.sheet === name).map(tile => tile.index)) + 1) / 8);
+      return { name, source: `${name}.png`, firstGid: i + 1, tileWidth: 64, tileHeight: 128, columns: 8, rows, imageWidth: 512, imageHeight: rows * 128 };
+    });
+    const assets = await this.assets.load(sheets), bitmaps = new Map<string, ImageBitmap>();
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+    const context = canvas.getContext('2d', { willReadFrequently: true })!;
+    let bytes = 0;
+    try {
+      for (const tile of candidates) {
+        let bitmap = bitmaps.get(tile.sheet);
+        if (!bitmap) {
+          const blob = assets.sheets.get(names.indexOf(tile.sheet) + 1);
+          if (!blob) continue;
+          const size = readPngSize(new Uint8Array(await blob.slice(0, 24).arrayBuffer()));
+          if (!size || ![512, 1024].includes(size.width) || size.width * size.height * 4 > MAX_CACHE_BYTES) continue;
+          if (bytes + size.width * size.height * 4 > MAX_CACHE_BYTES) { bitmaps.forEach(bitmap => bitmap.close()); bitmaps.clear(); bytes = 0; }
+          bitmap = await createImageBitmap(blob); bitmaps.set(tile.sheet, bitmap);
+          bytes += bitmap.width * bitmap.height * 4;
+        }
+        const scale = bitmap.width / 512;
+        const sx = Math.floor((tile.index % 8 * 64 + x - tile.x) * scale);
+        const sy = Math.floor((Math.floor(tile.index / 8) * 128 + y - tile.y) * scale);
+        if (sy >= bitmap.height) continue;
+        context.clearRect(0, 0, 1, 1); context.drawImage(bitmap, sx, sy, 1, 1, 0, 0, 1, 1);
+        if (context.getImageData(0, 0, 1, 1).data[3]) return { sheet: tile.sheet, index: tile.index };
+      }
+      return undefined;
+    } finally { bitmaps.forEach(bitmap => bitmap.close()); }
+  }
   async usesSheets(file: File, names: ReadonlySet<string>): Promise<boolean> {
     return (await this.describe(file)).dependencies.some(name => names.has(name));
   }

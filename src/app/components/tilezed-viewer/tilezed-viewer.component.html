@@ -37,18 +37,29 @@
 
   <div class="edit-toolbar" *ngIf="auth.isAdmin && editor && scene as mapScene" aria-label="TileZed editing tools">
     <div class="tool-buttons" role="group" aria-label="Map tools">
-      <button class="button compact" *ngFor="let item of toolOptions" type="button" [class.active]="tool === item.id"
+      <button class="button compact tool-icon" *ngFor="let item of toolOptions" type="button" [class.active]="tool === item.id" [attr.aria-label]="item.label"
               [attr.aria-pressed]="tool === item.id" [title]="item.label + ' (' + item.key + ')'" [disabled]="!canEdit"
-              (click)="setTool(item.id)">{{item.label}}</button>
+              (click)="setTool(item.id)"><img [src]="'assets/tilezed-tools/' + item.icon" alt="" width="24" height="24"></button>
     </div>
     <label>Layer <select aria-label="Active tile layer" [value]="activeLayer" [disabled]="!canEdit" (change)="selectLayer($any($event.target).value)">
-      <option *ngFor="let layer of mapScene.map.layers" [value]="layer.name" [disabled]="!layer.visible || !layer.opacity">{{layer.name}}</option>
+      <option *ngFor="let layer of layerOptions" [value]="layer.name" [disabled]="!layer.visible || !layer.opacity">{{layer.name}}</option>
     </select></label>
-    <button class="button compact" type="button" (click)="history()" [disabled]="!canEdit || !editor.canUndo">Undo</button>
-    <button class="button compact" type="button" (click)="history(true)" [disabled]="!canEdit || !editor.canRedo">Redo</button>
-    <button class="button compact" type="button" (click)="captureSelection()" [disabled]="!canEdit || !editor.selection">Use selection as stamp</button>
-    <button class="button compact" type="button" (click)="eraseSelection()" [disabled]="!canEdit || !editor.selection">Erase selection</button>
-    <button class="button compact" type="button" (click)="clearSelection()" [disabled]="!canEdit || !editor.selection">Clear selection</button>
+    <button class="button compact tool-icon" type="button" (click)="showAddLayer()" [disabled]="!canEdit || !editor.canAddLayer" aria-label="Add tile layer" title="Add tile layer"><img src="assets/tilezed-tools/layer-tile.png" alt=""></button>
+    <dialog #layerDialog class="layer-dialog" aria-labelledby="add-layer-title" (cancel)="closeAddLayer()">
+      <form (submit)="addLayer($event)">
+        <h2 id="add-layer-title">Add tile layer</h2>
+        <label for="new-layer-name">Name <input #layerNameInput id="new-layer-name" [value]="newLayerName" (input)="newLayerName = $any($event.target).value; layerError = ''" autocomplete="off" [attr.aria-invalid]="layerError ? 'true' : null" [attr.aria-describedby]="layerError ? 'layer-name-error' : null"></label>
+        <p id="layer-name-error" *ngIf="layerError" class="layer-error" role="alert">{{layerError}}</p>
+        <div class="layer-actions"><button class="button" type="button" (click)="closeAddLayer()">Cancel</button><button class="button primary" type="submit" [disabled]="!canEdit">Add layer</button></div>
+      </form>
+    </dialog>
+    <button class="button compact tool-icon" type="button" (click)="history()" [disabled]="!canEdit || !editor.canUndo" aria-label="Undo" title="Undo (Ctrl+Z)"><img src="assets/tilezed-tools/edit-undo.png" alt=""></button>
+    <button class="button compact tool-icon" type="button" (click)="history(true)" [disabled]="!canEdit || !editor.canRedo" aria-label="Redo" title="Redo (Ctrl+Y)"><img src="assets/tilezed-tools/edit-redo.png" alt=""></button>
+    <button class="button compact tool-icon" type="button" (click)="captureSelection()" [disabled]="!canEdit || !editor.selection" aria-label="Use selection as stamp" title="Use selection as stamp (Ctrl+C)"><img src="assets/tilezed-tools/edit-copy.png" alt=""></button>
+    <button class="button compact tool-icon" type="button" (click)="eraseSelection()" [disabled]="!canEdit || !editor.selection" aria-label="Erase selection" title="Erase selection (Delete)"><img src="assets/tilezed-tools/stock-tool-eraser.png" alt=""></button>
+    <button class="button compact tool-icon" type="button" (click)="clearSelection()" [disabled]="!canEdit || !editor.selection" aria-label="Clear selection" title="Clear selection (Escape)"><img src="assets/tilezed-tools/edit-clear.png" alt=""></button>
+    <label *ngIf="tool === 'fence'">Fence <select aria-label="Fence style" [value]="fenceIndex" [disabled]="!canEdit || preparingFence" (change)="fenceIndex = +$any($event.target).value; prepareFence()"><option *ngFor="let fence of fences; let i = index" [value]="i">{{fence.label}}</option></select></label>
+    <span *ngIf="tool === 'fence'" class="fence-help" role="status">{{preparingFence ? 'Loading fence tiles…' : 'Drag to draw · Alt: gate · Ctrl: toggle post'}}</span>
     <span class="save-state" role="status">{{saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'No unsaved changes'}}</span>
     <button class="button primary" type="button" (click)="saveMap()" [disabled]="!canEdit || !dirty">{{hostedMap ? 'Save map to project' : 'Save .tmx'}}</button>
     <button class="button compact" *ngIf="hostedMap" type="button" (click)="exportMap()" [disabled]="saving || loadingMap">Export .tmx</button>
@@ -57,7 +68,6 @@
   <div class="messages">
     <p *ngIf="message" class="message" role="status">{{message}}</p>
     <p *ngIf="error" class="message error" role="alert">{{error}}</p>
-    <p *ngIf="loadingSheets" class="message" role="status">Loading tilesheets from your tilepacks…</p>
     <p *ngIf="loadingBuildings" class="message" role="status">Rendering buildings in the background: {{buildings?.loaded}}</p>
     <section class="warning-panel" *ngIf="warningCount">
     <button class="warning-toggle" type="button" (click)="toggleWarnings()" [attr.aria-expanded]="warningsExpanded" aria-controls="tilezed-warnings">
@@ -72,7 +82,7 @@
     <div *ngIf="tileWarnings.length" class="message warning" role="alert">
       <ul><li *ngFor="let warning of tileWarnings">{{warning}}</li></ul>
     </div>
-    <div *ngIf="!loadingSheets && sheetIssues.length" class="message warning" role="alert">
+    <div *ngIf="sheetIssues.length" class="message warning" role="alert">
       <strong>Some tile images are unavailable.</strong> Check the tilepack connection or use local tiles as a fallback.
       <ul><li *ngFor="let issue of sheetIssues">{{issue}}</li></ul>
     </div>
