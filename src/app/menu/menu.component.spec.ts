@@ -21,6 +21,7 @@ import { DbService } from '../services/db.service';
 import { AutoFurnishingDialogComponent } from '../components/auto-furnishing-dialog/auto-furnishing-dialog.component';
 import { AutoFurnishingService } from '../services/auto-furnishing.service';
 import { RouterTestingModule } from '@angular/router/testing';
+import { EditorSessionService } from '../services/editor-session.service';
 
 describe('Native toolbar controls', () => {
     let h: ReturnType<typeof documentHarness>;
@@ -30,10 +31,21 @@ describe('Native toolbar controls', () => {
         TestBed.configureTestingModule({ declarations: [MenuComponent, RoomsDialogComponent, RoomTilePickerComponent, AutoFurnishingDialogComponent], imports: [CommonModule, FormsModule, RouterTestingModule, NoopAnimationsModule, BsDropdownModule.forRoot()],
             providers: [{ provide: Store, useValue: h.store }, { provide: BuildingService, useValue: h.buildings },
                 { provide: AutoFurnishingService, useValue: {} },
+                { provide: EditorSessionService, useValue: { worldBuilding: undefined, projectDocument: false, save: jasmine.createSpy('save').and.resolveTo(true) } },
                 { provide: DbService, useValue: { getTile: async () => null, getTilesets: async () => [], getTiles: async () => [] } },
                 { provide: GridService, useValue: h.grid }, { provide: RoomService, useValue: h.rooms }, RoofService] });
     });
     afterEach(() => h.destroy());
+
+    it('saves a shared building through the project session instead of downloading a variant', () => {
+        const fixture = TestBed.createComponent(MenuComponent);
+        const session = TestBed.inject(EditorSessionService);
+        session.worldBuilding = { projectId: 'project', path: 'house.tbx', revision: 2 };
+        const download = spyOn(h.buildings, 'saveBuildingToXml').and.resolveTo(undefined);
+        fixture.componentInstance.createXml();
+        expect(session.save).toHaveBeenCalled();
+        expect(download).not.toHaveBeenCalled();
+    });
 
     it('opens auto furnishing from its toolbar control', () => {
         const fixture = TestBed.createComponent(MenuComponent); fixture.detectChanges();

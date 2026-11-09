@@ -101,6 +101,7 @@ describe('Project workspace pages', () => {
     expect(worlds.file).not.toHaveBeenCalled();
     expect(worlds.resources).not.toHaveBeenCalled();
     expect(fixture.nativeElement.querySelector('.building-row').textContent).not.toContain('Create task');
+    expect(fixture.nativeElement.querySelector('.building-row').textContent).not.toContain('Edit building');
     component.buildingSearch = 'HOUSE';
     expect(component.visibleBuildings.map(building => building.id)).toEqual(['a2', 'a10']);
     component.worldBuildings = Array.from({ length: 125 }, (_, i) => ({ id: `${i}`, path: `folder/${i}.tbx`, size: 1 }));
@@ -108,6 +109,15 @@ describe('Project workspace pages', () => {
     component.buildingPage = 2;
     expect(component.visibleBuildings.length).toBe(25);
     expect(component.buildingPages).toBe(3);
+  });
+
+  it('offers admins a direct editor link for each shared building', async () => {
+    taskId = null; configure('owner', 'buildings');
+    const fixture = TestBed.createComponent(ProjectWorkspaceComponent);
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    const links = [...fixture.nativeElement.querySelectorAll('.building-row a')].filter((link: any) => link.textContent === 'Edit building') as HTMLAnchorElement[];
+    expect(links.length).toBe(3);
+    expect(decodeURIComponent(links[0].getAttribute('href')!)).toBe('/projects/project/world-buildings/a/house2.TBX/edit');
   });
 
   it('previews only the chosen building and releases its image when closed', async () => {

@@ -470,7 +470,7 @@ export class BuildingService {
             localStorage.setItem(target.key, target.revision === undefined ? xml : JSON.stringify({ xml, revision: target.revision }));
         } catch (error) {
             console.warn('Could not cache the building document.', error);
-            if (this.session?.contribution) this.session.error = 'Could not save a local recovery copy. Export your draft before leaving.';
+            if (this.session?.projectDocument) this.session.error = 'Could not save a local recovery copy. Export your draft before leaving.';
         }
     }
 

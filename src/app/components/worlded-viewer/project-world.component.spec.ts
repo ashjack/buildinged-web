@@ -98,11 +98,26 @@ describe('Project world editor', () => {
     const page = fixture.nativeElement.querySelector('.fullscreen') as HTMLElement;
     const panel = fixture.nativeElement.querySelector('.project-controls') as HTMLElement;
     const bounds = page.getBoundingClientRect();
-    expect(bounds.width).toBe(window.innerWidth);
+    expect(bounds.width).toBe(document.documentElement.clientWidth);
     expect(bounds.height).toBe(window.innerHeight);
     expect(getComputedStyle(panel).display).toBe('none');
     expect(fixture.nativeElement.querySelector('.panel-toggle').getAttribute('aria-expanded')).toBe('false');
   });
+  it('links a selected TBX lot to direct building editing, excluding missing files and terrain maps', () => {
+    cloud.files = [{ id: 'building', path: 'house.tbx', size: 20 }];
+    component.viewer.workspace!.selectedCell = { x: 0, y: 0 };
+    component.selectCell();
+    component.toggleControls();
+    fixture.detectChanges();
+    const link = fixture.nativeElement.querySelector('.entry a') as HTMLAnchorElement;
+    expect(link.textContent).toBe('Edit building');
+    expect(link.getAttribute('href')).toBe('/projects/p/world-buildings/house.tbx/edit');
+    component.lots[0].setAttribute('map', 'missing.tbx');
+    expect(component.buildingPath(component.lots[0])).toBeUndefined();
+    component.lots[0].setAttribute('map', 'maps/cell.tmx');
+    expect(component.buildingPath(component.lots[0])).toBeUndefined();
+  });
+
   it('toggles controls without recreating the viewer or reloading project resources', () => {
     const viewer = component.viewer;
     const element = fixture.nativeElement.querySelector('app-worlded-viewer');

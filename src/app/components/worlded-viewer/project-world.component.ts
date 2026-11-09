@@ -64,6 +64,17 @@ export class ProjectWorldComponent implements AfterViewInit, OnDestroy {
       .filter(element => element.tagName === 'objectgroup').map(element => this.attr(element, 'name'));
   }
   attr(element: Element, name: string): string { return element.getAttribute(name) ?? ''; }
+  buildingPath(lot: Element): string | undefined {
+    const path = this.attr(lot, 'map').replace(/\\/g, '/');
+    const parts: string[] = [];
+    for (const part of path.split('/')) {
+      if (!part || part === '.') continue;
+      if (part === '..' && parts.length && parts[parts.length - 1] !== '..') parts.pop();
+      else parts.push(part);
+    }
+    const normalized = parts.join('/');
+    return /\.tbx$/i.test(normalized) && this.cloud?.files.some(file => file.path === normalized) ? normalized : undefined;
+  }
   private children(name: string): Element[] {
     return Array.from(this.cell?.children ?? []).filter(element => element.tagName === name);
   }

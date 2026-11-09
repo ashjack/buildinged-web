@@ -9,6 +9,10 @@ export class EditorGuard implements CanDeactivate<EditorComponent>, CanActivate 
   canActivate(route: ActivatedRouteSnapshot): boolean {
     const current = this.router.routerState.snapshot.root.firstChild;
     const reusingEditor = current?.routeConfig === route.routeConfig;
+    if (reusingEditor && this.session.worldBuilding) {
+      return (this.session.worldBuilding.path === route.paramMap.get('buildingPath') &&
+        this.session.worldBuilding.projectId === route.paramMap.get('projectId')) || this.session.canLeave();
+    }
     return !reusingEditor || !this.session.contribution ||
       this.session.contribution.id === route.paramMap.get('variantId') || this.session.canLeave();
   }

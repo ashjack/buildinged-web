@@ -26,6 +26,18 @@ origin and API URL to reuse the same cached download between iterations.
 
 ## Hosted project worlds
 
+Admins can edit an uploaded TBX directly from **World buildings → Edit building**,
+or from a building lot in WorldEd's selected-cell controls. **Save building to world**
+updates the shared building at the same path without creating a variant or requiring
+review. Every placement using that path picks up the new building. Other world files
+and existing task source snapshots stay unchanged. Saves require explicit project
+membership and the current world revision; conflicts preserve local edits for export
+or recovery. The editor's save icon also saves to the world in this mode.
+
+In TileZed, admins viewing a hosted project cell can right-click a building's grey
+overlay and choose **Edit building** to open the same editor. Building outlines
+must be enabled. Clicking outside the menu or pressing Escape closes it.
+
 From a project, choose **Shared world → Open project world**. Admin accounts
 can upload a `.pzw` and its project folder,
 or replace the hosted world. The folder must contain the same PZW and its

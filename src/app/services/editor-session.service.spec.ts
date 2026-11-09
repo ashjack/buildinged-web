@@ -33,18 +33,73 @@ describe('Project editor session', () => {
   };
   beforeEach(() => {
     localStorage.removeItem('buildinged:draft:user:project:variant');
-    api = jasmine.createSpyObj<ProjectApiService>('ProjectApiService', ['save', 'submit']);
+    api = jasmine.createSpyObj<ProjectApiService>('ProjectApiService', ['save', 'submit', 'saveWorldBuilding']);
     TestBed.configureTestingModule({
       imports: [StoreModule.forRoot({}), StoreModule.forFeature('root', reducer)],
       providers: [
-        { provide: AuthService, useValue: { user: { uid: 'user' } } },
+        { provide: AuthService, useValue: { user: { uid: 'user' }, isAdmin: true, apiBaseUrl: 'http://localhost/api' } },
         { provide: ProjectApiService, useValue: api }
       ]
     });
     store = TestBed.inject(Store);
     session = TestBed.inject(EditorSessionService);
   });
-  afterEach(() => localStorage.removeItem('buildinged:draft:user:project:variant'));
+  afterEach(() => {
+    localStorage.removeItem('buildinged:draft:user:project:variant');
+    localStorage.removeItem('buildinged:world-building:http%3A%2F%2Flocalhost%2Fapi:user:project:Buildings/house.tbx');
+  });
+
+  const worldBuilding = { projectId: 'project', path: 'Buildings/house.tbx', revision: 5, xml: nativeBuildingXml };
+  const openWorldBuilding = (): void => {
+    const xml = session.beginWorldBuilding(worldBuilding);
+    store.dispatch(new SetBuilding(readBuildingFile(new DOMParser().parseFromString(xml, 'text/xml'))));
+  };
+
+  it('saves an admin edit to the shared world without creating or submitting a variant', async () => {
+    openWorldBuilding();
+    expect(session.contribution).toBeUndefined();
+    expect(session.dirty).toBeFalse();
+    store.dispatch(new AddTile(0, 0, 0, 'Walls', 'walls_01_001.png'));
+    expect(session.dirty).toBeTrue();
+    const xml = session.serialize();
+    api.saveWorldBuilding.and.resolveTo({ projectId: 'project', path: worldBuilding.path, revision: 6 });
+    expect(await session.save()).toBeTrue();
+    expect(api.saveWorldBuilding).toHaveBeenCalledOnceWith('project', worldBuilding.path, xml, 5);
+    expect(api.save).not.toHaveBeenCalled();
+    expect(session.dirty).toBeFalse();
+    expect(session.worldBuilding!.revision).toBe(6);
+    expect(JSON.parse(localStorage.getItem(session.cacheTarget.key)!).revision).toBe(6);
+    await session.submit();
+    expect(api.submit).not.toHaveBeenCalled();
+  });
+
+  it('preserves failed admin edits and recovers their old revision without overwriting cloud work', async () => {
+    openWorldBuilding();
+    store.dispatch(new AddTile(0, 0, 0, 'Walls', 'walls_01_001.png'));
+    session.cacheCurrent();
+    const localXml = session.serialize();
+    api.saveWorldBuilding.and.rejectWith(new Error('The world changed in another session.'));
+    expect(await session.save()).toBeFalse();
+    expect(session.dirty).toBeTrue();
+    const recovered = session.beginWorldBuilding({ ...worldBuilding, revision: 6 });
+    expect(recovered).toBe(localXml);
+    expect(session.worldBuilding!.revision).toBe(5);
+    expect(session.message).toContain('older cloud revision');
+    expect(session.cacheTarget.key).not.toBe('buildingXml');
+  });
+
+  it('requires an admin account to edit shared buildings and prompts before losing unsaved edits', async () => {
+    openWorldBuilding();
+    store.dispatch(new AddTile(0, 0, 0, 'Walls', 'walls_01_001.png'));
+    spyOn(window, 'confirm').and.returnValue(false);
+    expect(session.canLeave()).toBeFalse();
+    Object.assign(TestBed.inject(AuthService), { isAdmin: false });
+    expect(session.editable).toBeFalse();
+    expect(await session.save()).toBeFalse();
+    expect(api.saveWorldBuilding).not.toHaveBeenCalled();
+    session.end();
+    expect(session.worldBuilding).toBeUndefined();
+  });
 
   it('normalizes a cloud TBX without marking an unchanged document dirty', () => {
     open();

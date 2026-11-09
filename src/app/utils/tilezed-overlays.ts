@@ -57,6 +57,25 @@ function rectangle(map: TilezedOverlayMap, x: number, y: number, width: number, 
   ];
 }
 
+/** Hit-tests the grey lot fill, including its one-world-pixel vertical offset, in reverse paint order. */
+export function tilezedLotAtPixel(map: TilezedOverlayMap, lots: readonly WorldedLot[],
+                                 camera: TilezedCamera, viewport: TilezedViewport,
+                                 screenX: number, screenY: number): WorldedLot | undefined {
+  const x = camera.x + (screenX - viewport.width / 2) / camera.zoom;
+  const y = camera.y + (screenY - viewport.height / 2) / camera.zoom + 1;
+  const ordered = lots.filter(lot => lot.width > 0 && lot.height > 0).sort((a, b) => a.level - b.level);
+  for (let index = ordered.length - 1; index >= 0; index--) {
+    const lot = ordered[index];
+    const points = rectangle(map, lot.x, lot.y, lot.width, lot.height, Math.max(0, lot.level));
+    const inside = points.every(([px, py], corner) => {
+      const [nx, ny] = points[(corner + 1) % points.length];
+      return (nx - px) * (y - py) - (ny - py) * (x - px) >= -1e-7;
+    });
+    if (inside) return lot;
+  }
+  return undefined;
+}
+
 function trace(context: CanvasRenderingContext2D, points: readonly Point[], offsetY: number, close: boolean): void {
   context.beginPath();
   points.forEach(([x, y], index) => index ? context.lineTo(x, y + offsetY) : context.moveTo(x, y + offsetY));

@@ -22,6 +22,8 @@ const routes: Routes = [
   { path: 'projects/:projectId/tasks/:taskId', component: ProjectWorkspaceComponent, canActivate: [ProjectGuard] },
   { path: 'projects/:projectId/variants/:variantId/edit', component: EditorComponent,
     canActivate: [ProjectGuard, EditorGuard], canDeactivate: [EditorGuard] },
+  { path: 'projects/:projectId/world-buildings/:buildingPath/edit', component: EditorComponent,
+    canActivate: [ProjectGuard, AdminGuard, EditorGuard], canDeactivate: [EditorGuard] },
   { path: 'editor', component: EditorComponent, canDeactivate: [EditorGuard] },
   { path: 'tilezed', canMatch: [WorldViewerGuard], loadChildren: () => import('./components/tilezed-viewer/tilezed-viewer.module').then(module => module.TilezedViewerModule) },
   { path: 'worlded', canMatch: [WorldViewerGuard], loadChildren: () => import('./components/worlded-viewer/worlded-viewer.module').then(module => module.WorldedViewerModule) },

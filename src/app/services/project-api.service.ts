@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from './auth.service';
-import { Contribution, Project, ProjectBuild, ProjectMember, ProjectTask, VariantDocument } from '../models/project.models';
+import { Contribution, Project, ProjectBuild, ProjectMember, ProjectTask, VariantDocument, WorldBuildingDocument } from '../models/project.models';
 
 export class ProjectRequestError extends Error {
   constructor(message: string, public readonly status: number) { super(message); }
@@ -41,6 +41,12 @@ export class ProjectApiService {
     return this.request('GET', `/projects/${encodeURIComponent(projectId)}/members`);
   }
   variant(id: string): Promise<VariantDocument> { return this.request('GET', `/contributions/${encodeURIComponent(id)}/document`); }
+  worldBuilding(projectId: string, path: string): Promise<WorldBuildingDocument> {
+    return this.request('GET', `/projects/${encodeURIComponent(projectId)}/world-building?path=${encodeURIComponent(path)}`);
+  }
+  saveWorldBuilding(projectId: string, path: string, xml: string, revision: number): Promise<Omit<WorldBuildingDocument, 'xml'>> {
+    return this.request('PUT', `/projects/${encodeURIComponent(projectId)}/world-building`, { path, xml, revision });
+  }
   start(taskId: string, name: string, requestId: string): Promise<Contribution> {
     return this.request('POST', `/tasks/${encodeURIComponent(taskId)}/contributions`, { name, requestId });
   }

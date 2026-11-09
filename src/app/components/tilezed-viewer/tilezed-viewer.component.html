@@ -66,7 +66,13 @@
             (wheel)="onWheel($event)" (pointerdown)="onPointerDown($event)"
             (pointermove)="onPointerMove($event)" (pointerup)="onPointerEnd($event)"
             (pointercancel)="onPointerEnd($event)" (lostpointercapture)="onPointerEnd($event)"
-            (keydown)="onKeyDown($event)" (contextmenu)="$event.preventDefault()"></canvas>
+            (keydown)="onKeyDown($event)" (contextmenu)="onContextMenu($event)"></canvas>
+    <ng-container *ngIf="auth.isAdmin">
+      <div #buildingMenu *ngIf="contextMenu as menu" class="building-context-menu" role="menu" aria-label="Building actions"
+           [style.left.px]="menu.x" [style.top.px]="menu.y" (contextmenu)="$event.preventDefault()">
+        <button type="button" role="menuitem" (click)="editContextBuilding()">Edit building</button>
+      </div>
+    </ng-container>
     <div class="empty" *ngIf="!scene">
       <h1>Open a TileZed map</h1>
       <p>Choose a level-isometric <code>.tmx</code> file. Tiles load automatically from BuildingEd's cache and tilepacks.</p>

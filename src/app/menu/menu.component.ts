@@ -13,6 +13,7 @@ import { ROOF_TOOL_GROUPS, roofOptionIcon, roofToolGroup, RoofToolGroup } from '
 import { MAX_BUILDING_FLOORS } from '../utils/floor-edits';
 import { historyShortcut } from '../utils/editor-shortcuts';
 import { Router } from '@angular/router';
+import { EditorSessionService } from '../services/editor-session.service';
 
 @Component({
   selector: 'app-menu',
@@ -38,7 +39,8 @@ export class MenuComponent {
     private roomService: RoomService,
     private gridService: GridService,
     public roofs: RoofService,
-    private router: Router
+    private router: Router,
+    public session: EditorSessionService
   ) { }
 
   setTool(tool: string)
@@ -95,12 +97,13 @@ export class MenuComponent {
   redo(): void { this.store.dispatch(new Redo()); }
 
   createXml(): void {
+    if (this.session.worldBuilding) { void this.session.save(); return; }
     this.buildingService.saveBuildingToXml().catch(error => window.alert(error.message || String(error)));
   }
 
   openFileUpload(): void {
-    if (this.router.url.includes('/variants/')) {
-      window.alert('Open files in the standalone editor, not inside a project variant.');
+    if (this.router.url.includes('/variants/') || this.session.projectDocument) {
+      window.alert('Open files in the standalone editor. Return to the project to choose another building.');
       return;
     }
     const fileInput = document.createElement('input');

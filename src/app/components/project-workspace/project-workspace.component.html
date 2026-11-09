@@ -66,7 +66,7 @@
                 <div class="building-path"><strong>{{building.path}}</strong><span class="fine muted">{{building.size / 1024 | number:'1.0-1'}} KiB</span>
                   <a class="fine" *ngFor="let task of buildingTasks(building)" [routerLink]="['/projects', project.id, 'tasks', task.id]">{{task.title}} · {{task.status.replace('_', ' ')}}</a>
                 </div>
-                <div class="tools"><button class="button compact" type="button" (click)="viewBuilding(building)" [attr.aria-expanded]="previewBuilding?.id === building.id" [attr.aria-controls]="previewBuilding?.id === building.id ? 'building-preview' : null">View</button><button class="button compact" *ngIf="canManage" type="button" (click)="taskFromBuilding(building)" [disabled]="busy">Create task</button></div>
+                <div class="tools"><button class="button compact" type="button" (click)="viewBuilding(building)" [attr.aria-expanded]="previewBuilding?.id === building.id" [attr.aria-controls]="previewBuilding?.id === building.id ? 'building-preview' : null">View</button><a class="button compact" *ngIf="auth.isAdmin" [routerLink]="['/projects', project.id, 'world-buildings', building.path, 'edit']">Edit building</a><button class="button compact" *ngIf="canManage" type="button" (click)="taskFromBuilding(building)" [disabled]="busy">Create task</button></div>
               </div>
               <section id="building-preview" class="panel building-preview" *ngIf="previewBuilding?.id === building.id" aria-labelledby="building-preview-title">
                 <div class="section-head"><h3 id="building-preview-title">{{building.path}}</h3><button class="link" type="button" (click)="closeBuildingPreview()">Close preview</button></div>

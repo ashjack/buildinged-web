@@ -78,7 +78,7 @@ export class ProjectWorkspaceComponent implements OnInit, OnDestroy {
   }
   get buildingPages(): number { return Math.max(1, Math.ceil(this.filteredBuildings.length / this.buildingPageSize)); }
   buildingTasks(building: ProjectWorldFile): ProjectTask[] {
-    const sources = new Set(this.builds.filter(build => build.worldFileId === building.id).map(build => build.id));
+    const sources = new Set(this.builds.filter(build => build.worldFileId === building.id || build.worldPath === building.path).map(build => build.id));
     return this.tasks.filter(task => !!task.sourceBuildId && sources.has(task.sourceBuildId));
   }
 

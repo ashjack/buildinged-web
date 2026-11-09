@@ -65,3 +65,10 @@ export interface VariantDocument {
   contribution: Contribution;
   xml: string;
 }
+
+export interface WorldBuildingDocument {
+  projectId: string;
+  path: string;
+  revision: number;
+  xml: string;
+}

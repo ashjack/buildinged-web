@@ -1,4 +1,4 @@
-import { drawTilezedOverlays, overlayColor, summarizeZones, tilezedTileToPixel } from './tilezed-overlays';
+import { drawTilezedOverlays, overlayColor, summarizeZones, tilezedLotAtPixel, tilezedTileToPixel } from './tilezed-overlays';
 import { WorldedZone } from './worlded-world';
 
 describe('TileZed zone overlays', () => {
@@ -73,5 +73,39 @@ describe('TileZed zone overlays', () => {
       { group: 'ParkingStall', color: 'rgba(255, 0, 127, 1)', count: 2 },
       { group: 'Ungrouped', color: 'rgba(128, 128, 128, 1)', count: 1 },
     ]);
+  });
+
+  it('hits the grey diamond rather than its rectangular screen bounds at any zoom or tile scale', () => {
+    const lot = { x: 10, y: 20, width: 4, height: 4, level: 0, map: 'house.tbx' };
+    for (const tileWidth of [64, 128]) {
+      const scaledMap = { ...map, tileWidth, tileHeight: tileWidth / 2 };
+      for (const zoom of [0.25, 1, 3]) {
+        const view = { width: 800, height: 600 };
+        const camera = { x: 9000, y: 4500, zoom };
+        const screen = (x: number, y: number) => [view.width / 2 + (x - camera.x) * zoom,
+          view.height / 2 + (y - camera.y) * zoom] as const;
+        const [x, y] = tilezedTileToPixel(scaledMap, 12, 22, 0);
+        expect(tilezedLotAtPixel(scaledMap, [lot], camera, view, ...screen(x, y - 1))).toBe(lot);
+        // Inside the bounding box, outside the diamond.
+        expect(tilezedLotAtPixel(scaledMap, [lot], camera, view,
+          ...screen(x - tileWidth * 1.9, y - tileWidth * 0.9 - 1))).toBeUndefined();
+        const corner = tilezedTileToPixel(scaledMap, 10, 20, 0);
+        expect(tilezedLotAtPixel(scaledMap, [lot], camera, view, ...screen(corner[0], corner[1] - 1))).toBe(lot);
+      }
+    }
+  });
+
+  it('selects the last painted overlapping lot and uses the same level offsets as its overlay', () => {
+    const lower = { x: 10, y: 20, width: 10, height: 10, level: -1, map: 'lower.tbx' };
+    const upper = { ...lower, level: 1, map: 'upper.tbx' };
+    const [x, y] = tilezedTileToPixel(map, 15, 25, 1);
+    const camera = { x, y: y - 1, zoom: 1 };
+    const viewport = { width: 800, height: 600 };
+    expect(tilezedLotAtPixel(map, [upper, lower], camera, viewport, 400, 300)).toBe(upper);
+    const later = { ...upper, map: 'later.tbx' };
+    expect(tilezedLotAtPixel(map, [upper, later], camera, viewport, 400, 300)).toBe(later);
+    const [groundX, groundY] = tilezedTileToPixel(map, 15, 25, 0);
+    expect(tilezedLotAtPixel(map, [lower], { x: groundX, y: groundY - 1, zoom: 1 }, viewport, 400, 300)).toBe(lower);
+    expect(tilezedLotAtPixel(map, [{ ...lower, width: 0 }], camera, viewport, 400, 300)).toBeUndefined();
   });
 });

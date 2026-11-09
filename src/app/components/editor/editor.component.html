@@ -7,9 +7,18 @@
   <button (click)="session.submit()" [disabled]="!session.editable || session.busy">Submit for review</button>
   <button (click)="reload()" [disabled]="session.busy">Reload cloud copy</button>
 </div>
+<div class="project-editor-bar" *ngIf="session.worldBuilding as item">
+  <a [routerLink]="['/projects', item.projectId]" [queryParams]="{view: 'buildings'}">Back to buildings</a>
+  <strong>{{item.path}}</strong>
+  <span>Editing shared world building</span>
+  <span role="status">{{session.busy ? 'Saving...' : session.dirty ? 'Unsaved changes' : 'Saved'}}</span>
+  <button (click)="session.save()" [disabled]="!session.editable || session.busy">Save building to world</button>
+  <button (click)="exportBuilding()" [disabled]="session.busy">Export .tbx</button>
+  <button (click)="reload()" [disabled]="session.busy">Reload cloud copy</button>
+</div>
 <p class="project-editor-notice" role="status" *ngIf="session.message">{{session.message}}</p>
 <p class="project-editor-notice error" role="alert" *ngIf="error || session.error">{{error || session.error}} <a routerLink="/">Projects</a></p>
-<div *ngIf="ready && (!session.contribution || session.editable)">
+<div *ngIf="ready && (!session.projectDocument || session.editable)">
   <app-tile-download-window></app-tile-download-window>
   <app-tileset-list-window></app-tileset-list-window>
   <div [attr.inert]="session.busy ? '' : null">

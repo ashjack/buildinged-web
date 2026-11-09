@@ -1,4 +1,5 @@
-import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, NgZone, OnDestroy, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, NgZone, OnDestroy, ViewChild } from '@angular/core';
+import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { DbService } from '../../services/db.service';
 import { TilezedAssetsService, TilezedAssets } from '../../services/tilezed-assets.service';
@@ -6,7 +7,8 @@ import { TilezedBuildingContext, TilezedHandoffService } from '../../services/ti
 import { BuildingPreviewService } from '../../services/building-preview.service';
 import { BuildingLots } from '../../services/building-lots';
 import { drawBuildingSprites, orderTilezedBuildingSprites } from '../../utils/building-preview';
-import { resolveTilezedProject } from '../../utils/worlded-files';
+import { resolveTilezedProject, worldedReferenceKey } from '../../utils/worlded-files';
+import { AuthService } from '../../services/auth.service';
 import { TilezedStorageService } from '../../services/tilezed-storage.service';
 import { readTilezedMap, TilezedTileset } from '../../utils/tilezed-map';
 import {
@@ -15,7 +17,7 @@ import {
 } from '../../utils/tilezed-renderer';
 import { indexTilezedSheets, localTilezedSheet, TilezedSheetIndex, tilezedSheetLayout, tilezedSheetName } from '../../utils/tilezed-sheets';
 import { generateTilezedScene, TilezedScene } from '../../utils/tilezed-terrain';
-import { drawTilezedOverlays, summarizeZones, TilezedZoneSummary } from '../../utils/tilezed-overlays';
+import { drawTilezedOverlays, summarizeZones, tilezedLotAtPixel, TilezedZoneSummary } from '../../utils/tilezed-overlays';
 import { WorldedZone } from '../../utils/worlded-world';
 
 const SHOW_ZONES_KEY = 'tilezed:showZones';
@@ -29,6 +31,8 @@ const SHOW_LOTS_KEY = 'tilezed:showLotOutlines';
 export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   @ViewChild('canvas') canvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('viewport') viewportElement!: ElementRef<HTMLElement>;
+  @ViewChild('buildingMenu') buildingMenu?: ElementRef<HTMLElement>;
+  contextMenu?: { x: number; y: number; projectId: string; path: string };
 
   scene?: TilezedScene;
   fileName = '';
@@ -79,6 +83,8 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     private readonly zone: NgZone,
     private readonly changeDetector: ChangeDetectorRef,
     private readonly buildingPreviews: BuildingPreviewService,
+    public readonly auth: AuthService,
+    private readonly router: Router,
   ) {
     this.sheetsChanged = this.db.sheetsChanged.subscribe(names => {
       const changed = new Set(names.map(name => name.toLowerCase()));
@@ -145,6 +151,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   async openMap(file: File, remember = true, buildings?: TilezedBuildingContext): Promise<void> {
+    this.closeContextMenu();
     const generation = ++this.mapGeneration;
     if (!/\.tmx$/i.test(file.name)) {
       this.error = 'Choose a TileZed .tmx file.';
@@ -349,6 +356,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   fit(): void {
+    this.closeContextMenu();
     if (!this.scene) return;
     this.camera = fitTilezedCamera(tilezedBounds(this.scene.map), this.viewport);
     this.requestDraw();
@@ -361,12 +369,14 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   setShowLotOutlines(show: boolean): void {
+    this.closeContextMenu();
     this.showLotOutlines = show;
     localStorage.setItem(SHOW_LOTS_KEY, show ? '1' : '0');
     this.requestDraw();
   }
 
   zoom(factor: number, x = this.viewport.width / 2, y = this.viewport.height / 2): void {
+    this.closeContextMenu();
     if (!this.scene) return;
     this.camera = zoomTilezedCamera(this.camera, tilezedBounds(this.scene.map), this.viewport, factor, x, y);
     this.requestDraw();
@@ -381,6 +391,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   onPointerDown(event: PointerEvent): void {
+    this.closeContextMenu();
     if (!this.scene || this.pointer || (event.button !== 0 && event.button !== 1)) return;
     event.preventDefault();
     this.pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
@@ -428,7 +439,62 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     this.requestDraw();
   }
 
+  onContextMenu(event: MouseEvent): void {
+    event.preventDefault();
+    this.closeContextMenu();
+    const projectId = this.buildingContext?.projectId;
+    if (!this.auth.isAdmin || !projectId || !this.scene || !this.showLotOutlines || this.loadingMap) return;
+    const rect = this.canvas.nativeElement.getBoundingClientRect();
+    const lot = tilezedLotAtPixel(this.scene.map, this.buildingContext!.lots, this.camera, this.viewport,
+      event.clientX - rect.left, event.clientY - rect.top);
+    const path = lot && worldedReferenceKey(lot.map);
+    if (!path || !/\.tbx$/i.test(path) || !this.buildingContext!.files.has(path)) return;
+    this.contextMenu = { x: event.clientX, y: event.clientY, projectId, path };
+    this.changeDetector.detectChanges();
+    const menu = this.buildingMenu?.nativeElement;
+    if (!menu) return;
+    const bounds = menu.getBoundingClientRect();
+    this.contextMenu.x = Math.max(0, Math.min(event.clientX, document.documentElement.clientWidth - bounds.width));
+    this.contextMenu.y = Math.max(0, Math.min(event.clientY, window.innerHeight - bounds.height));
+    menu.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus({ preventScroll: true });
+  }
+
+  closeContextMenu(restoreFocus = false): void {
+    if (!this.contextMenu) return;
+    this.contextMenu = undefined;
+    if (restoreFocus) this.canvas.nativeElement.focus({ preventScroll: true });
+  }
+
+  @HostListener('document:pointerdown', ['$event']) dismissContextMenu(event: PointerEvent): void {
+    if (!this.buildingMenu?.nativeElement.contains(event.target as Node)) this.closeContextMenu();
+  }
+
+  @HostListener('document:keydown', ['$event']) contextMenuKey(event: KeyboardEvent): void {
+    if (!this.contextMenu) return;
+    if (event.key === 'Escape' || event.key === 'Tab') {
+      if (event.key === 'Escape') event.preventDefault();
+      this.closeContextMenu(true);
+    } else if (['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+      event.preventDefault();
+      this.buildingMenu?.nativeElement.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    }
+  }
+
+  async editContextBuilding(): Promise<void> {
+    const menu = this.contextMenu;
+    this.closeContextMenu(true);
+    if (!menu || !this.auth.isAdmin || menu.projectId !== this.buildingContext?.projectId) return;
+    try {
+      if (!await this.router.navigate(['/projects', menu.projectId, 'world-buildings', menu.path, 'edit'])) {
+        this.error = 'Could not open the building editor. Try again.';
+      }
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   private resize(): void {
+    this.closeContextMenu();
     if (!this.canvas) return;
     const canvas = this.canvas.nativeElement;
     const rect = this.viewportElement.nativeElement.getBoundingClientRect();

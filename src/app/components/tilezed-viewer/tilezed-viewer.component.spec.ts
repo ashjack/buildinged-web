@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { RouterTestingModule } from '@angular/router/testing';
+import { Router } from '@angular/router';
 import { Subject } from 'rxjs';
 import { DbService } from '../../services/db.service';
 import { TilezedAssetsService } from '../../services/tilezed-assets.service';
@@ -8,6 +9,9 @@ import { TilezedHandoffService } from '../../services/tilezed-handoff.service';
 import { TilezedStorageService } from '../../services/tilezed-storage.service';
 import { TilezedViewerComponent } from './tilezed-viewer.component';
 import { BuildingPreviewService } from '../../services/building-preview.service';
+import { AuthService } from '../../services/auth.service';
+import { TilezedBuildingContext } from '../../services/tilezed-handoff.service';
+import { tilezedTileToPixel } from '../../utils/tilezed-overlays';
 
 const mapXml = `<map version="1.0" orientation="levelisometric" width="1" height="1" tilewidth="64" tileheight="32">
   <tileset firstgid="1" name="sheet_01" tilewidth="64" tileheight="128"><image source="sheet_01.png" width="64" height="128"/></tileset>
@@ -22,6 +26,8 @@ describe('TileZed read-only viewer', () => {
   let changes: Subject<string[]>;
 
   beforeEach(() => {
+    const previews = jasmine.createSpyObj('BuildingPreviewService', ['preview']);
+    previews.preview.and.rejectWith(new Error('Preview unavailable'));
     assets = jasmine.createSpyObj<TilezedAssetsService>('TilezedAssetsService', ['load']);
     assets.load.and.callFake(async tilesets => ({
       sheets: new Map(),
@@ -37,7 +43,8 @@ describe('TileZed read-only viewer', () => {
       declarations: [TilezedViewerComponent],
       imports: [CommonModule, RouterTestingModule],
       providers: [
-        { provide: BuildingPreviewService, useValue: jasmine.createSpyObj('BuildingPreviewService', ['preview']) },
+        { provide: BuildingPreviewService, useValue: previews },
+        { provide: AuthService, useValue: { isAdmin: false } },
         { provide: DbService, useValue: { sheetsChanged: changes } },
         { provide: TilezedAssetsService, useValue: assets },
         { provide: TilezedStorageService, useValue: storage },
@@ -49,6 +56,102 @@ describe('TileZed read-only viewer', () => {
   });
 
   afterEach(() => { fixture.destroy(); changes.complete(); });
+
+  async function openBuilding(projectId: string | null = 'project'): Promise<void> {
+    const context: TilezedBuildingContext = { projectId: projectId ?? undefined,
+      lots: [{ x: 0, y: 0, width: 1, height: 1, level: 0, map: 'Buildings\\house.tbx' }],
+      files: new Map([['Buildings/house.tbx', new File(['<building/>'], 'house.tbx')]]) };
+    Object.assign(TestBed.inject(AuthService), { isAdmin: true });
+    component.showLotOutlines = true;
+    await component.openMap(new File([mapXml], 'cell.tmx'), true, context);
+    fixture.detectChanges();
+  }
+
+  function rightClickBuilding(): MouseEvent {
+    const camera = (component as any).camera;
+    const viewport = (component as any).viewport;
+    const rect = component.canvas.nativeElement.getBoundingClientRect();
+    const [x, y] = tilezedTileToPixel(component.scene!.map, 0.5, 0.5, 0);
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
+      clientX: rect.left + viewport.width / 2 + (x - camera.x) * camera.zoom,
+      clientY: rect.top + viewport.height / 2 + (y - 1 - camera.y) * camera.zoom });
+    component.canvas.nativeElement.dispatchEvent(event);
+    fixture.detectChanges();
+    return event;
+  }
+
+  it('right-clicks the grey overlay without a rendered sprite and opens the direct shared building editor', async () => {
+    await openBuilding();
+    const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    const event = rightClickBuilding();
+    expect(event.defaultPrevented).toBeTrue();
+    const menu = fixture.nativeElement.querySelector('[role="menu"]') as HTMLElement;
+    expect(menu).not.toBeNull();
+    expect(menu.querySelectorAll('[role="menuitem"]').length).toBe(1);
+    const edit = menu.querySelector<HTMLButtonElement>('[role="menuitem"]')!;
+    expect(edit.textContent).toBe('Edit building');
+    expect(document.activeElement).toBe(edit);
+    edit.click();
+    await fixture.whenStable(); fixture.detectChanges();
+    expect(navigate).toHaveBeenCalledOnceWith(['/projects', 'project', 'world-buildings', 'Buildings/house.tbx', 'edit']);
+    expect(component.contextMenu).toBeUndefined();
+    expect(component.dragging).toBeFalse();
+  });
+
+  it('shows no editing menu for contributors, local maps, hidden overlays, or empty map space', async () => {
+    await openBuilding();
+    Object.assign(TestBed.inject(AuthService), { isAdmin: false });
+    rightClickBuilding();
+    expect(component.contextMenu).toBeUndefined();
+    Object.assign(TestBed.inject(AuthService), { isAdmin: true });
+    component.showLotOutlines = false;
+    rightClickBuilding();
+    expect(component.contextMenu).toBeUndefined();
+    component.showLotOutlines = true;
+    component.onContextMenu(new MouseEvent('contextmenu', { clientX: -10000, clientY: -10000 }));
+    expect(component.contextMenu).toBeUndefined();
+    await openBuilding(null);
+    rightClickBuilding();
+    expect(component.contextMenu).toBeUndefined();
+  });
+
+  it('dismisses the menu on Escape, outside pointer down, zoom, and map changes', async () => {
+    await openBuilding();
+    rightClickBuilding();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(component.contextMenu).toBeUndefined();
+    expect(document.activeElement).toBe(component.canvas.nativeElement);
+    rightClickBuilding();
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    expect(component.contextMenu).toBeUndefined();
+    rightClickBuilding();
+    component.zoom(1.25);
+    expect(component.contextMenu).toBeUndefined();
+    rightClickBuilding();
+    await component.openMap(new File([mapXml], 'other.tmx'));
+    expect(component.contextMenu).toBeUndefined();
+  });
+
+  it('rechecks admin permissions when choosing Edit building', async () => {
+    await openBuilding();
+    rightClickBuilding();
+    const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    Object.assign(TestBed.inject(AuthService), { isAdmin: false });
+    await component.editContextBuilding();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(component.contextMenu).toBeUndefined();
+  });
+
+  it('keeps the context menu within the window when opened near the lower-right corner', async () => {
+    await openBuilding();
+    const viewport = (component as any).viewport;
+    const [x, y] = tilezedTileToPixel(component.scene!.map, 0.5, 0.5, 0);
+    (component as any).camera = { x: x - (viewport.width / 2 - 1), y: y - 1 - (viewport.height / 2 - 1), zoom: 1 };
+    rightClickBuilding();
+    const bounds = (fixture.nativeElement.querySelector('[role="menu"]') as HTMLElement).getBoundingClientRect();
+    expect(bounds.right).toBeLessThanOrEqual(document.documentElement.clientWidth);
+    expect(bounds.bottom).toBeLessThanOrEqual(window.innerHeight);
+  });
 
   it('opens a map, reports missing sheets, and loads a selected 1x folder without changing the map', async () => {
     const file = new File([mapXml], 'map.tmx');

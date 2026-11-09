@@ -30,14 +30,14 @@ describe('Routed variant editor', () => {
     params = new BehaviorSubject(convertToParamMap({ projectId: 'project', variantId: 'a' }));
     route = { snapshot: { paramMap: params.value }, paramMap: params };
     user = new BehaviorSubject<{ uid: string } | null>({ uid: 'user' });
-    api = jasmine.createSpyObj<ProjectApiService>('ProjectApiService', ['variant']);
+    api = jasmine.createSpyObj<ProjectApiService>('ProjectApiService', ['variant', 'worldBuilding']);
     api.variant.and.resolveTo({ contribution, xml: nativeBuildingXml });
     buildings = jasmine.createSpyObj<BuildingService>('BuildingService', ['createBuildingFromXml']);
     TestBed.configureTestingModule({
       declarations: [EditorComponent], schemas: [NO_ERRORS_SCHEMA],
       imports: [CommonModule, RouterTestingModule, StoreModule.forRoot({}), StoreModule.forFeature('root', reducer)],
       providers: [
-        { provide: AuthService, useValue: { get user() { return user.value; }, user$: user.asObservable() } },
+        { provide: AuthService, useValue: { get user() { return user.value; }, user$: user.asObservable(), isAdmin: true, apiBaseUrl: 'http://localhost/api' } },
         { provide: ProjectApiService, useValue: api }, { provide: BuildingService, useValue: buildings },
         { provide: ActivatedRoute, useValue: route }
       ]
@@ -56,6 +56,21 @@ describe('Routed variant editor', () => {
     expect(fixture.componentInstance.ready).toBeTrue();
     expect(fixture.nativeElement.textContent).toContain('Save draft');
     expect(TestBed.inject(EditorSessionService).contribution!.originalBuildId).toBe('original');
+    fixture.destroy();
+  });
+
+  it('opens a shared building in admin mode with a direct save and no submission controls', async () => {
+    const next = convertToParamMap({ projectId: 'project', buildingPath: 'Buildings/house.tbx' });
+    route.snapshot.paramMap = next;
+    params.next(next);
+    api.worldBuilding.and.resolveTo({ projectId: 'project', path: 'Buildings/house.tbx', revision: 3, xml: nativeBuildingXml });
+    const fixture = TestBed.createComponent(EditorComponent);
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    expect(api.worldBuilding).toHaveBeenCalledOnceWith('project', 'Buildings/house.tbx');
+    expect(api.variant).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('Save building to world');
+    expect(fixture.nativeElement.textContent).not.toContain('Submit for review');
+    expect(TestBed.inject(EditorSessionService).worldBuilding!.path).toBe('Buildings/house.tbx');
     fixture.destroy();
   });
 

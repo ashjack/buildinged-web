@@ -19,6 +19,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   ready = false;
   error = '';
   private variantId?: string;
+  private buildingPath?: string;
   private destroyed = false;
   private authSubscription?: Subscription;
   private routeSubscription?: Subscription;
@@ -30,18 +31,20 @@ export class EditorComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.variantId = this.route.snapshot.paramMap.get('variantId') || undefined;
-    if (this.variantId) {
+    this.buildingPath = this.route.snapshot.paramMap.get('buildingPath') || undefined;
+    if (this.variantId || this.buildingPath) {
       this.routeSubscription = this.route.paramMap.subscribe(params => {
-        const id = params.get('variantId')!;
         this.session.cacheCurrent();
         this.session.end();
         this.store.dispatch(new ClearBuilding());
-        this.variantId = id;
+        this.variantId = params.get('variantId') || undefined;
+        this.buildingPath = params.get('buildingPath') || undefined;
         void this.load();
       });
       const uid = this.auth.user?.uid;
       this.authSubscription = this.auth.user$.subscribe(user => {
-        if (user?.uid !== uid) {
+        if (user?.uid !== uid || (this.buildingPath && !this.auth.isAdmin)) {
+          this.loadGeneration++;
           this.ready = false;
           this.session.end();
           this.store.dispatch(new ClearBuilding());
@@ -55,18 +58,21 @@ export class EditorComponent implements OnInit, OnDestroy {
   }
 
   async load(recover = true): Promise<void> {
-    if (!this.variantId) return;
+    if (!this.variantId && !this.buildingPath) return;
     this.ready = false;
     this.error = '';
     const uid = this.auth.user?.uid;
     const generation = ++this.loadGeneration;
     try {
-      const document = await this.api.variant(this.variantId);
+      const projectId = this.route.snapshot.paramMap.get('projectId')!;
+      const document = this.buildingPath
+        ? await this.api.worldBuilding(projectId, this.buildingPath)
+        : await this.api.variant(this.variantId!);
       if (this.destroyed || this.auth.user?.uid !== uid || generation !== this.loadGeneration) return;
-      if (document.contribution.projectId !== this.route.snapshot.paramMap.get('projectId')) {
-        throw new Error('This variant does not belong to the project in this URL.');
+      if (('contribution' in document ? document.contribution.projectId : document.projectId) !== projectId) {
+        throw new Error('This building does not belong to the project in this URL.');
       }
-      const xml = this.session.begin(document, recover);
+      const xml = 'contribution' in document ? this.session.begin(document, recover) : this.session.beginWorldBuilding(document, recover);
       await this.buildings.createBuildingFromXml(new DOMParser().parseFromString(xml, 'text/xml'));
       this.store.dispatch(new SetDocumentLocked(!this.session.editable));
       this.store.dispatch(new SetCurrentTool('tool-furniture'));
@@ -80,6 +86,10 @@ export class EditorComponent implements OnInit, OnDestroy {
     if (!this.session.dirty || window.confirm('Replace the local draft with the latest cloud copy? Export first if you want to keep your edits.')) {
       void this.load(false);
     }
+  }
+  async exportBuilding(): Promise<void> {
+    try { await this.buildings.saveBuildingToXml(); }
+    catch (error) { this.error = error instanceof Error ? error.message : String(error); }
   }
   canLeave(): boolean {
     return this.session.canLeave();
@@ -95,7 +105,7 @@ export class EditorComponent implements OnInit, OnDestroy {
     this.destroyed = true;
     this.authSubscription?.unsubscribe();
     this.routeSubscription?.unsubscribe();
-    if (this.variantId) {
+    if (this.variantId || this.buildingPath) {
       this.session.cacheCurrent();
       this.session.end();
       this.store.dispatch(new ClearBuilding());

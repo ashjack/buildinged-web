@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Store } from '@ngrx/store';
-import { Contribution, VariantDocument } from '../models/project.models';
+import { Contribution, VariantDocument, WorldBuildingDocument } from '../models/project.models';
 import { Building } from '../models/app.models';
 import * as fromRoot from '../app.reducers';
 import { AuthService } from './auth.service';
@@ -16,6 +16,8 @@ export interface DocumentCacheTarget {
 @Injectable({ providedIn: 'root' })
 export class EditorSessionService {
   contribution?: Contribution;
+  worldBuilding?: Omit<WorldBuildingDocument, 'xml'>;
+  get projectDocument(): boolean { return !!(this.contribution || this.worldBuilding); }
   savedXml = '';
   message = '';
   error = '';
@@ -31,10 +33,15 @@ export class EditorSessionService {
   }
 
   get editable(): boolean {
+    if (this.worldBuilding) return !!this.auth.user && this.auth.isAdmin;
     return !!this.contribution && this.contribution.createdBy === this.auth.user?.uid &&
       ['draft', 'changes_requested'].includes(this.contribution.status);
   }
   get cacheTarget(): DocumentCacheTarget {
+    if (this.worldBuilding && this.auth.user) return {
+      key: `buildinged:world-building:${this.apiBaseKey()}:${this.auth.user.uid}:${this.worldBuilding.projectId}:${this.worldBuilding.path}`,
+      revision: this.worldBuilding.revision
+    };
     const item = this.contribution;
     return item && this.auth.user ? {
       key: `buildinged:draft:${this.auth.user.uid}:${item.projectId}:${item.id}`,
@@ -42,7 +49,7 @@ export class EditorSessionService {
     } : { key: 'buildingXml' };
   }
   get dirty(): boolean {
-    if (!this.contribution || !this.building || !this.editable) return false;
+    if (!this.projectDocument || !this.building || !this.editable) return false;
     if (this.checkedBuilding !== this.building || this.checkedSavedXml !== this.savedXml) {
       this.checkedBuilding = this.building;
       this.checkedSavedXml = this.savedXml;
@@ -56,51 +63,71 @@ export class EditorSessionService {
   }
 
   begin(document: VariantDocument, recover = true): string {
+    this.worldBuilding = undefined;
+    this.contribution = document.contribution;
+    return this.beginDocument(document.xml, recover);
+  }
+
+  beginWorldBuilding(document: WorldBuildingDocument, recover = true): string {
+    this.contribution = undefined;
+    const { xml, ...building } = document;
+    this.worldBuilding = building;
+    return this.beginDocument(xml, recover);
+  }
+
+  private apiBaseKey(): string { return encodeURIComponent(this.auth.apiBaseUrl); }
+
+  private beginDocument(xml: string, recover: boolean): string {
     this.epoch++;
     this.busy = false;
-    this.contribution = document.contribution;
     this.savedXml = new XMLSerializer().serializeToString(writeBuildingFile(
-      readBuildingFile(new DOMParser().parseFromString(document.xml, 'text/xml'))));
+      readBuildingFile(new DOMParser().parseFromString(xml, 'text/xml'))));
     this.error = '';
     this.message = '';
     this.checkedBuilding = undefined;
-    if (!recover || !this.editable) return document.xml;
+    if (!recover || !this.editable) return xml;
     const raw = localStorage.getItem(this.cacheTarget.key);
-    if (!raw) return document.xml;
+    if (!raw) return xml;
     let cache: unknown;
     try { cache = JSON.parse(raw); } catch (error) {
       this.error = 'The local recovery copy is unreadable. The cloud document was loaded instead.';
       console.error(this.error, error);
-      return document.xml;
+      return xml;
     }
     if (typeof cache !== 'object' || !cache || !('xml' in cache) || typeof cache.xml !== 'string' ||
         !('revision' in cache) || typeof cache.revision !== 'number' || !Number.isSafeInteger(cache.revision)) {
       this.error = 'The local recovery copy is invalid. The cloud document was loaded instead.';
-      return document.xml;
+      return xml;
     }
-    if (cache.xml === this.savedXml) return document.xml;
-    this.contribution = { ...document.contribution, revision: cache.revision };
-    this.message = cache.revision === document.contribution.revision
+    if (cache.xml === this.savedXml) return xml;
+    const cloudRevision = this.cacheTarget.revision;
+    if (this.worldBuilding) this.worldBuilding = { ...this.worldBuilding, revision: cache.revision };
+    else this.contribution = { ...this.contribution!, revision: cache.revision };
+    this.message = cache.revision === cloudRevision
       ? 'Recovered your local unsaved draft.'
       : 'Recovered a local draft based on an older cloud revision. Export it before reloading the latest cloud copy.';
     return cache.xml;
   }
 
   async save(): Promise<boolean> {
-    if (!this.editable || !this.contribution || this.busy) return false;
+    if (!this.editable || !this.projectDocument || this.busy) return false;
     this.busy = true;
     this.store.dispatch(new SetDocumentLocked(true));
     this.error = '';
-    this.message = 'Saving draft...';
+    this.message = this.worldBuilding ? 'Saving building to world...' : 'Saving draft...';
     const item = this.contribution;
+    const worldBuilding = this.worldBuilding;
     const epoch = this.epoch;
     try {
       const xml = this.serialize();
-      const updated = await this.api.save(item.id, xml, item.revision);
+      const updated = worldBuilding
+        ? await this.api.saveWorldBuilding(worldBuilding.projectId, worldBuilding.path, xml, worldBuilding.revision)
+        : await this.api.save(item!.id, xml, item!.revision);
       if (epoch !== this.epoch) return false;
-      this.contribution = updated;
+      if (worldBuilding) this.worldBuilding = updated as Omit<WorldBuildingDocument, 'xml'>;
+      else this.contribution = updated as Contribution;
       this.savedXml = xml;
-      this.message = 'Draft saved to the project.';
+      this.message = worldBuilding ? 'Building saved to the shared world.' : 'Draft saved to the project.';
       this.cacheCurrent();
       return true;
     } catch (error) {
@@ -111,7 +138,7 @@ export class EditorSessionService {
     } finally {
       if (epoch === this.epoch) {
         this.busy = false;
-        this.store.dispatch(new SetDocumentLocked(!!this.contribution && !this.editable));
+        this.store.dispatch(new SetDocumentLocked(this.projectDocument && !this.editable));
       }
     }
   }
@@ -146,7 +173,7 @@ export class EditorSessionService {
   cacheCurrent(): void {
     if (!this.editable) return;
     try {
-      localStorage.setItem(this.cacheTarget.key, JSON.stringify({ xml: this.serialize(), revision: this.contribution!.revision }));
+      localStorage.setItem(this.cacheTarget.key, JSON.stringify({ xml: this.serialize(), revision: this.cacheTarget.revision }));
     } catch (error) {
       this.error = 'Could not save a local recovery copy. Export your draft before leaving.';
       console.error(this.error, error);
@@ -157,6 +184,7 @@ export class EditorSessionService {
     this.busy = false;
     this.store.dispatch(new SetDocumentLocked(false));
     this.contribution = undefined;
+    this.worldBuilding = undefined;
     this.savedXml = '';
     this.message = this.error = '';
   }
