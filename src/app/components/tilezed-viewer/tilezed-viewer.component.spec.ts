@@ -32,6 +32,7 @@ describe('TileZed read-only viewer', () => {
   let changes: Subject<string[]>;
 
   beforeEach(async () => {
+    localStorage.removeItem('tilezed:highlightCurrentLevel');
     localStorage.removeItem('tilezed:warningsExpanded');
     const previews = jasmine.createSpyObj('BuildingPreviewService', ['preview']);
     previews.preview.and.rejectWith(new Error('Preview unavailable'));
@@ -66,7 +67,75 @@ describe('TileZed read-only viewer', () => {
     await new Promise(resolve => setTimeout(resolve, 0));
   });
 
-  afterEach(() => { fixture.destroy(); changes.complete(); localStorage.removeItem('tilezed:warningsExpanded'); });
+  afterEach(() => { fixture.destroy(); changes.complete(); localStorage.removeItem('tilezed:warningsExpanded'); localStorage.removeItem('tilezed:highlightCurrentLevel'); });
+
+  it('toggles Highlight Current Level once per H press without switching tools, changing the document or adding a button', async () => {
+    await openEditableMap(); component.setTool('stamp');
+    const before = component.editor!.scene;
+    const press = (options: KeyboardEventInit = {}) => component.canvas.nativeElement.dispatchEvent(new KeyboardEvent('keydown',
+      { key: 'h', bubbles: true, cancelable: true, ...options }));
+    press(); fixture.detectChanges();
+    expect(component.highlightCurrentLevel).toBeTrue(); expect(component.tool).toBe('stamp');
+    expect(localStorage.getItem('tilezed:highlightCurrentLevel')).toBe('1');
+    expect(component.editor!.scene).toBe(before); expect(component.dirty).toBeFalse(); expect(component.editor!.canUndo).toBeFalse();
+    expect(fixture.nativeElement.querySelector('button[aria-label="Highlight Current Level"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('button[aria-label="Pan"]').title).toBe('Pan');
+    press({ repeat: true }); expect(component.highlightCurrentLevel).toBeTrue();
+    const reopened = TestBed.createComponent(TilezedViewerComponent);
+    expect(reopened.componentInstance.highlightCurrentLevel).toBeTrue(); reopened.destroy();
+    press({ key: 'H' }); expect(component.highlightCurrentLevel).toBeFalse();
+    Object.assign(TestBed.inject(AuthService), { isAdmin: false });
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'h', cancelable: true }));
+    expect(component.highlightCurrentLevel).toBeTrue();
+  });
+
+  it('ignores H while typing, with browser modifiers, during composition and inside the layer dialog', async () => {
+    await openEditableMap();
+    for (const tag of ['input', 'textarea', 'select']) {
+      const field = document.createElement(tag); fixture.nativeElement.appendChild(field);
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'h', bubbles: true, cancelable: true }));
+      expect(component.highlightCurrentLevel).toBeFalse(); field.remove();
+    }
+    for (const modifier of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }, { isComposing: true }]) {
+      component.onKeyDown(new KeyboardEvent('keydown', { key: 'h', cancelable: true, ...modifier }));
+      expect(component.highlightCurrentLevel).toBeFalse();
+    }
+    component.showAddLayer();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'h', cancelable: true }));
+    expect(component.highlightCurrentLevel).toBeFalse(); component.closeAddLayer();
+  });
+
+  it('repaints cached building floors immediately when H is toggled', async () => {
+    const atlas = document.createElement('canvas'); atlas.width = 128; atlas.height = 128;
+    const fill = atlas.getContext('2d')!;
+    fill.fillStyle = '#ff0000'; fill.fillRect(0, 0, 64, 128);
+    fill.fillStyle = '#00ff00'; fill.fillRect(64, 0, 64, 128);
+    const blob = await new Promise<Blob>(resolve => atlas.toBlob(value => resolve(value!), 'image/png'));
+    const previews = TestBed.inject(BuildingPreviewService) as jasmine.SpyObj<BuildingPreviewService>;
+    previews.preview.and.resolveTo({ blob, width: 64, height: 224, warnings: [],
+      bounds: { left: -32, right: 32, top: -192, bottom: 32 }, squares: { minX: 0, minY: 0, maxX: 0, maxY: 0 },
+      composition: { pages: [{ blob, width: 128, height: 128 }], tiles: [
+        { squareX: 0, squareY: 0, level: 0, layer: 'Floor', sheet: 'floor', index: 0, frame: 0 },
+        { squareX: 0, squareY: 0, level: 1, layer: 'Roof', sheet: 'roof', index: 0, frame: 1 },
+      ] } });
+    await component.openMap(new File([mapXml], 'levels.tmx'), true, {
+      lots: [{ x: 0, y: 0, width: 1, height: 1, level: 0, map: 'house.tbx' }],
+      files: new Map([['house.tbx', new File([''], 'house.tbx')]]) });
+    for (let i = 0; i < 50 && component.loadingBuildings; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    const camera = (component as any).camera, viewport = (component as any).viewport, ratio = (component as any).pixelRatio;
+    const color = () => [...component.canvas.nativeElement.getContext('2d')!.getImageData(
+      Math.floor((viewport.width / 2 + (10 - camera.x) * camera.zoom) * ratio),
+      Math.floor((viewport.height / 2 + (-80 - camera.y) * camera.zoom) * ratio), 1, 1).data];
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    expect(color()).toEqual([0, 255, 0, 255]);
+    component.canvas.nativeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'h', bubbles: true, cancelable: true }));
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    expect(color()).toEqual([255, 0, 0, 255]);
+    component.canvas.nativeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'h', bubbles: true, cancelable: true }));
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    expect(color()).toEqual([0, 255, 0, 255]);
+    expect(component.dirty).toBeFalse();
+  });
 
   it('collapses stacked warnings into a counted row and remembers the show/hide preference', async () => {
     component.tileWarnings = ['One', 'Two'];

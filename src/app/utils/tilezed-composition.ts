@@ -38,7 +38,7 @@ export function lotLayerSuppressesLayer(replacement: string, existing: string): 
  * Finish ordinary tiles, lot tiles and AboveLot tiles at one square before advancing in depth.
  */
 export function tilezedComposition(scene: TilezedScene, images: ReadonlyMap<number, TilezedImage>,
-  buildings: readonly BuildingSprite[], camera: TilezedCamera, viewport: TilezedViewport): TilezedCompositionDraw[] {
+  buildings: readonly BuildingSprite[], camera: TilezedCamera, viewport: TilezedViewport, onlyLevel?: number): TilezedCompositionDraw[] {
   const { map } = scene, hw = map.tileWidth / 2, hh = map.tileHeight / 2, scale = map.tileWidth / 64, origin = map.height * hw;
   const left = camera.x - viewport.width / (2 * camera.zoom), right = camera.x + viewport.width / (2 * camera.zoom);
   const top = camera.y - viewport.height / (2 * camera.zoom), bottom = camera.y + viewport.height / (2 * camera.zoom);
@@ -55,7 +55,7 @@ export function tilezedComposition(scene: TilezedScene, images: ReadonlyMap<numb
   const maxHeight = Math.max(map.tileHeight, ...map.tilesets.map(sheet => sheet.tileHeight));
   const first = Math.max(0, Math.floor((top - map.tileHeight) / hh) - 1);
   const last = Math.min(map.width + map.height - 2, Math.ceil((bottom + maxHeight - map.tileHeight) / hh) + 1);
-  for (let depth = first; depth <= last; depth++) {
+  for (let depth = first; depth <= last && (onlyLevel === undefined || onlyLevel === 0); depth++) {
     const from = Math.max(0, depth - map.height + 1, Math.floor((depth + (left - origin - maxWidth) / hw) / 2));
     const to = Math.min(map.width - 1, depth, Math.ceil((depth + (right - origin + maxWidth) / hw) / 2));
     for (let x = from; x <= to; x++) {
@@ -81,6 +81,7 @@ export function tilezedComposition(scene: TilezedScene, images: ReadonlyMap<numb
   buildings.forEach((building, order) => {
     const composition = building.composition;
     if (!composition) {
+      if (onlyLevel !== undefined && building.level !== onlyLevel) return;
       // Older/custom preview providers can supply a whole image until they supply tile data.
       const b = building.bounds;
       const draw: TilezedCompositionDraw = { bitmap: building.bitmap, sx: 0, sy: 0, sw: building.bitmap.width,
@@ -93,7 +94,7 @@ export function tilezedComposition(scene: TilezedScene, images: ReadonlyMap<numb
       const x = composition.x + tile.squareX, y = composition.y + tile.squareY, level = composition.level + tile.level;
       const frame = composition.frames?.get(tile.frame);
       const bitmap = frame ?? composition.pages[Math.floor(tile.frame / 256)];
-      if (level < 0 || !bitmap) continue;
+      if (level < 0 || !bitmap || onlyLevel !== undefined && level !== onlyLevel) continue;
       const draw: TilezedCompositionDraw = { bitmap, sx: frame ? 0 : tile.frame % 16 * 64, sy: frame ? 0 : Math.floor(tile.frame % 256 / 16) * 128,
         sw: 64, sh: 128, x: origin + (x - y) * hw - hw,
         y: (x + y) * hh + map.tileHeight - 128 * scale - level * 96 * scale,

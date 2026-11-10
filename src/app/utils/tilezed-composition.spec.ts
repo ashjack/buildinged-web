@@ -31,10 +31,10 @@ describe('Native TileZed square composition', () => {
         { squareX: 0, squareY: 0, level: 0, layer, sheet: 'building', index: 7, frame: 0 },
       ] } };
   }
-  function render(current: TilezedScene, buildings: BuildingSprite[]) {
+  function render(current: TilezedScene, buildings: BuildingSprite[], onlyLevel?: number) {
     const images = new Map([[1, { bitmap: red, layout: { tileWidth: 64, tileHeight: 128 } }],
       [2, { bitmap: blue, layout: { tileWidth: 64, tileHeight: 128 } }]]);
-    const commands = tilezedComposition(current, images, buildings, camera, viewport);
+    const commands = tilezedComposition(current, images, buildings, camera, viewport, onlyLevel);
     const canvas = document.createElement('canvas'); canvas.width = viewport.width; canvas.height = viewport.height;
     const context = canvas.getContext('2d')!; drawTilezedComposition(context, commands, camera, viewport, 1);
     const pixel = (x: number, y: number) => [...context.getImageData(x - camera.x + viewport.width / 2, y - camera.y + viewport.height / 2, 1, 1).data];
@@ -44,6 +44,26 @@ describe('Native TileZed square composition', () => {
     const result = render(scene(0), [building(1)]);
     expect(result.pixel(40, -40)).toEqual([0, 255, 0, 255]);
     expect(pickTilezedComposition(result.commands, 40, -40)?.sheet).toBe('building');
+  });
+  it('shows and picks only the requested composed level, including individual floors inside one building', () => {
+    const lot = building(0);
+    lot.composition!.tiles.push({ ...lot.composition!.tiles[0], level: 1, layer: 'Roof', index: 8 });
+    expect(render(scene(), [lot]).pixel(10, -80)).toEqual([0, 255, 0, 255]);
+    const ground = render(scene(), [lot], 0);
+    expect(ground.pixel(10, -80)).toEqual([0, 0, 255, 255]);
+    expect(ground.commands.some(draw => draw.index === 8)).toBeFalse();
+    expect(pickTilezedComposition(ground.commands, 10, -80)?.layer).toBe('0_AboveLots');
+    const upper = render(scene(), [lot], 1);
+    expect(upper.commands.map(draw => draw.index)).toEqual([8]);
+    expect(pickTilezedComposition(upper.commands, 10, -80)?.layer).toBe('Roof');
+    expect(render(scene(), [lot]).pixel(10, -80)).toEqual([0, 255, 0, 255]);
+  });
+  it('filters a building by its placed level plus tile level, including basement offsets', () => {
+    const basement = building(0, -1);
+    basement.composition!.tiles.push({ ...basement.composition!.tiles[0], level: 1, index: 9 });
+    const ground = render(scene(), [basement], 0);
+    expect(ground.commands.filter(draw => draw.sheet).map(draw => draw.index)).toEqual([9]);
+    expect(render(scene(), [building(0, 1)], 0).commands.some(draw => draw.sheet)).toBeFalse();
   });
   it('draws AboveLots after a lot at the same square and respects depth from neighboring squares', () => {
     const same = render(scene(0), [building(0)]);

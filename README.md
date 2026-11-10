@@ -121,6 +121,15 @@ Choose **Pan**, middle-drag, or hold Space while dragging to pan; use the mouse 
 zoom, and choose **Fit map** to return to the overview. The canvas also supports
 arrow keys, plus/minus, and Home.
 
+Press **H** to toggle **Highlight Current Level** without changing tools. It shows
+only the active level, including only that level's tiles within buildings, and
+tile picking ignores hidden floors. Press H again to restore all rendered levels.
+The preference is remembered in this browser and does not change or save map data.
+The current web map-editing level is ground level (0). This uses the desktop H
+shortcut and level grouping; unlike desktop's dimmed lower levels, this mode
+hides all other levels as requested. Pan remains available through its tool,
+Space-drag and middle-drag.
+
 Choose a visible **Layer**, then a tile from the **Tilesets** dock. The layer list
 shows the topmost layer first, with the lowest layer at the bottom. **Add tile
 layer** beside the list creates a named, empty ground-level tile layer above the

@@ -38,7 +38,7 @@
   <div class="edit-toolbar" *ngIf="auth.isAdmin && editor && scene as mapScene" aria-label="TileZed editing tools">
     <div class="tool-buttons" role="group" aria-label="Map tools">
       <button class="button compact tool-icon" *ngFor="let item of toolOptions" type="button" [class.active]="tool === item.id" [attr.aria-label]="item.label"
-              [attr.aria-pressed]="tool === item.id" [title]="item.label + ' (' + item.key + ')'" [disabled]="item.id === 'building' ? !canPlaceBuildings : !canEdit"
+              [attr.aria-pressed]="tool === item.id" [title]="item.label + (item.key ? ' (' + item.key + ')' : '')" [disabled]="item.id === 'building' ? !canPlaceBuildings : !canEdit"
               (click)="setTool(item.id)"><img [src]="'assets/tilezed-tools/' + item.icon" alt="" width="24" height="24"></button>
     </div>
     <label>Layer <select aria-label="Active tile layer" [value]="activeLayer" [disabled]="!canEdit" (change)="selectLayer($any($event.target).value)">
@@ -131,6 +131,7 @@
 
   <footer>
     <span>{{auth.isAdmin ? 'Manual save · Space or middle-drag to pan · Ctrl+S to save' : 'Read-only · Drag to pan'}} · Mouse wheel to zoom · Home to fit</span>
+    <span role="status">H: Highlight Current Level{{highlightCurrentLevel ? ' — level ' + currentLevel + ' only' : ' — off'}}</span>
     <span *ngIf="showZones && zoneSummary.length" class="legend" aria-label="Zone legend">
       <span *ngFor="let zone of zoneSummary" class="legend-item">
         <span class="swatch" [style.background]="zone.color" aria-hidden="true"></span>{{zone.group}} ({{zone.count}})

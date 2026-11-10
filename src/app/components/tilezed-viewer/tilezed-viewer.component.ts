@@ -29,10 +29,12 @@ import { indexTilezedSheets, localTilezedSheet, TilezedSheetIndex, tilezedSheetG
 import { generateTilezedScene, TilezedScene } from '../../utils/tilezed-terrain';
 import { drawTilezedOverlays, summarizeZones, tilezedLotAtPixel, TilezedZoneSummary } from '../../utils/tilezed-overlays';
 import { WorldedLot, WorldedZone } from '../../utils/worlded-world';
+import { isTextEditing } from '../../utils/editor-shortcuts';
 
 const SHOW_ZONES_KEY = 'tilezed:showZones';
 const SHOW_LOTS_KEY = 'tilezed:showLotOutlines';
 const WARNINGS_EXPANDED_KEY = 'tilezed:warningsExpanded';
+const HIGHLIGHT_LEVEL_KEY = 'tilezed:highlightCurrentLevel';
 
 @Component({
   selector: 'app-tilezed-viewer',
@@ -50,8 +52,8 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   contextMenu?: { x: number; y: number; projectId: string; path: string };
   editor?: TilezedEditDocument;
   tool: TilezedTool = 'pan';
-  readonly toolOptions: { id: TilezedTool; label: string; key: string; icon: string }[] = [
-    { id: 'pan', label: 'Pan', key: 'H', icon: 'pan.svg' }, { id: 'stamp', label: 'Stamp brush', key: 'B', icon: 'stock-tool-clone.png' },
+  readonly toolOptions: { id: TilezedTool; label: string; key?: string; icon: string }[] = [
+    { id: 'pan', label: 'Pan', icon: 'pan.svg' }, { id: 'stamp', label: 'Stamp brush', key: 'B', icon: 'stock-tool-clone.png' },
     { id: 'bucket', label: 'Bucket', key: 'F', icon: 'stock-tool-bucket-fill.png' }, { id: 'eraser', label: 'Eraser', key: 'E', icon: 'stock-tool-eraser.png' },
     { id: 'select', label: 'Rectangular select', key: 'R', icon: 'stock-tool-rect-select.png' }, { id: 'pick', label: 'Pick tile', key: 'I', icon: 'icon_eyedrop.png' },
     { id: 'fence', label: 'Draw fence', key: 'G', icon: 'fence-tool.svg' },
@@ -79,6 +81,9 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   private fenceModifiers = { alt: false, ctrl: false };
   private pickRequest = 0;
   activeLayer = '';
+  highlightCurrentLevel = localStorage.getItem(HIGHLIGHT_LEVEL_KEY) === '1';
+  get currentLevel(): number { return Number(/^(\d+)_/.exec(this.activeLayer)?.[1] ?? 0); }
+  private get onlyLevel(): number | undefined { return this.highlightCurrentLevel ? this.currentLevel : undefined; }
   stamp: TileStamp = { width: 1, height: 1, gids: new Uint32Array(1) };
   hoverTile?: TilePoint;
   saving = false;
@@ -124,6 +129,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     canvas: HTMLCanvasElement; commands: TilezedCompositionDraw[]; buildings?: BuildingLots; buildingRevision: number;
     scene: TilezedScene; images: Map<number, TilezedImage>; camera: TilezedCamera;
     width: number; height: number; pixelRatio: number;
+    onlyLevel?: number;
   };
   private mapGeneration = 0;
   private sheetGeneration = 0;
@@ -670,6 +676,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   onKeyDown(event: KeyboardEvent): void {
+    if (this.highlightLevelKey(event)) return;
     if (!this.scene) return;
     if (this.canEdit || (this.tool === 'building' && this.canPlaceBuildings)) {
       const ctrl = event.ctrlKey || event.metaKey;
@@ -682,7 +689,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
       if (event.key === ' ') { event.preventDefault(); this.spaceDown = true; this.requestDraw(); return; }
       if (event.key === 'Escape') { this.fenceStart = undefined; this.finishEditing(); this.editor!.selection = undefined; if (this.tool === 'building') this.setTool('pan'); this.requestDraw(); return; }
       if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); this.eraseSelection(); return; }
-      const shortcuts: Record<string, TilezedTool> = { b: 'stamp', f: 'bucket', e: 'eraser', r: 'select', i: 'pick', h: 'pan', g: 'fence', l: 'building' };
+      const shortcuts: Record<string, TilezedTool> = { b: 'stamp', f: 'bucket', e: 'eraser', r: 'select', i: 'pick', g: 'fence', l: 'building' };
       if (!ctrl && shortcuts[event.key.toLowerCase()]) { event.preventDefault(); this.setTool(shortcuts[event.key.toLowerCase()]); return; }
     }
     const distance = 80 / this.camera.zoom;
@@ -762,7 +769,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     const x = this.camera.x + (event.clientX - rect.left - this.viewport.width / 2) / this.camera.zoom;
     const y = this.camera.y + (event.clientY - rect.top - this.viewport.height / 2) / this.camera.zoom;
     try {
-      const commands = tilezedComposition(this.scene!, this.images, this.buildings?.compositionSprites ?? [], this.camera, this.viewport);
+      const commands = tilezedComposition(this.scene!, this.images, this.buildings?.compositionSprites ?? [], this.camera, this.viewport, this.onlyLevel);
       const hit = pickTilezedComposition(commands, x, y);
       const buildingTile = hit?.sheet !== undefined ? { sheet: hit.sheet, index: hit.index! }
         : hit?.building ? await this.buildings?.pickTile(x, y) : undefined;
@@ -1028,7 +1035,21 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     if (!this.buildingMenu?.nativeElement.contains(event.target as Node)) this.closeContextMenu();
   }
 
+  private highlightLevelKey(event: KeyboardEvent): boolean {
+    if (!this.scene || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || isTextEditing(event)
+      || this.layerDialog?.nativeElement.open || event.key.toLowerCase() !== 'h') return false;
+    event.preventDefault();
+    if (!event.repeat) {
+      this.highlightCurrentLevel = !this.highlightCurrentLevel;
+      localStorage.setItem(HIGHLIGHT_LEVEL_KEY, this.highlightCurrentLevel ? '1' : '0');
+      this.pickRequest++;
+      this.requestDraw();
+    }
+    return true;
+  }
+
   @HostListener('document:keydown', ['$event']) contextMenuKey(event: KeyboardEvent): void {
+    if (this.highlightLevelKey(event)) return;
     if (this.layerDialog?.nativeElement.open) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') event.preventDefault();
       return;
@@ -1104,6 +1125,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
           const target = this.canvas.nativeElement;
           let terrain = this.terrain;
           if (!terrain || terrain.scene !== this.scene || terrain.images !== this.images || terrain.camera !== this.camera ||
+              terrain.onlyLevel !== this.onlyLevel ||
               terrain.buildings !== this.buildings || terrain.buildingRevision !== (this.buildings?.revision ?? 0) ||
               terrain.width !== target.width || terrain.height !== target.height || terrain.pixelRatio !== this.pixelRatio) {
             const canvas = terrain?.canvas ?? document.createElement('canvas');
@@ -1111,18 +1133,20 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
             canvas.height = target.height;
             const context = canvas.getContext('2d');
             if (!context) return;
-            const commands = tilezedComposition(this.scene, this.images, this.buildings?.compositionSprites ?? [], this.camera, this.viewport);
+            const commands = tilezedComposition(this.scene, this.images, this.buildings?.compositionSprites ?? [], this.camera, this.viewport, this.onlyLevel);
             drawTilezedComposition(context, commands, this.camera, this.viewport, this.pixelRatio);
             terrain = this.terrain = { canvas, commands, buildings: this.buildings, buildingRevision: this.buildings?.revision ?? 0,
               scene: this.scene, images: this.images, camera: this.camera,
-              width: target.width, height: target.height, pixelRatio: this.pixelRatio };
+              width: target.width, height: target.height, pixelRatio: this.pixelRatio, onlyLevel: this.onlyLevel };
           }
           this.context.setTransform(1, 0, 0, 1, 0, 0);
           this.context.globalAlpha = 1;
           this.context.drawImage(terrain.canvas, 0, 0);
           this.context.imageSmoothingEnabled = false;
           applyTilezedCamera(this.context, this.camera, this.viewport, this.pixelRatio);
-          drawTilezedOverlays(this.context, this.scene.map, this.allLots, this.zones,
+          drawTilezedOverlays(this.context, this.scene.map,
+            this.allLots.filter(lot => this.onlyLevel === undefined || lot.level === this.onlyLevel),
+            this.zones.filter(zone => this.onlyLevel === undefined || zone.level === this.onlyLevel),
             this.camera, this.viewport, { lots: this.showLotOutlines, zones: this.showZones });
           this.drawEditOverlay(this.context);
         }
