@@ -9,10 +9,12 @@ export interface TilezedBounds { left: number; right: number; top: number; botto
 export interface TilezedImage { bitmap: ImageBitmap; layout: TilezedSheetLayout; }
 export type TilezedLayerPass = 'all' | 'belowLots' | 'aboveLots';
 
-/** Layer names are normalized to include their level when a TMX is read. */
-export function tilezedLayerAboveLots(name: string): boolean { return /^(?:\d+_)?AboveLots$/.test(name); }
-function layersForPass(scene: TilezedScene, pass: TilezedLayerPass) {
-  return pass === 'all' ? scene.layers : scene.layers.filter(layer => tilezedLayerAboveLots(layer.name) === (pass === 'aboveLots'));
+/** CompositeLayerGroup::orderedCellsAt reserves names containing "AboveLot". */
+export function tilezedLayerAboveLots(name: string): boolean { return name.includes('AboveLot'); }
+export function tilezedLayersForPass(scene: TilezedScene, pass: TilezedLayerPass) {
+  const normal = scene.layers.filter(layer => !tilezedLayerAboveLots(layer.name));
+  const aboveLots = scene.layers.filter(layer => tilezedLayerAboveLots(layer.name));
+  return pass === 'all' ? [...normal, ...aboveLots] : pass === 'aboveLots' ? aboveLots : normal;
 }
 
 export function tilezedBounds(map: TilezedMap): TilezedBounds {
@@ -55,7 +57,7 @@ export function zoomTilezedCamera(camera: TilezedCamera, bounds: TilezedBounds, 
   return constrainTilezedCamera({ x, y, zoom }, bounds, viewport);
 }
 
-interface Sprite {
+export interface Sprite {
   image: TilezedImage;
   sourceX: number;
   sourceY: number;
@@ -63,7 +65,7 @@ interface Sprite {
   height: number;
 }
 
-function spriteForGid(gid: number, map: TilezedMap, images: ReadonlyMap<number, TilezedImage>): Sprite | null {
+export function spriteForGid(gid: number, map: TilezedMap, images: ReadonlyMap<number, TilezedImage>): Sprite | null {
   const tileset = tilesetForGid(map.tilesets, gid);
   const image = tileset ? images.get(tileset.firstGid) : undefined;
   if (!tileset || !image) return null;
@@ -78,7 +80,7 @@ function spriteForGid(gid: number, map: TilezedMap, images: ReadonlyMap<number, 
 export function pickTilezedTile(scene: TilezedScene, images: ReadonlyMap<number, TilezedImage>, worldX: number, worldY: number, pass: TilezedLayerPass = 'all'):
   { gid: number; layer: string } | undefined {
   const { map } = scene, hw = map.tileWidth / 2, hh = map.tileHeight / 2, origin = map.height * hw;
-  const layers = layersForPass(scene, pass);
+  const layers = tilezedLayersForPass(scene, pass);
   const maxWidth = Math.max(map.tileWidth, ...map.tilesets.map(sheet => sheet.tileWidth));
   const maxHeight = Math.max(map.tileHeight, ...map.tilesets.map(sheet => sheet.tileHeight));
   const sample = document.createElement('canvas'); sample.width = sample.height = 1;
@@ -141,7 +143,7 @@ export function drawTilezedScene(context: CanvasRenderingContext2D, scene: Tilez
                                  images: Map<number, TilezedImage>, camera: TilezedCamera,
                                  viewport: TilezedViewport, pixelRatio: number, pass: TilezedLayerPass = 'all'): void {
   const { map } = scene;
-  const layers = layersForPass(scene, pass);
+  const layers = tilezedLayersForPass(scene, pass);
   context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   context.globalAlpha = 1;
   if (pass === 'aboveLots') context.clearRect(0, 0, viewport.width, viewport.height);

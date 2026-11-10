@@ -1,0 +1,17 @@
+:host { display: block; min-height: 0; overflow: auto; color: #e2e2e5; font-size: 12px; }
+.filter, .hint, nav { margin: 10px; }
+input { box-sizing: border-box; width: 100%; padding: 8px; border: 1px solid #626973; background: #23262b; color: inherit; }
+.hint { color: #b4bbc4; }
+.building-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px; }
+button { border: 1px solid #626973; background: #292d33; color: inherit; padding: 8px; cursor: pointer; }
+button:focus-visible { outline: 2px solid #83c9ff; outline-offset: -2px; }
+button.selected { border-color: #83c9ff; background: #29445c; }
+button:disabled { cursor: default; opacity: .65; }
+.building-grid img, .placeholder { width: 100%; height: 110px; object-fit: contain; display: block; image-rendering: pixelated; }
+.placeholder { display: grid; place-content: center; }
+.path, .selected-preview strong { display: block; overflow-wrap: anywhere; }
+small { color: #b4bbc4; }
+.selected-preview { padding: 10px; border-bottom: 1px solid #626973; }
+.selected-preview img { width: 100%; height: 210px; object-fit: contain; image-rendering: pixelated; }
+.selected-preview span { display: block; color: #b4bbc4; }
+nav { display: flex; justify-content: space-between; align-items: center; gap: 5px; }

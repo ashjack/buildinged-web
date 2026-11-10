@@ -137,5 +137,20 @@ export async function resolveTilezedProject(
     width: 1, height: 1, cellSize: 300, bitmaps: [], objectGroups: [], lotCount: lots.length, objectCount: 0, warnings: [],
     cells: new Map([['0,0', { x: 0, y: 0, map: '', lots, zones: [], objectCount: 0, featureCount: 0 }]]),
   };
-  return resolveWorldedProject(selected, mapFile, world);
+  const project = await resolveWorldedProject(selected, mapFile, world);
+  const mapText = await mapFile.text();
+  const source = (await Promise.all(selected.filter(file => file.webkitRelativePath && file.name.toLowerCase() === mapFile.name.toLowerCase() && file.size === mapFile.size)
+    .map(async file => await file.text() === mapText ? file : undefined))).find(file => !!file)!;
+  const base = source.webkitRelativePath.replace(/\\/g, '/').split('/').slice(0, -1);
+  const included = new Set(project.files.values());
+  for (const file of selected) {
+    if (included.has(file) || !/\.tbx$/i.test(file.name) || !file.webkitRelativePath) continue;
+    const parts = file.webkitRelativePath.replace(/\\/g, '/').split('/');
+    let common = 0;
+    while (common < base.length && common < parts.length && base[common] === parts[common]) common++;
+    if (!common) continue;
+    const path = worldedReferenceKey([...Array(base.length - common).fill('..'), ...parts.slice(common)].join('/'));
+    if (path && !project.files.has(path)) project.files.set(path, file);
+  }
+  return project;
 }

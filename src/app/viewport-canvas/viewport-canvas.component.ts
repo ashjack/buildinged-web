@@ -164,8 +164,15 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     });
 
     let documentId = -1;
+    let areaSize = '';
     this.store.select(fromRoot.getDocumentProjection).pipe(takeUntil(this.unsubscribe)).subscribe(document => {
       this.cancelGesture();
+      const nextSize = document.building ? `${document.building.width},${document.building.height}` : '';
+      if (areaSize !== nextSize) {
+        areaSize = nextSize;
+        this.selectedTool.reset();
+        this.cameraInitialized = false;
+      }
       if (documentId !== document.documentId) {
         documentId = document.documentId; this.selectedTool.reset();
         this.cameraInitialized = false;
@@ -258,7 +265,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
       this.currentHoverCoordSegments = {edge: closestEdge ?? '', corner: closestCorner ?? ''}
     }
 
-    else if(this.currentHoverCoords.x == x && this.currentHoverCoords.y == y && !(this.selectedTool instanceof ToolWall) && !(this.selectedTool instanceof ToolStairs) && !(this.selectedTool instanceof ToolRoof))
+    else if(this.currentHoverCoords.x == x && this.currentHoverCoords.y == y && !(this.selectedTool instanceof ToolWall) && !(this.selectedTool instanceof ToolStairs) && !(this.selectedTool instanceof ToolRoof) && !(this.selectedTool instanceof ToolFurniture))
     {
       return;
     }
@@ -582,6 +589,11 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   drawOverlay() {
+    if (this.selectedTool instanceof ToolFurniture && this.selectedTool.previewObject?.level === this.gridService.getSelectedLevel()) {
+      const object = this.selectedTool.previewObject;
+      this.drawOverlayBlock(object.x, object.y, object.length ?? 0, object.width ?? 0,
+        '#1d1aeb60', '#ffffff30', object.orient, object.type);
+    }
     for (const overlay of this.selectedTool.overlays) {
       if (!this.ctx || !overlay.points.length) continue;
       this.ctx.beginPath(); this.ctx.setLineDash([]);
@@ -1251,7 +1263,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     if(nearestEdgeIndex == -1)
     {
       this.selectedTool.pointerPosition = undefined;
-      if (!this.selectedTool.isDragging && (this.selectedTool instanceof ToolWall || this.selectedTool instanceof ToolStairs || this.selectedTool instanceof ToolRoof)) this.selectedTool.cancel();
+      if (!this.selectedTool.isDragging && (this.selectedTool instanceof ToolWall || this.selectedTool instanceof ToolStairs || this.selectedTool instanceof ToolRoof || this.selectedTool instanceof ToolFurniture)) this.selectedTool.cancel();
       canvas.style.cursor = 'default';
       this.currentHoverObject = undefined;
       this.currentHoverOverlay = undefined;

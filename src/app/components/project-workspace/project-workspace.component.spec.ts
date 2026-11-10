@@ -29,7 +29,7 @@ describe('Project workspace pages', () => {
       { id: 'z', path: 'z/hall.tbx', size: 10 }, { id: 'a10', path: 'a/house10.tbx', size: 10 },
       { id: 'map', path: 'maps/cell.tmx', size: 10 }, { id: 'a2', path: 'a/house2.TBX', size: 10 }
     ] };
-  const configure = (role: Project['role'] = 'contributor', view = 'tasks'): void => {
+  const configure = (role: Project['role'] = 'contributor', view = 'tasks', creation?: { worldBuilding?: string }): void => {
     api = jasmine.createSpyObj<ProjectApiService>('ProjectApiService', ['project', 'tasks', 'builds', 'task', 'contributions', 'members', 'request']);
     api.project.and.resolveTo({ ...project, role });
     api.tasks.and.resolveTo([task]);
@@ -42,6 +42,7 @@ describe('Project workspace pages', () => {
     worlds.file.and.resolveTo(new File(['<building version="3"><floor/></building>'], 'house.tbx'));
     previews = jasmine.createSpyObj('BuildingPreviewService', ['preview']);
     const params = convertToParamMap({ projectId: 'project', ...(taskId ? { taskId } : {}) });
+    const query = convertToParamMap({ view, ...(creation?.worldBuilding !== undefined ? { worldBuilding: creation.worldBuilding } : {}) });
     TestBed.configureTestingModule({
       declarations: [ProjectWorkspaceComponent], imports: [CommonModule, FormsModule, RouterTestingModule],
       providers: [
@@ -50,7 +51,8 @@ describe('Project workspace pages', () => {
         { provide: ProjectApiService, useValue: api },
         { provide: ProjectWorldService, useValue: worlds },
         { provide: BuildingPreviewService, useValue: previews },
-        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: params, queryParamMap: convertToParamMap({ view }) }, paramMap: of(params) } }
+        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: params, queryParamMap: query,
+          data: creation ? { createTask: true } : {} }, paramMap: of(params), queryParamMap: of(query) } }
       ]
     });
   };
@@ -60,6 +62,7 @@ describe('Project workspace pages', () => {
     fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
     const text = fixture.nativeElement.textContent;
     expect(text).toContain('Make shop tiles');
+    expect(fixture.nativeElement.querySelector('[aria-labelledby="builds-title"]')).not.toBeNull();
     expect(text).toContain('Nobody owns the task exclusively');
     expect(text).not.toContain('Project access');
     expect(text).not.toContain('Create a task');
@@ -70,6 +73,7 @@ describe('Project workspace pages', () => {
     const fixture = TestBed.createComponent(ProjectWorkspaceComponent);
     fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Project access');
+    expect(fixture.nativeElement.querySelector('[aria-labelledby="builds-title"]')).not.toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Create a task');
     expect(api.members).toHaveBeenCalledWith('project');
   });
@@ -81,6 +85,7 @@ describe('Project workspace pages', () => {
     const fixture = TestBed.createComponent(ProjectWorkspaceComponent);
     fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('a[href="/worlded/project/project"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[aria-labelledby="builds-title"]')).toBeNull();
     expect(fixture.nativeElement.textContent).not.toContain('World buildings');
     expect(fixture.nativeElement.textContent).not.toContain('Project access');
     expect(fixture.nativeElement.textContent).not.toContain('Create a task');
@@ -102,6 +107,7 @@ describe('Project workspace pages', () => {
     expect(worlds.resources).not.toHaveBeenCalled();
     expect(fixture.nativeElement.querySelector('.building-row').textContent).not.toContain('Create task');
     expect(fixture.nativeElement.querySelector('.building-row').textContent).not.toContain('Edit building');
+    expect(fixture.nativeElement.querySelector('a[href="/projects/project/world-buildings/new"]')).toBeNull();
     component.buildingSearch = 'HOUSE';
     expect(component.visibleBuildings.map(building => building.id)).toEqual(['a2', 'a10']);
     component.worldBuildings = Array.from({ length: 125 }, (_, i) => ({ id: `${i}`, path: `folder/${i}.tbx`, size: 1 }));
@@ -115,6 +121,7 @@ describe('Project workspace pages', () => {
     taskId = null; configure('owner', 'buildings');
     const fixture = TestBed.createComponent(ProjectWorkspaceComponent);
     fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('a[href="/projects/project/world-buildings/new"]')).not.toBeNull();
     const links = [...fixture.nativeElement.querySelectorAll('.building-row a')].filter((link: any) => link.textContent === 'Edit building') as HTMLAnchorElement[];
     expect(links.length).toBe(3);
     expect(decodeURIComponent(links[0].getAttribute('href')!)).toBe('/projects/project/world-buildings/a/house2.TBX/edit');
@@ -175,6 +182,48 @@ describe('Project workspace pages', () => {
       sourceBuildId: 'pinned', type: 'furnish', requirements: 'Furnish all floors'
     }));
     expect(navigate).toHaveBeenCalledWith(['/projects', 'project', 'tasks', 'created']);
+  });
+
+  it('opens task creation with the exact world building selected from the route without creating anything', async () => {
+    taskId = null; configure('reviewer', 'tasks', { worldBuilding: 'a/house2.TBX' });
+    const fixture = TestBed.createComponent(ProjectWorkspaceComponent);
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    const component = fixture.componentInstance;
+    expect(component.showTaskForm).toBeTrue(); expect(component.task).toBeUndefined();
+    expect(component.draftWorldBuilding?.id).toBe('a2');
+    expect(component.draft.title).toBe('Furnish house2');
+    expect(fixture.nativeElement.querySelector('.source-world-path').textContent).toContain('a/house2.TBX');
+    expect(worlds.world).toHaveBeenCalledOnceWith('project');
+    expect(worlds.file).not.toHaveBeenCalled(); expect(worlds.resources).not.toHaveBeenCalled();
+    expect(api.task).not.toHaveBeenCalled(); expect(api.request).not.toHaveBeenCalled();
+  });
+
+  it('shows an error when the linked world building is no longer available', async () => {
+    taskId = null; configure('owner', 'tasks', { worldBuilding: 'removed.tbx' });
+    const fixture = TestBed.createComponent(ProjectWorkspaceComponent);
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    expect(fixture.componentInstance.error).toContain('no longer available');
+    expect(fixture.componentInstance.showTaskForm).toBeFalse();
+    expect(fixture.componentInstance.draftWorldBuilding).toBeUndefined();
+    expect(api.request).not.toHaveBeenCalled();
+  });
+
+  it('does not open linked task creation for someone without project management permission', async () => {
+    taskId = null; configure('contributor', 'tasks', { worldBuilding: 'z/hall.tbx' });
+    const fixture = TestBed.createComponent(ProjectWorkspaceComponent);
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    expect(fixture.componentInstance.error).toContain('permission to create tasks');
+    expect(fixture.componentInstance.showTaskForm).toBeFalse();
+    expect(worlds.world).not.toHaveBeenCalled(); expect(api.request).not.toHaveBeenCalled();
+  });
+
+  it('supports the task creation route without a world building source', async () => {
+    taskId = null; configure('owner', 'tasks', {});
+    const fixture = TestBed.createComponent(ProjectWorkspaceComponent);
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    expect(fixture.componentInstance.showTaskForm).toBeTrue();
+    expect(fixture.nativeElement.querySelector('#task-form-title').textContent).toBe('New task');
+    expect(worlds.world).not.toHaveBeenCalled(); expect(api.task).not.toHaveBeenCalled();
   });
 
   it('retains the brief and reuses a pinned building when task creation fails and is retried', async () => {

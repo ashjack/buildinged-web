@@ -1,15 +1,80 @@
-import { TilezedMap, TilezedTileset } from './tilezed-map';
+import { readTilezedMap, TilezedMap, TilezedTileset } from './tilezed-map';
 import {
   constrainTilezedCamera, drawTilezedScene, drawTilezedStamp, fitTilezedCamera, TilezedBounds,
-  TilezedCamera, TilezedImage, zoomTilezedCamera, pickTilezedTile, tilezedLayerAboveLots,
+  TilezedCamera, TilezedImage, zoomTilezedCamera, pickTilezedTile, tilezedLayerAboveLots, tilezedLayersForPass,
 } from './tilezed-renderer';
-import { TilezedScene } from './tilezed-terrain';
+import { generateTilezedScene, TilezedScene } from './tilezed-terrain';
+import { TilezedEditDocument } from './tilezed-edit';
 
 describe('TileZed canvas navigation and rendering', () => {
+  it('draws and picks the newly raised layer and restores the original order on undo', async () => {
+    const scene = sceneFor(1, 1, Uint32Array.of(1));
+    scene.layers.push({ name: '0_Detail', gids: Uint32Array.of(2), visible: true, opacity: 1 });
+    const source = '<map orientation="levelisometric" width="1" height="1" tilewidth="64" tileheight="32">' +
+      '<layer name="0_Floor"><data encoding="csv">1</data></layer><layer name="0_Detail"><data encoding="csv">2</data></layer></map>';
+    const editor = new TilezedEditDocument(source, scene);
+    const sheet = document.createElement('canvas'); sheet.width = sheet.height = 128;
+    const fill = sheet.getContext('2d')!;
+    fill.fillStyle = '#ff0000'; fill.fillRect(0, 0, 64, 128);
+    fill.fillStyle = '#0000ff'; fill.fillRect(64, 0, 64, 128);
+    const bitmap = await createImageBitmap(sheet);
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 128;
+    const context = canvas.getContext('2d')!, images = new Map([[1, { bitmap, layout: { tileWidth: 64, tileHeight: 128 } }]]);
+    const render = () => {
+      drawTilezedScene(context, editor.scene, images, { x: 32, y: -32, zoom: 1 }, { width: 128, height: 128 }, 1);
+      return [...context.getImageData(40, 64, 1, 1).data];
+    };
+    try {
+      expect(render()).toEqual([0, 0, 255, 255]);
+      expect(pickTilezedTile(editor.scene, images, 10, -50)?.layer).toBe('0_Detail');
+      editor.moveLayer('0_Floor', 'up'); expect(render()).toEqual([255, 0, 0, 255]);
+      expect(pickTilezedTile(editor.scene, images, 10, -50)?.layer).toBe('0_Floor');
+      editor.undo(); expect(render()).toEqual([0, 0, 255, 255]);
+    } finally { bitmap.close(); }
+  });
   it('recognizes AboveLots with or without its normalized level prefix', () => {
     expect(tilezedLayerAboveLots('AboveLots')).toBeTrue();
     expect(tilezedLayerAboveLots('0_AboveLots')).toBeTrue();
-    expect(tilezedLayerAboveLots('0_AboveLotsExtra')).toBeFalse();
+    expect(tilezedLayerAboveLots('0_AboveLotsExtra')).toBeTrue();
+    expect(tilezedLayerAboveLots('0_AboveLot')).toBeTrue();
+    expect(tilezedLayerAboveLots('0_Vegetation')).toBeFalse();
+    expect(tilezedLayerAboveLots('0_abovelots')).toBeFalse();
+  });
+  it('matches the native per-square ordinary/building/AboveLot order independently of list position', () => {
+    const scene = sceneFor(1, 1, Uint32Array.of(1));
+    const layer = (name: string) => ({ name, gids: Uint32Array.of(1), visible: true, opacity: 1 });
+    scene.layers.splice(0, scene.layers.length, layer('0_Floor'), layer('0_AboveLots'), layer('0_Vegetation'), layer('0_AboveLot2'), layer('0_Objects'));
+    expect(tilezedLayersForPass(scene, 'belowLots').map(layer => layer.name)).toEqual(['0_Floor', '0_Vegetation', '0_Objects']);
+    expect(tilezedLayersForPass(scene, 'aboveLots').map(layer => layer.name)).toEqual(['0_AboveLots', '0_AboveLot2']);
+    expect(tilezedLayersForPass(scene, 'all').map(layer => layer.name)).toEqual(['0_Floor', '0_Vegetation', '0_Objects', '0_AboveLots', '0_AboveLot2']);
+  });
+  it('keeps visible AboveLots over a lot and over vegetation even when vegetation is higher in the layer list', async () => {
+    const scene = sceneFor(1, 1, Uint32Array.of(1));
+    scene.layers.push({ name: '0_AboveLots', gids: Uint32Array.of(2), visible: true, opacity: 1 },
+      { name: '0_Vegetation', gids: Uint32Array.of(1), visible: true, opacity: 1 });
+    const sheet = document.createElement('canvas'); sheet.width = sheet.height = 128;
+    const fill = sheet.getContext('2d')!;
+    fill.fillStyle = '#ff0000'; fill.fillRect(0, 0, 64, 128);
+    fill.fillStyle = '#0000ff'; fill.fillRect(64, 0, 64, 128);
+    const bitmap = await createImageBitmap(sheet);
+    const canvas = document.createElement('canvas'), foreground = document.createElement('canvas');
+    canvas.width = canvas.height = foreground.width = foreground.height = 128;
+    const context = canvas.getContext('2d')!, images = new Map([[1, { bitmap, layout: { tileWidth: 64, tileHeight: 128 } }]]);
+    const camera = { x: 32, y: -32, zoom: 1 }, viewport = { width: 128, height: 128 };
+    try {
+      drawTilezedScene(context, scene, images, camera, viewport, 1);
+      expect([...context.getImageData(40, 64, 1, 1).data]).toEqual([0, 0, 255, 255]);
+      expect(pickTilezedTile(scene, images, 10, -50)?.layer).toBe('0_AboveLots');
+      drawTilezedScene(context, scene, images, camera, viewport, 1, 'belowLots');
+      context.setTransform(1, 0, 0, 1, 0, 0); context.fillStyle = '#00ff00'; context.fillRect(0, 0, 128, 128);
+      drawTilezedScene(foreground.getContext('2d')!, scene, images, camera, viewport, 1, 'aboveLots');
+      context.drawImage(foreground, 0, 0);
+      expect([...context.getImageData(40, 64, 1, 1).data]).toEqual([0, 0, 255, 255]);
+      scene.layers[1].visible = false;
+      drawTilezedScene(foreground.getContext('2d')!, scene, images, camera, viewport, 1, 'aboveLots');
+      context.fillStyle = '#00ff00'; context.fillRect(0, 0, 128, 128); context.drawImage(foreground, 0, 0);
+      expect([...context.getImageData(40, 64, 1, 1).data]).toEqual([0, 255, 0, 255]);
+    } finally { bitmap.close(); }
   });
   it('separates AboveLots from terrain and preserves transparent pixels and layer opacity', async () => {
     const canvas = document.createElement('canvas'); canvas.width = canvas.height = 128;
@@ -19,7 +84,7 @@ describe('TileZed canvas navigation and rendering', () => {
     fill.fillStyle = '#0000ff'; fill.fillRect(64, 0, 32, 128);
     const bitmap = await createImageBitmap(source);
     const scene = sceneFor(1, 1, Uint32Array.of(1));
-    scene.layers.unshift({ name: '0_AboveLots', gids: Uint32Array.of(2), visible: true, opacity: 0.5 });
+    scene.layers.push({ name: '0_AboveLots', gids: Uint32Array.of(2), visible: true, opacity: 0.5 });
     const images = new Map([[1, { bitmap, layout: { tileWidth: 64, tileHeight: 128 } }]]);
     const camera = { x: 32, y: -32, zoom: 1 }, viewport = { width: 128, height: 128 };
     const context = canvas.getContext('2d')!;
@@ -32,10 +97,46 @@ describe('TileZed canvas navigation and rendering', () => {
       expect(pickTilezedTile(scene, images, 10, -50, 'aboveLots')).toEqual({ gid: 2, layer: '0_AboveLots' });
       expect(pickTilezedTile(scene, images, 40, -50, 'aboveLots')).toBeUndefined();
       expect(pickTilezedTile(scene, images, 10, -50, 'belowLots')?.gid).toBe(1);
-      scene.layers[0].visible = false;
+      scene.layers[1].visible = false;
       drawTilezedScene(context, scene, images, camera, viewport, 1, 'aboveLots');
       expect(context.getImageData(40, 64, 1, 1).data[3]).toBe(0);
       expect(pickTilezedTile(scene, images, 10, -50, 'aboveLots')).toBeUndefined();
+    } finally { bitmap.close(); }
+  });
+  it('keeps vegetation below lots after raising it past a hidden AboveLots layer and reopening', async () => {
+    const source = '<map orientation="levelisometric" width="1" height="1" tilewidth="64" tileheight="32">' +
+      '<tileset firstgid="1" name="test" tilewidth="64" tileheight="128"><image source="test.png" width="128" height="128"/></tileset>' +
+      '<layer name="0_Floor" width="1" height="1"><data encoding="csv">1</data></layer>' +
+      '<layer name="0_Vegetation" width="1" height="1"><data encoding="csv">2</data></layer>' +
+      '<layer name="0_AboveLots" width="1" height="1" visible="0"><data encoding="csv">0</data></layer></map>';
+    const editor = new TilezedEditDocument(source, generateTilezedScene(await readTilezedMap(source)));
+    const sheet = document.createElement('canvas'); sheet.width = sheet.height = 128;
+    const fill = sheet.getContext('2d')!;
+    fill.fillStyle = '#ff0000'; fill.fillRect(0, 0, 64, 128);
+    fill.fillStyle = '#0000ff'; fill.fillRect(64, 0, 64, 128);
+    const bitmap = await createImageBitmap(sheet);
+    const canvas = document.createElement('canvas'), foreground = document.createElement('canvas');
+    canvas.width = canvas.height = foreground.width = foreground.height = 128;
+    const context = canvas.getContext('2d')!, images = new Map([[1, { bitmap, layout: { tileWidth: 64, tileHeight: 128 } }]]);
+    const render = (scene: TilezedScene) => {
+      const camera = { x: 32, y: -32, zoom: 1 }, viewport = { width: 128, height: 128 };
+      drawTilezedScene(context, scene, images, camera, viewport, 1, 'belowLots');
+      context.setTransform(1, 0, 0, 1, 0, 0); context.fillStyle = '#00ff00'; context.fillRect(0, 0, 128, 128); // Building.
+      drawTilezedScene(foreground.getContext('2d')!, scene, images, camera, viewport, 1, 'aboveLots');
+      context.drawImage(foreground, 0, 0);
+      return [...context.getImageData(40, 64, 1, 1).data];
+    };
+    try {
+      expect(render(editor.scene)).toEqual([0, 255, 0, 255]);
+      expect(pickTilezedTile(editor.scene, images, 10, -50, 'aboveLots')).toBeUndefined();
+      editor.moveLayer('0_Vegetation', 'up');
+      expect(render(editor.scene)).toEqual([0, 255, 0, 255]);
+      expect(pickTilezedTile(editor.scene, images, 10, -50, 'aboveLots')).toBeUndefined();
+      expect(pickTilezedTile(editor.scene, images, 10, -50, 'belowLots')?.layer).toBe('0_Vegetation');
+      const reopened = generateTilezedScene(await readTilezedMap(await editor.serialize()));
+      expect(render(reopened)).toEqual([0, 255, 0, 255]);
+      editor.undo(); expect(render(editor.scene)).toEqual([0, 255, 0, 255]);
+      editor.redo(); expect(render(editor.scene)).toEqual([0, 255, 0, 255]);
     } finally { bitmap.close(); }
   });
   it('picks opaque image overhangs instead of the ground grid and skips transparent foreground pixels', async () => {

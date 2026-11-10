@@ -7,8 +7,11 @@ import { GUID } from './utils/guid';
 import { VisualFurniture } from "./models/furniture-window.models";
 import { SelectionEdit, TileCellEdit } from './utils/selection-edits';
 import { FurnishingAddition } from './utils/furnishing-edits';
+import { BuildingResize } from './utils/building-resize';
 
 export enum ActionTypes {
+    ResizeBuilding = '[Building] Resize Building',
+    CropBuildingToMinimum = '[Building] Crop to Minimum',
     ApplyFurnishing = '[Building] Auto furnish rooms',
     SetBuilding = '[Building] Set Building',
     ClearBuilding = '[Building] Clear Building',
@@ -96,6 +99,14 @@ export class RemoveObjects implements Action {
 }
 
 export class Undo implements Action { readonly type = ActionTypes.Undo; }
+export class ResizeBuilding implements Action {
+    readonly type = ActionTypes.ResizeBuilding;
+    constructor(public edit: BuildingResize, public level: number) { }
+}
+export class CropBuildingToMinimum implements Action {
+    readonly type = ActionTypes.CropBuildingToMinimum;
+    constructor(public level: number) { }
+}
 export class ApplyFurnishing implements Action {
     readonly type = ActionTypes.ApplyFurnishing;
     constructor(public expectedBuilding: Building, public additions: FurnishingAddition[]) { }
@@ -198,6 +209,8 @@ export class ScheduleRedraw implements Action {
 }
 
 export type ActionsUnion = 
+    ResizeBuilding |
+    CropBuildingToMinimum |
     ApplyFurnishing |
     SetBuildingMaterial |
     SetCurrentTool |

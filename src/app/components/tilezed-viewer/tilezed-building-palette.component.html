@@ -1,0 +1,17 @@
+<div class="filter"><input type="search" aria-label="Search buildings" placeholder="Search building paths" [value]="search" (input)="filter($any($event.target).value)"></div>
+<p class="hint">Choose a preview, then move over the map. Click to place; Escape to cancel. Changes are saved manually.</p>
+<section class="selected-preview" *ngIf="selected as building" aria-label="Selected building preview">
+  <img [src]="building.url" [alt]="building.path">
+  <strong>{{building.path}}</strong><span>{{building.choice?.width}} × {{building.choice?.height}} tiles · Level 0</span>
+  <details *ngIf="building.preview?.warnings?.length"><summary>Preview warnings</summary><ul><li *ngFor="let warning of building.preview!.warnings">{{warning}}</li></ul></details>
+</section>
+<div class="building-grid" aria-label="Available buildings">
+  <button *ngFor="let building of entries" type="button" [disabled]="disabled || !building.choice" [class.selected]="selected?.path === building.path"
+    [attr.aria-pressed]="selected?.path === building.path" [title]="building.error || building.path" (click)="select(building)">
+    <img *ngIf="building.url" [src]="building.url" alt="">
+    <span class="placeholder" *ngIf="!building.url">{{building.error ? 'Preview unavailable' : 'Rendering preview…'}}</span>
+    <span class="path">{{building.path}}</span><small *ngIf="building.choice">{{building.choice.width}} × {{building.choice.height}}</small>
+  </button>
+</div>
+<p class="hint" *ngIf="!matches.length">{{files.size ? 'No matching TBX buildings. Choose the project folder to include more buildings.' : 'Open a project cell or choose a project folder to browse its buildings.'}}</p>
+<nav aria-label="Building preview pages" *ngIf="pageCount > 1"><button type="button" (click)="turnPage(-1)" [disabled]="page === 0">Previous</button><span>{{page + 1}} / {{pageCount}} · {{matches.length}} buildings</span><button type="button" (click)="turnPage(1)" [disabled]="page + 1 >= pageCount">Next</button></nav>

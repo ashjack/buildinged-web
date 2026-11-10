@@ -10,6 +10,7 @@ import { editFloor } from './utils/floor-edits';
 import { editRoomDefinitions } from './utils/room-definitions';
 import { resolveObjectMaterials, setBuildingMaterial } from './utils/object-materials';
 import { addFurnishingObjects } from './utils/furnishing-edits';
+import { cropBuildingToMinimum, resizeBuilding } from './utils/building-resize';
 
 export interface State
 {
@@ -56,6 +57,8 @@ export const HISTORY_LIMIT = 100;
 
 function commandLabel(action: Actions.ActionsUnion): string {
     switch (action.type) {
+      case Actions.ActionTypes.ResizeBuilding: return 'Resize building';
+      case Actions.ActionTypes.CropBuildingToMinimum: return 'Crop building';
       case Actions.ActionTypes.ApplyFurnishing: return 'Auto furnish rooms';
       case Actions.ActionTypes.SetBuildingMaterial: return 'Change ' + action.field + ' tiles';
       case Actions.ActionTypes.EditRoomDefinitions: return 'Edit rooms';
@@ -106,6 +109,13 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
 
 function reduceState(state: State, action: Actions.ActionsUnion): State {
     switch (action.type) {
+      case Actions.ActionTypes.ResizeBuilding:
+      case Actions.ActionTypes.CropBuildingToMinimum: {
+        if (!state.building) return state;
+        const building = action.type === Actions.ActionTypes.ResizeBuilding
+            ? resizeBuilding(state.building, action.edit) : cropBuildingToMinimum(state.building);
+        return building === state.building ? state : { ...state, building };
+      }
       case Actions.ActionTypes.ApplyFurnishing: {
         if (!state.building || state.building !== action.expectedBuilding) return state;
         const building = addFurnishingObjects(state.building, action.additions);

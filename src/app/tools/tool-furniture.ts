@@ -1,9 +1,11 @@
-import { Building, SvgTile } from "../models/app.models";
+import { Building, Point, SvgObject, SvgTile } from "../models/app.models";
 import { GridService } from "../services/grid.service";
 import ToolDraw from "./tool-draw";
 import * as fromRoot from '../app.reducers';
 import { Store } from "@ngrx/store";
-import { eraseProjectedObjects, tileAreaBetween } from '../utils/tool-placement';
+import { canPlaceObject, eraseProjectedObjects, tileAreaBetween } from '../utils/tool-placement';
+import { furnitureDefinition, furnitureEntryForPlacement, furnitureEntrySize, registerFurniture, wallFurnitureFits } from '../utils/furniture-definition';
+import { generateBuildingSquares } from '../services/native-squares';
 import { VisualFurniture } from "../models/furniture-window.models";
 import { FurnitureService } from "../services/furniture.service";
 import { combineLatest, take } from "rxjs";
@@ -15,6 +17,12 @@ export default class ToolFurniture extends ToolDraw {
     selectedLevel: number = 0;
     private hoveredEdge = '';
     private gestureOrient = '';
+    private gestureAnchor?: Point;
+    previewObject?: SvgObject;
+    private wallPreview?: { building: Building; furniture: VisualFurniture; x: number; y: number; orient: string;
+        level: number; projection: ReturnType<typeof generateBuildingSquares> };
+
+    override cancel(): void { super.cancel(); this.gestureOrient = ''; this.gestureAnchor = undefined; this.previewObject = undefined; this.wallPreview = undefined; }
 
     constructor(private gridService: GridService,
                 private store: Store<fromRoot.State>,
@@ -33,21 +41,52 @@ export default class ToolFurniture extends ToolDraw {
         ]).pipe(take(1)).subscribe(([furniture, orient, building]) => {
             this.dragTiles = [];
             this.tileGhosts = [];
+            this.previewTiles = undefined;
+            this.previewObject = undefined;
             if (!furniture) return;
-            const facing = this.isDragging
-                ? this.dragOrientation(furniture, this.gestureOrient || orient, anchorX, anchorY, x, y)
-                : this.wallOrientation(building, furniture, orient, x, y);
-            furniture.entries.find(entry => entry.orient === facing)?.tiles.forEach(fTile => {
-                let layer = 'Furniture';
-                for (const [occupied, next] of [
-                    ['Furniture', 'Furniture2'], ['Furniture2', 'Furniture3'],
-                    ['Furniture3', 'Furniture4'], ['Furniture4', 'Furniture'],
-                ]) {
-                    if (this.gridService.getTileAt(anchorX + fTile.x, anchorY + fTile.y, this.selectedLevel, occupied)) layer = next;
+            if (!this.isDragging && !this.canHover(building, x, y)) return;
+            const placement = this.isDragging
+                ? { ...(this.gestureAnchor ?? { x: anchorX, y: anchorY }), orient: this.dragOrientation(furniture, this.gestureOrient || orient, anchorX, anchorY, x, y) }
+                : this.placement(building, furniture, orient, x, y);
+            if (furniture.layer === 'Walls' && building && this.key !== 'Control') {
+                const entry = furnitureEntryForPlacement(furniture, placement.orient);
+                if (!entry) return;
+                const size = furnitureEntrySize(entry);
+                if (!canPlaceObject(building, placement.x, placement.y, this.selectedLevel, size.width, size.height)
+                    || !wallFurnitureFits(building, placement.x, placement.y, placement.orient, size)) return;
+                const object = { uid: 'furniture-preview', type: 'furniture', x: placement.x, y: placement.y,
+                    orient: placement.orient };
+                const cached = this.wallPreview;
+                if (!cached || cached.building !== building || cached.furniture !== furniture || cached.x !== placement.x
+                    || cached.y !== placement.y || cached.orient !== placement.orient || cached.level !== this.selectedLevel) {
+                    const registered = registerFurniture(building.furniture, furnitureDefinition(furniture));
+                    const projection = generateBuildingSquares({ ...building, furniture: registered.furniture,
+                        floors: building.floors.map((floor, level) => level === this.selectedLevel ? { ...floor,
+                            objects: [...floor.objects, { ...object, FurnitureTiles: registered.index }] } : floor) });
+                    this.wallPreview = { building, furniture, ...placement, level: this.selectedLevel, projection };
                 }
-                this.dragTiles = [{ name: '', url: '', x: anchorX, y: anchorY, level: this.selectedLevel, layer: 'Walls' }];
+                const projection = this.wallPreview!.projection;
+                this.previewTiles = projection.tiles;
+                this.tileGhosts = this.previewTiles.filter(tile => tile.object === object.uid && tile.level === this.selectedLevel);
+                this.previewObject = projection.objects.find(item => item.uid === object.uid);
+                return;
+            }
+            const shifted = ['Walls', 'RoofCap', 'Frames', 'Doors'].includes(furniture.layer ?? '');
+            const dx = shifted && placement.orient === 'E' ? 1 : 0, dy = shifted && placement.orient === 'S' ? 1 : 0;
+            furnitureEntryForPlacement(furniture, placement.orient)?.tiles.forEach(fTile => {
+                const tx = placement.x + fTile.x + dx, ty = placement.y + fTile.y + dy;
+                let layer = furniture.layer || 'Furniture';
+                if (layer === 'Furniture') {
+                    for (const [occupied, next] of [
+                        ['Furniture', 'Furniture2'], ['Furniture2', 'Furniture3'],
+                        ['Furniture3', 'Furniture4'], ['Furniture4', 'Furniture'],
+                    ]) {
+                        if (this.gridService.getTileAt(tx, ty, this.selectedLevel, occupied)) layer = next;
+                    }
+                }
+                this.dragTiles = [{ name: '', url: '', x: placement.x + dx, y: placement.y + dy, level: this.selectedLevel, layer: 'Walls' }];
                 if (this.key !== 'Control') this.tileGhosts.push({
-                    name: fTile.name, url: fTile.url, x: anchorX + fTile.x, y: anchorY + fTile.y,
+                    name: fTile.name, url: fTile.url, x: tx, y: ty,
                     layer, level: this.selectedLevel, object: true,
                 });
             });
@@ -56,16 +95,20 @@ export default class ToolFurniture extends ToolDraw {
 
     override beginDrag(x: number, y: number): void {
         this.selectedLevel = this.gridService.getSelectedLevel();
-        this.startGesture(x, y, this.selectedLevel);
         combineLatest([
             this.store.select(fromRoot.getSelectedFurniture), this.store.select(fromRoot.getSelectedFurnitureOrient),
             this.store.select(fromRoot.getBuilding),
         ]).pipe(take(1)).subscribe(([furniture, orient, building]) => {
-            this.gestureOrient = furniture ? this.wallOrientation(building, furniture, orient, x, y) : orient;
+            if (!this.canHover(building, x, y)) { this.cancel(); return; }
+            this.startGesture(x, y, this.selectedLevel);
+            const placement = furniture ? this.placement(building, furniture, orient, x, y) : { x, y, orient };
+            this.gestureOrient = placement.orient; this.gestureAnchor = { x: placement.x, y: placement.y };
+            if (this.key !== 'Control') this.hoverTile(x, y, this.hoveredEdge);
         });
     }
     override endDrag(x: number, y: number): void {
         const initialOrient = this.gestureOrient;
+        const anchor = this.gestureAnchor;
         const start = this.finishGesture(this.gridService.getSelectedLevel());
         if (!start) return;
         if (this.key === 'Control') {
@@ -77,15 +120,47 @@ export default class ToolFurniture extends ToolDraw {
         ]).pipe(take(1)).subscribe(([furniture, orient]) => {
             if (!furniture) return;
             orient = this.dragOrientation(furniture, initialOrient || orient, start.x, start.y, x, y);
-            this.furnitureService.placeFurniture(start.x, start.y, start.level, orient, furniture);
+            this.furnitureService.placeFurniture(anchor?.x ?? start.x, anchor?.y ?? start.y, start.level, orient, furniture);
         });
     }
 
     private hasOrientation(furniture: VisualFurniture, orient: string): boolean {
-        return furniture.entries.some(entry => entry.orient === orient && entry.tiles.length > 0);
+        return !!furnitureEntryForPlacement(furniture, orient);
+    }
+
+    private canHover(building: Building | undefined, x: number, y: number): boolean {
+        return canPlaceObject(building, x, y, this.selectedLevel)
+            && (this.key === 'Control' || x < building!.width && y < building!.height);
+    }
+
+    private placement(building: Building | undefined, furniture: VisualFurniture, fallback: string, x: number, y: number) {
+        if (furniture.layer === 'Walls' && this.key !== 'Control') {
+            const edge = this.hoveredEdge;
+            const axis = ['W', 'E'].includes(edge) ? 'W' : 'N';
+            const onWall = ['W', 'N', 'E', 'S'].includes(edge) && this.wallAt(building,
+                x + (edge === 'E' ? 1 : 0), y + (edge === 'S' ? 1 : 0), axis);
+            const orient = onWall && this.hasOrientation(furniture, edge) ? edge : fallback;
+            const size = furnitureEntrySize(furnitureEntryForPlacement(furniture, orient));
+            const lineX = this.pointerPosition ? Math.round(this.pointerPosition.x) : x + (this.hoveredEdge === 'E' ? 1 : 0);
+            const lineY = this.pointerPosition ? Math.round(this.pointerPosition.y) : y + (this.hoveredEdge === 'S' ? 1 : 0);
+            // An existing wall determines the facing; empty grid lines use the sidebar choice.
+            const anchor = { x: ['W', 'E'].includes(orient) ? lineX - (orient === 'E' ? size.width : 0) : x,
+                y: ['N', 'S'].includes(orient) ? lineY - (orient === 'S' ? size.height : 0) : y };
+            // Fit larger pieces along the line without moving them to another line.
+            if (building && ['N', 'S'].includes(orient)) anchor.x = Math.min(anchor.x, building.width - size.width);
+            if (building && ['W', 'E'].includes(orient)) anchor.y = Math.min(anchor.y, building.height - size.height);
+            return { ...anchor, orient };
+        }
+        const wall = this.key === 'Control' ? '' : this.wallFacing(building, x, y);
+        const orient = this.wallOrientation(furniture, fallback, wall);
+        const size = furnitureEntrySize(furnitureEntryForPlacement(furniture, orient));
+        // FurnitureTool::updateCursorObject keeps the far end of a larger object on the hovered wall.
+        return { orient, x: x - (['E', 'NE', 'SE'].includes(wall) ? size.width - 1 : 0),
+            y: y - (['S', 'SW', 'SE'].includes(wall) ? size.height - 1 : 0) };
     }
 
     private dragOrientation(furniture: VisualFurniture, fallback: string, startX: number, startY: number, x: number, y: number): string {
+        if (furniture.layer === 'Walls') return fallback;
         if (x === startX && y === startY) return fallback;
         const dx = (this.pointerPosition?.x ?? x + .5) - startX - .5;
         const dy = (this.pointerPosition?.y ?? y + .5) - startY - .5;
@@ -96,10 +171,9 @@ export default class ToolFurniture extends ToolDraw {
         return this.hasOrientation(furniture, cardinal) ? cardinal : fallback;
     }
 
-    private wallOrientation(building: Building | undefined, furniture: VisualFurniture, fallback: string, x: number, y: number): string {
-        if (this.key === 'Control') return fallback;
-        const wall = (cx: number, cy: number, axis: string) => ['Walls', 'Walls2'].some(layer => {
-            const tile = this.gridService.getTileAt(cx, cy, this.selectedLevel, layer);
+    private wallAt(building: Building | undefined, x: number, y: number, axis: string): boolean {
+        return ['Walls', 'Walls2'].some(layer => {
+            const tile = this.gridService.getTileAt(x, y, this.selectedLevel, layer);
             if (!tile) return false;
             const name = tile.name?.replace(/\.png$/i, '');
             const orientation = tile.orient || building?.entries.filter(entry => /walls$/.test(entry.category))
@@ -108,6 +182,10 @@ export default class ToolFurniture extends ToolDraw {
             if (axis === 'SE') return orientation === 'SE' || orientation === 'SouthEast';
             return orientation === axis || !!orientation?.startsWith(axis === 'W' ? 'West' : 'North');
         });
+    }
+
+    private wallFacing(building: Building | undefined, x: number, y: number): string {
+        const wall = (cx: number, cy: number, axis: string) => this.wallAt(building, cx, cy, axis);
         const north = wall(x, y, 'N'), west = wall(x, y, 'W');
         const east = wall(x + 1, y, 'W'), south = wall(x, y + 1, 'N');
         let facing = '';
@@ -118,6 +196,10 @@ export default class ToolFurniture extends ToolDraw {
         else if (east && south) facing = 'SE';
         else if (east) facing = 'E';
         else if (south) facing = 'S';
+        return facing;
+    }
+
+    private wallOrientation(furniture: VisualFurniture, fallback: string, facing: string): string {
         if (!facing) return fallback;
         if (facing.length === 2 && !(furniture.corners && this.hasOrientation(furniture, facing))) {
             const useHorizontal = facing[0] === 'N'

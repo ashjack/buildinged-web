@@ -325,7 +325,7 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
     }
     this.error = '';
     this.openingCell = true;
-    const buildingContext = this.workspace ? { lots: cell.lots, files: this.workspace.files, zones: cell.zones,
+    const buildingContext = this.workspace ? { lots: cell.lots.slice(), files: this.workspace.files, zones: cell.zones, cell: { x: cell.x, y: cell.y },
       ...(this.hosted && this.projectId ? { projectId: this.projectId, mapPath: cell.map.replace(/\\/g, '/'), worldRevision: this.worldRevision } : {}) } : undefined;
     this.handoff.send(file, buildingContext);
     try {

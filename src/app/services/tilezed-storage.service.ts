@@ -3,7 +3,7 @@ import Dexie, { Table } from 'dexie';
 import { copyLocalBlob, LOCAL_FILE_SNAPSHOT_VERSION } from '../utils/local-file-snapshot';
 import { TilezedBuildingContext } from './tilezed-handoff.service';
 import { worldedFileFor, worldedReferenceKey } from '../utils/worlded-files';
-import { BuildingPreview } from '../utils/building-preview';
+import { BuildingPreview, buildingPreviewBytes } from '../utils/building-preview';
 import { WorldedZone } from '../utils/worlded-world';
 
 interface StoredBuildingPreview extends BuildingPreview { key: string; lastUsed: number; }
@@ -74,20 +74,20 @@ export class TilezedStorageService extends Dexie {
       await this.transaction('rw', this.buildingPreviews, async () => {
         if (this.buildingPreviewBytes === undefined) {
           let total = 0;
-          await this.buildingPreviews.each(record => { total += record.blob.size; });
+          await this.buildingPreviews.each(record => { total += buildingPreviewBytes(record); });
           this.buildingPreviewBytes = total;
         }
         const previous = await this.buildingPreviews.get(key);
         await this.buildingPreviews.put({ ...preview, key, lastUsed: Date.now() });
-        this.buildingPreviewBytes += preview.blob.size - (previous?.blob.size ?? 0);
+        this.buildingPreviewBytes += buildingPreviewBytes(preview) - (previous ? buildingPreviewBytes(previous) : 0);
         // Large enough for a whole world's thumbnails, so sequential loads don't evict every entry.
         if (this.buildingPreviewBytes <= MAX_BUILDING_PREVIEW_BYTES) return;
         const records = await this.buildingPreviews.orderBy('lastUsed').toArray();
-        let bytes = records.reduce((sum, record) => sum + record.blob.size, 0);
+        let bytes = records.reduce((sum, record) => sum + buildingPreviewBytes(record), 0);
         const expired: string[] = [];
         for (const record of records) {
           if (bytes <= MAX_BUILDING_PREVIEW_BYTES) break;
-          bytes -= record.blob.size;
+          bytes -= buildingPreviewBytes(record);
           expired.push(record.key);
         }
         await this.buildingPreviews.bulkDelete(expired);

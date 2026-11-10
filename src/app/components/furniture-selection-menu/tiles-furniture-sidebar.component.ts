@@ -47,6 +47,8 @@ export class TilesFurnitureSidebarComponent implements OnInit, OnChanges, OnDest
   readonly categories = OBJECT_MATERIALS;
   readonly zooms = NATIVE_ZOOM_FACTORS;
   readonly key = roomEntryKey;
+  readonly trackGroup = (_: number, group: { name: string }): string => `${this.category}:${group.name}`;
+  readonly trackEntry = (_: number, entry: TileEntry | null): string => entry ? this.key(entry) : 'none';
   zoom = Number(localStorage.getItem('tileDockZoom')) || .5;
   category = '';
   furnitureGroup = localStorage.getItem('selectedFurnitureGroup') || 'Advertising';
@@ -112,6 +114,7 @@ export class TilesFurnitureSidebarComponent implements OnInit, OnChanges, OnDest
     const category = this.categories.find(item => item.category === this.category);
     const b = this.building;
     if (!category || !b) return null;
+    if (this.tool === 'tool-draw-room' && category.category === 'exterior_walls') return b.entries[b.ExteriorWall - 1] || null;
     if (category.wall && category.wall in this.settings.wallMaterials) return this.settings.wallMaterials[category.wall];
     const id = category.wall ? (this.settings[category.setting!] ??
       (category.room ? b.rooms[0]?.[category.room] : b[category.fallback!])) :
@@ -126,7 +129,9 @@ export class TilesFurnitureSidebarComponent implements OnInit, OnChanges, OnDest
     const category = this.categories.find(item => item.category === this.category);
     if (!category || !this.building || (entry && entry.category !== category.category)) return;
     if (!entry && ['roof_caps', 'roof_slopes'].includes(category.category)) return;
-    if (category.wall) {
+    if (this.tool === 'tool-draw-room' && category.category === 'exterior_walls') {
+      this.store.dispatch(new SetBuildingMaterial('ExteriorWall', entry, this.grid.getSelectedLevel()));
+    } else if (category.wall) {
       this.settings.wallMaterials = { ...this.settings.wallMaterials, [category.wall]: entry ? cloneRoomEntry(entry) : null };
     } else {
       if (category.field === 'Stairs') this.settings.stairs = null;

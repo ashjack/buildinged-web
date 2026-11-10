@@ -3,10 +3,11 @@ import * as fromRoot from '../app.reducers';
 import { Store } from '@ngrx/store';
 import { ScheduleRedraw, SetCurrentTool, TogglePopup } from '../app.actions';
 import { BuildingService } from '../services/building.service';
-import { Room } from '../models/app.models';
+import { Building, Room } from '../models/app.models';
 import { RoomService } from '../services/room.service';
 import { GridService } from '../services/grid.service';
-import { Undo, Redo, EditFloor } from '../app.actions';
+import { Undo, Redo, EditFloor, ResizeBuilding, CropBuildingToMinimum } from '../app.actions';
+import { BuildingResize, MAX_BUILDING_DIMENSION, minimumBuildingBounds, validBuildingResize } from '../utils/building-resize';
 import { RoofService } from '../services/roof.service';
 import { RoofOption } from '../services/roof-patterns';
 import { ROOF_TOOL_GROUPS, roofOptionIcon, roofToolGroup, RoofToolGroup } from '../utils/roof-toolbar';
@@ -22,6 +23,12 @@ import { EditorSessionService } from '../services/editor-session.service';
 })
 export class MenuComponent {
   @ViewChild('floorsDialog') floorsDialog: ElementRef<HTMLDialogElement>;
+  @ViewChild('resizeDialog') resizeDialog: ElementRef<HTMLDialogElement>;
+  readonly maxDimension = MAX_BUILDING_DIMENSION;
+  resize: BuildingResize = { width: 1, height: 1, offsetX: 0, offsetY: 0 };
+  resizeSource?: Building;
+  resizeMessage = '';
+  private resizeDrag?: { x: number; y: number; offsetX: number; offsetY: number };
   readonly roofGroups = ROOF_TOOL_GROUPS;
   readonly roofIcon = roofOptionIcon;
   readonly maxFloors = MAX_BUILDING_FLOORS;
@@ -96,7 +103,77 @@ export class MenuComponent {
   undo(): void { this.store.dispatch(new Undo()); }
   redo(): void { this.store.dispatch(new Redo()); }
 
+  get canResize(): boolean {
+    return !!this.floorCount && !this.session.busy && (!this.session.projectDocument || this.session.editable);
+  }
+  get validResize(): boolean {
+    return this.canResize && this.resizeSource === this.buildingService.building && validBuildingResize(this.resize)
+      && this.resize.offsetX >= this.offsetMin('X') && this.resize.offsetX <= this.offsetMax('X')
+      && this.resize.offsetY >= this.offsetMin('Y') && this.resize.offsetY <= this.offsetMax('Y');
+  }
+  offsetMin(axis: 'X' | 'Y'): number {
+    return Math.min(0, (axis === 'X' ? this.resize.width - (this.resizeSource?.width || 1) : this.resize.height - (this.resizeSource?.height || 1)) || 0);
+  }
+  offsetMax(axis: 'X' | 'Y'): number {
+    return Math.max(0, (axis === 'X' ? this.resize.width - (this.resizeSource?.width || 1) : this.resize.height - (this.resizeSource?.height || 1)) || 0);
+  }
+  clampResizeOffsets(): void {
+    this.resize.offsetX = Math.max(this.offsetMin('X'), Math.min(this.offsetMax('X'), this.resize.offsetX));
+    this.resize.offsetY = Math.max(this.offsetMin('Y'), Math.min(this.offsetMax('Y'), this.resize.offsetY));
+  }
+  get resizeWillCrop(): boolean {
+    const b = this.resizeSource, r = this.resize;
+    return !!b && (r.offsetX < 0 || r.offsetY < 0 || r.offsetX + b.width > r.width || r.offsetY + b.height > r.height);
+  }
+  get resizePreview() {
+    const b = this.resizeSource, r = this.resize;
+    const width = Math.max(1, Number(r.width) || 1), height = Math.max(1, Number(r.height) || 1);
+    const scale = Math.min(260 / Math.max(width, 2 * (b?.width || 1) - width),
+      150 / Math.max(height, 2 * (b?.height || 1) - height));
+    return { x: (280 - width * scale) / 2, y: (170 - height * scale) / 2, width: width * scale, height: height * scale, scale };
+  }
+  startResizeDrag(event: PointerEvent): void {
+    if (event.button !== 0 || !this.validResize) return;
+    (event.currentTarget as Element).setPointerCapture(event.pointerId);
+    this.resizeDrag = { x: event.clientX, y: event.clientY, offsetX: this.resize.offsetX, offsetY: this.resize.offsetY };
+    event.preventDefault();
+  }
+  moveResizeDrag(event: PointerEvent): void {
+    if (!this.resizeDrag) return;
+    const element = event.currentTarget as Element;
+    const scale = this.resizePreview.scale * element.getBoundingClientRect().width / 280;
+    this.resize.offsetX = this.resizeDrag.offsetX + Math.round((event.clientX - this.resizeDrag.x) / scale);
+    this.resize.offsetY = this.resizeDrag.offsetY + Math.round((event.clientY - this.resizeDrag.y) / scale);
+    this.clampResizeOffsets();
+  }
+  endResizeDrag(): void { this.resizeDrag = undefined; }
+  openResize(): void {
+    if (!this.canResize) return;
+    this.closeRoofMenu();
+    this.resizeSource = this.buildingService.building;
+    this.resize = { width: this.resizeSource.width, height: this.resizeSource.height, offsetX: 0, offsetY: 0 };
+    this.resizeMessage = '';
+    this.resizeDialog.nativeElement.showModal();
+  }
+  applyResize(): void {
+    if (!this.validResize) return;
+    if (this.resizeWillCrop && !window.confirm('Rooms, tiles, and objects outside the new building bounds will be cropped. Continue resizing?')) return;
+    this.store.dispatch(new ResizeBuilding({ ...this.resize }, this.selectedLevel));
+    this.resizeDialog.nativeElement.close();
+  }
+  cropToMinimum(): void {
+    if (!this.canResize) return;
+    const before = this.buildingService.building;
+    if (!minimumBuildingBounds(before)) { this.resizeMessage = 'There is no placed content to crop to.'; return; }
+    this.store.dispatch(new CropBuildingToMinimum(this.selectedLevel));
+    const after = this.buildingService.building;
+    const removed = before.floors.reduce((count, floor, index) => count + floor.objects.length - after.floors[index].objects.length, 0);
+    this.resizeMessage = after === before ? 'The area already fits the placed content.' : `Area cropped to ${after.width} × ${after.height} tiles.`;
+    if (removed) window.alert('Some objects were deleted during cropping. Use Undo to restore them.');
+  }
+
   createXml(): void {
+    if (this.session.newWorldBuilding) { this.session.saveLocalDraft(); return; }
     if (this.session.worldBuilding) { void this.session.save(); return; }
     this.buildingService.saveBuildingToXml().catch(error => window.alert(error.message || String(error)));
   }

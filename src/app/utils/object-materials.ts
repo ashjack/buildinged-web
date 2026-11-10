@@ -1,8 +1,9 @@
 import { Building, TileEntry } from '../models/app.models';
 import { cloneRoomEntry, roomEntryKey } from './room-tile-entries';
 
-export type BuildingMaterialField = 'Door' | 'DoorFrame' | 'Window' | 'Curtains' | 'Shutters' | 'Stairs' | 'RoofCap' | 'RoofSlope' | 'RoofTop';
+export type BuildingMaterialField = 'ExteriorWall' | 'Door' | 'DoorFrame' | 'Window' | 'Curtains' | 'Shutters' | 'Stairs' | 'RoofCap' | 'RoofSlope' | 'RoofTop';
 export const BUILDING_MATERIAL_CATEGORIES: Record<BuildingMaterialField, string> = {
+    ExteriorWall: 'exterior_walls',
     Door: 'doors', DoorFrame: 'door_frames', Window: 'windows', Curtains: 'curtains', Shutters: 'shutters', Stairs: 'stairs',
     RoofCap: 'roof_caps', RoofSlope: 'roof_slopes', RoofTop: 'roof_tops'
 };

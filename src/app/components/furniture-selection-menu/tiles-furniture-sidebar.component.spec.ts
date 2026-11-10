@@ -4,7 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { FormsModule } from '@angular/forms';
 import { Store } from '@ngrx/store';
 import { BehaviorSubject, of } from 'rxjs';
-import { AddObject, Undo, Redo } from '../../app.actions';
+import { AddObject, SetBuilding, Undo, Redo } from '../../app.actions';
 import { RoofService } from '../../services/roof.service';
 import { TileEntry } from '../../models/app.models';
 import { BuildingService } from '../../services/building.service';
@@ -22,6 +22,7 @@ import { readBuildingFile, writeBuildingFile } from '../../utils/tbx-format';
 import { emptyIndexGrid, writeIndexGrid } from '../../utils/tbx-grid';
 import ToolWall from '../../tools/tool-wall';
 import ToolStairs from '../../tools/tool-stairs';
+import { generateBuildingSquares } from '../../services/native-squares';
 import { TilesFurnitureSidebarComponent } from './tiles-furniture-sidebar.component';
 
 function material(category: string, name: string): TileEntry {
@@ -65,6 +66,32 @@ describe('Tiles and Furniture material sidebar', () => {
     expect(sidebar.category).toBe('stairs');
     fixture.destroy();
   });
+  it('keeps the scrolled material list and focused thumbnail in place when changing exterior walls and undoing', async () => {
+    const entries = Array.from({ length: 32 }, (_, index): TileEntry => ({ category: 'exterior_walls',
+      tiles: ['West', 'North', 'NorthWest', 'SouthEast'].map((value, offset) => ({ enum: value,
+        tile: `walls_exterior_01_${String(index * 8 + offset).padStart(3, '0')}` })) }));
+    materials.next(entries);
+    const { fixture, element } = await setup();
+    fixture.componentRef.setInput('tool', 'tool-draw-room');
+    element.style.width = '300px'; element.style.height = '500px'; fixture.detectChanges();
+    const list = element.querySelector('.material-list') as HTMLElement;
+    const button = list.querySelector(`[aria-label="${entries[12].tiles[0].tile}"]`) as HTMLButtonElement;
+    const section = button.closest('section');
+    expect(list.scrollHeight).toBeGreaterThan(list.clientHeight);
+    list.scrollTop = 400; const scrollTop = list.scrollTop;
+    expect(scrollTop).toBeGreaterThan(0);
+    button.focus({ preventScroll: true }); button.click(); fixture.detectChanges();
+    expect(list.scrollTop).toBe(scrollTop);
+    expect(button.closest('section')).toBe(section);
+    expect(list.querySelector(`[aria-label="${entries[12].tiles[0].tile}"]`)).toBe(button);
+    expect(document.activeElement).toBe(button);
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    h.store.dispatch(new Undo()); fixture.detectChanges();
+    expect(list.scrollTop).toBe(scrollTop); expect(document.activeElement).toBe(button);
+    h.store.dispatch(new Redo()); fixture.detectChanges();
+    expect(list.scrollTop).toBe(scrollTop); expect(document.activeElement).toBe(button);
+    fixture.destroy();
+  });
   it('keeps four wall choices in the palette and registers them atomically with placement, including after undo', async () => {
     const { fixture, sidebar } = await setup(); const before = h.buildings.building;
     defaults.slice(0, 4).forEach(entry => { sidebar.selectCategory(entry.category); sidebar.choose(entry); });
@@ -80,6 +107,58 @@ describe('Tiles and Furniture material sidebar', () => {
     h.store.dispatch(new Undo()); expect(h.buildings.building).toBe(before);
     tool.beginDrag(1, 1); tool.endDrag(4, 1);
     expect(h.buildings.building.entries[h.buildings.building.floors[0].objects[0].Tile - 1]).toEqual(defaults[0]);
+    fixture.destroy();
+  });
+  it('changes room-generated exterior walls on every floor in one undoable edit while the room tool is active', async () => {
+    const old = material('exterior_walls', 'old-outside'), inside = material('interior_walls', 'room-inside');
+    const building = h.buildings.building;
+    building.entries = [...building.entries, old, inside];
+    building.ExteriorWall = building.entries.length - 1;
+    building.rooms[0].InteriorWall = building.entries.length;
+    const rooms = emptyIndexGrid(8, 8); rooms[1][1] = rooms[1][2] = rooms[2][1] = rooms[2][2] = 1;
+    building.floors = [0, 1].map(() => ({ rooms: writeIndexGrid(rooms), objects: [] }));
+    building.floors[0].objects.push({ uid: 'custom-wall', type: 'wall', x: 6, y: 6, dir: 'W', length: 1,
+      Tile: building.ExteriorWall, InteriorTile: building.rooms[0].InteriorWall, ExteriorTrim: 0, InteriorTrim: 0 });
+    h.store.dispatch(new SetBuilding(building));
+    const { fixture, sidebar } = await setup();
+    sidebar.selectCategory('exterior_walls');
+    settings.wallMaterials = { Tile: old };
+    fixture.componentRef.setInput('tool', 'tool-draw-room'); fixture.detectChanges();
+    const before = h.buildings.building;
+    expect(sidebar.selectedEntry).toEqual(old);
+    sidebar.choose(defaults[0]);
+    const changed = h.buildings.building;
+    expect(changed.entries[changed.ExteriorWall - 1]).toEqual(defaults[0]);
+    expect(h.state.value.past.length).toBe(1);
+    expect(changed.floors).toBe(before.floors);
+    for (const level of [0, 1]) {
+      const generated = generateBuildingSquares(changed).tiles;
+      expect(generated.some(tile => tile.level === level && tile.name?.startsWith('outside-'))).toBeTrue();
+      expect(generated.some(tile => tile.level === level && tile.name?.startsWith('room-inside-'))).toBeTrue();
+      expect(generated.some(tile => tile.level === level && tile.name?.startsWith('old-outside-') && tile.x < 6)).toBeFalse();
+    }
+    expect(sidebar.selectedEntry).toEqual(defaults[0]);
+    sidebar.choose(defaults[0]); expect(h.state.value.past.length).toBe(1);
+    h.store.dispatch(new Undo()); expect(h.buildings.building).toBe(before); expect(sidebar.selectedEntry).toEqual(old);
+    h.store.dispatch(new Redo()); expect(h.buildings.building).toBe(changed);
+    const reopened = readBuildingFile(writeBuildingFile(changed));
+    expect(reopened.entries[reopened.ExteriorWall - 1]).toEqual(defaults[0]);
+    fixture.componentRef.setInput('tool', 'tool-wall'); fixture.detectChanges();
+    expect(sidebar.selectedEntry).toEqual(old);
+    fixture.destroy();
+  });
+
+  it('supports None as the room exterior wall without changing room definitions or manual wall objects', async () => {
+    const { fixture, sidebar } = await setup();
+    fixture.componentRef.setInput('tool', 'tool-draw-room'); fixture.detectChanges();
+    sidebar.selectCategory('exterior_walls'); sidebar.choose(defaults[0]);
+    const before = h.buildings.building;
+    sidebar.choose(null);
+    expect(h.buildings.building.ExteriorWall).toBe(0);
+    expect(h.buildings.building.rooms).toBe(before.rooms);
+    expect(h.buildings.building.floors).toBe(before.floors);
+    expect(sidebar.selectedEntry).toBeNull();
+    h.store.dispatch(new Undo()); expect(h.buildings.building).toBe(before);
     fixture.destroy();
   });
   it('uses selected stairs, door, frame, window, curtain and shutter entries for new objects and saves them to TBX', async () => {

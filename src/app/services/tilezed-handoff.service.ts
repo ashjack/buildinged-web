@@ -5,6 +5,7 @@ export interface TilezedBuildingContext {
   projectId?: string;
   mapPath?: string;
   worldRevision?: number;
+  cell?: { x: number; y: number };
   lots: WorldedLot[];
   files: Map<string, File>;
   /** Zones from the WorldEd cell; the TMX's own object groups are read from the map itself. */

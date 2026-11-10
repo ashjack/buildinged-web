@@ -53,6 +53,61 @@ function targetedKey(target: HTMLElement, key: string, modifiers: KeyboardEventI
 }
 
 describe('Tool edit commands', () => {
+    for (const facing of ['W', 'N', 'E', 'S']) {
+        it(`draws the ${facing} wall furniture preview with the same overlay polygon as the placed object`, () => {
+            const scene = setup(), view = scene.view, tool = scene.tools[2] as ToolFurniture;
+            const canvas = view.canvasElement.nativeElement as HTMLCanvasElement;
+            canvas.width = canvas.height = 600;
+            const context = canvas.getContext('2d')!;
+            Object.defineProperty(view, 'ctx', { value: context }); view.selectedTool = tool;
+            const furniture = { layer: 'Walls', entries: ['W', 'N', 'E', 'S'].map(orient => ({
+                orient, xSize: 0, ySize: 1, tiles: [0, 1].map(y => ({ ...scene.furniture.entries[0].tiles[0], y, layer: 'Walls' })),
+            })) };
+            scene.store.dispatch(new SetSelectedFurniture(furniture, facing));
+            const move = spyOn(context, 'moveTo').and.callThrough(), line = spyOn(context, 'lineTo').and.callThrough();
+            const square = spyOn(view, 'drawOverlaySquare').and.callThrough();
+            const y = facing === 'S' ? 1 : 0, edge = facing === 'S' ? 'S' : 'W';
+            tool.hoverTile(1, y, edge);
+            expect(tool.previewObject?.type).toBe('Wall');
+            view.drawOverlay();
+            const moves = move.calls.allArgs(), lines = line.calls.allArgs();
+            expect(moves.length).toBeGreaterThan(0); expect(lines.length).toBeGreaterThan(0);
+            expect(square).not.toHaveBeenCalled();
+            expect(scene.grid.objectOverlays).toEqual([]);
+            move.calls.reset(); line.calls.reset();
+            tool.clickTile(1, y); expect(tool.previewObject).toBeUndefined();
+            expect(scene.buildings.building.floors[0].objects[0].orient).toBe(facing);
+            view.drawTileOverlays();
+            expect(move.calls.allArgs()).toEqual(moves); expect(line.calls.allArgs()).toEqual(lines);
+            scene.destroy();
+        });
+    }
+    for (const [facing, x, y, ax, ay, bx, by] of [
+        ['W', 1, 0, 112, 110, 120, 114], ['N', 0, 1, 88, 110, 80, 114],
+    ] as const) {
+        it(`updates ${facing} wall snapping within a cell even when its closest edge does not change`, () => {
+            const scene = setup(), view = scene.view, tool = scene.tools[2] as ToolFurniture;
+            const canvas = view.canvasElement.nativeElement as HTMLCanvasElement;
+            canvas.width = canvas.height = 200;
+            spyOn(canvas, 'getBoundingClientRect').and.returnValue(new DOMRect(0, 0, 200, 200));
+            Object.defineProperty(view, 'ctx', { value: canvas.getContext('2d') });
+            spyOn(view, 'drawCanvas').and.stub();
+            view.selectedTool = tool;
+            view.newPositions = [{ localPoint: { x, y }, point: [
+                { x: 100, y: 140 }, { x: 140, y: 120 }, { x: 100, y: 100 }, { x: 60, y: 120 },
+            ] }];
+            scene.store.dispatch(new SetSelectedFurniture({ ...scene.furniture, layer: 'Walls' }, facing));
+            view.getMousePos(new MouseEvent('mousemove', { clientX: ax, clientY: ay }));
+            expect(tool.tileGhosts.map(tile => [tile.x, tile.y])).toEqual([[x, y]]);
+            const initialEdge = view.currentHoverCoordSegments.edge;
+            view.getMousePos(new MouseEvent('mousemove', { clientX: bx, clientY: by }));
+            expect(view.currentHoverCoordSegments.edge).toBe(initialEdge);
+            expect(tool.tileGhosts.map(tile => [tile.x, tile.y])).toEqual([[x + (facing === 'W' ? 1 : 0), y + (facing === 'N' ? 1 : 0)]]);
+            tool.clickTile(x, y);
+            expect(scene.buildings.building.floors[0].objects[0].orient).toBe(facing);
+            scene.destroy();
+        });
+    }
     for (const [orient, screenX, screenY] of [
         ['W', 260, 200], ['N', 340, 200], ['E', 340, 240], ['S', 260, 240],
     ] as const) {

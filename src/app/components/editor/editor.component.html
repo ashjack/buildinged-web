@@ -1,3 +1,17 @@
+<section class="new-building-panel" *ngIf="newBuildingSetup && auth.isAdmin" aria-labelledby="new-building-title">
+  <a [routerLink]="['/projects', projectId]" [queryParams]="{view: 'buildings'}">Back to buildings</a>
+  <h1 id="new-building-title">New project building</h1>
+  <p>Create a building, edit it in BuildingEd, then choose Add building to world when it is ready.</p>
+  <form (ngSubmit)="startNewBuilding()">
+    <label>Building name or path<input name="buildingName" [(ngModel)]="buildingName" placeholder="Buildings/house.tbx" maxlength="1000" required></label>
+    <div class="dimensions">
+      <label>Width (tiles)<input name="width" type="number" [(ngModel)]="width" min="1" max="256" required></label>
+      <label>Height (tiles)<input name="height" type="number" [(ngModel)]="height" min="1" max="256" required></label>
+    </div>
+    <label>Starter template<select name="template" [(ngModel)]="templateName"><option value="">Empty building</option><option *ngFor="let name of templateNames" [value]="name">{{name}}</option></select></label>
+    <button type="submit" [disabled]="!validSetup || setupBusy">Create and edit building</button>
+  </form>
+</section>
 <div class="project-editor-bar" *ngIf="session.contribution as item">
   <a [routerLink]="['/projects', item.projectId, 'tasks', item.taskId]">Back to task</a>
   <strong>{{item.name}}</strong>
@@ -10,11 +24,12 @@
 <div class="project-editor-bar" *ngIf="session.worldBuilding as item">
   <a [routerLink]="['/projects', item.projectId]" [queryParams]="{view: 'buildings'}">Back to buildings</a>
   <strong>{{item.path}}</strong>
-  <span>Editing shared world building</span>
-  <span role="status">{{session.busy ? 'Saving...' : session.dirty ? 'Unsaved changes' : 'Saved'}}</span>
-  <button (click)="session.save()" [disabled]="!session.editable || session.busy">Save building to world</button>
+  <span>{{session.newWorldBuilding ? 'New building' : 'Editing shared world building'}}</span>
+  <span role="status">{{session.busy ? 'Saving...' : session.newWorldBuilding ? 'Not yet added to world' : session.dirty ? 'Unsaved changes' : 'Saved'}}</span>
+  <button *ngIf="session.newWorldBuilding" (click)="session.saveLocalDraft()" [disabled]="session.busy">Save local draft</button>
+  <button (click)="session.save()" [disabled]="!session.editable || session.busy">{{session.newWorldBuilding ? 'Add building to world' : 'Save building to world'}}</button>
   <button (click)="exportBuilding()" [disabled]="session.busy">Export .tbx</button>
-  <button (click)="reload()" [disabled]="session.busy">Reload cloud copy</button>
+  <button *ngIf="!session.newWorldBuilding" (click)="reload()" [disabled]="session.busy">Reload cloud copy</button>
 </div>
 <p class="project-editor-notice" role="status" *ngIf="session.message">{{session.message}}</p>
 <p class="project-editor-notice error" role="alert" *ngIf="error || session.error">{{error || session.error}} <a routerLink="/">Projects</a></p>

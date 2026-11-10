@@ -3,6 +3,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from './auth.service';
 import { Contribution, Project, ProjectBuild, ProjectMember, ProjectTask, VariantDocument, WorldBuildingDocument } from '../models/project.models';
+import { WorldedLot } from '../utils/worlded-world';
 
 export class ProjectRequestError extends Error {
   constructor(message: string, public readonly status: number) { super(message); }
@@ -47,8 +48,12 @@ export class ProjectApiService {
   saveWorldBuilding(projectId: string, path: string, xml: string, revision: number): Promise<Omit<WorldBuildingDocument, 'xml'>> {
     return this.request('PUT', `/projects/${encodeURIComponent(projectId)}/world-building`, { path, xml, revision });
   }
-  saveWorldMap(projectId: string, path: string, xml: string, revision: number): Promise<{ projectId: string; path: string; revision: number }> {
-    return this.request('PUT', `/projects/${encodeURIComponent(projectId)}/world-map`, { path, xml, revision });
+  createWorldBuilding(projectId: string, path: string, xml: string): Promise<Omit<WorldBuildingDocument, 'xml'>> {
+    return this.request('POST', `/projects/${encodeURIComponent(projectId)}/world-building`, { path, xml });
+  }
+  saveWorldMap(projectId: string, path: string, xml: string, revision: number,
+    placements?: { cell: { x: number; y: number }; lots: WorldedLot[] }): Promise<{ projectId: string; path: string; revision: number }> {
+    return this.request('PUT', `/projects/${encodeURIComponent(projectId)}/world-map`, { path, xml, revision, ...(placements ? { placements } : {}) });
   }
   start(taskId: string, name: string, requestId: string): Promise<Contribution> {
     return this.request('POST', `/tasks/${encodeURIComponent(taskId)}/contributions`, { name, requestId });

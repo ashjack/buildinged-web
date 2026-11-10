@@ -15,7 +15,7 @@ import { ROOF_TOOL_GROUPS, roofOptionIcon } from '../utils/roof-toolbar';
 import { MenuComponent } from './menu.component';
 import { RoomsDialogComponent } from '../components/rooms-dialog/rooms-dialog.component';
 import { By } from '@angular/platform-browser';
-import { Undo } from '../app.actions';
+import { Undo, ResizeBuilding } from '../app.actions';
 import { RoomTilePickerComponent } from '../components/room-tile-picker/room-tile-picker.component';
 import { DbService } from '../services/db.service';
 import { AutoFurnishingDialogComponent } from '../components/auto-furnishing-dialog/auto-furnishing-dialog.component';
@@ -31,11 +31,79 @@ describe('Native toolbar controls', () => {
         TestBed.configureTestingModule({ declarations: [MenuComponent, RoomsDialogComponent, RoomTilePickerComponent, AutoFurnishingDialogComponent], imports: [CommonModule, FormsModule, RouterTestingModule, NoopAnimationsModule, BsDropdownModule.forRoot()],
             providers: [{ provide: Store, useValue: h.store }, { provide: BuildingService, useValue: h.buildings },
                 { provide: AutoFurnishingService, useValue: {} },
-                { provide: EditorSessionService, useValue: { worldBuilding: undefined, projectDocument: false, save: jasmine.createSpy('save').and.resolveTo(true) } },
+                { provide: EditorSessionService, useValue: { worldBuilding: undefined, projectDocument: false,
+                    saveLocalDraft: jasmine.createSpy('saveLocalDraft'), save: jasmine.createSpy('save').and.resolveTo(true) } },
                 { provide: DbService, useValue: { getTile: async () => null, getTilesets: async () => [], getTiles: async () => [] } },
                 { provide: GridService, useValue: h.grid }, { provide: RoomService, useValue: h.rooms }, RoofService] });
     });
     afterEach(() => h.destroy());
+
+    it('resizes through the dimension and offset controls and supports undo', async () => {
+        const fixture = TestBed.createComponent(MenuComponent); fixture.detectChanges();
+        await fixture.whenStable(); fixture.detectChanges();
+        const el: HTMLElement = fixture.nativeElement, before = h.buildings.building;
+        (el.querySelector('[aria-label="Resize building area"]') as HTMLButtonElement).click(); fixture.detectChanges();
+        await fixture.whenStable(); fixture.detectChanges();
+        const dialog = el.querySelector<HTMLDialogElement>('dialog.resize-dialog')!;
+        expect(dialog.open).toBeTrue();
+        const input = (name: string, value: string) => {
+            const field = dialog.querySelector<HTMLInputElement>(`[name="${name}"]`)!;
+            field.value = value; field.dispatchEvent(new Event('input')); fixture.detectChanges();
+        };
+        input('resizeWidth', '5'); input('resizeHeight', '4'); input('resizeOffsetX', '2'); input('resizeOffsetY', '1');
+        expect(fixture.componentInstance.resize).toEqual({ width: 5, height: 4, offsetX: 2, offsetY: 1 });
+        (dialog.querySelector('.resize-submit') as HTMLButtonElement).click(); fixture.detectChanges();
+        expect(dialog.open).toBeFalse();
+        expect([h.buildings.building.width, h.buildings.building.height]).toEqual([5, 4]);
+        expect(h.buildings.building.floors[0].objects[0].x).toBe(2);
+        expect(h.buildings.building.floors[0].objects[0].y).toBe(1);
+        expect(h.state.value.past.length).toBe(1);
+        fixture.componentInstance.undo(); expect(h.buildings.building).toBe(before);
+    });
+
+    it('confirms shrinking, leaves cancelled changes alone, and validates dimensions and offsets', () => {
+        const fixture = TestBed.createComponent(MenuComponent); fixture.detectChanges();
+        const menu = fixture.componentInstance, before = h.buildings.building;
+        menu.openResize(); menu.resize.width = 1; fixture.detectChanges();
+        const confirm = spyOn(window, 'confirm').and.returnValue(false);
+        menu.applyResize(); expect(confirm).toHaveBeenCalled(); expect(h.buildings.building).toBe(before);
+        expect(menu.resizeDialog.nativeElement.open).toBeTrue();
+        menu.resize.width = 257; expect(menu.validResize).toBeFalse();
+        menu.resize.width = 1.5; expect(menu.validResize).toBeFalse();
+        menu.resize.width = 1; menu.resize.offsetX = 1; expect(menu.validResize).toBeFalse();
+        menu.resize.offsetX = 0; confirm.and.returnValue(true); menu.applyResize();
+        expect(h.buildings.building.width).toBe(1); expect(menu.resizeDialog.nativeElement.open).toBeFalse();
+        menu.undo(); menu.openResize(); menu.resize.width = 4;
+        menu.resizeDialog.nativeElement.close(); expect(h.buildings.building).toBe(before);
+    });
+
+    it('crops from the toolbar, reports the result and ignores locked documents', () => {
+        const fixture = TestBed.createComponent(MenuComponent); fixture.detectChanges();
+        const before = h.buildings.building;
+        h.store.dispatch(new ResizeBuilding({ width: 8, height: 6, offsetX: 3, offsetY: 2 }, 0));
+        fixture.detectChanges();
+        (fixture.nativeElement.querySelector('[aria-label="Crop to minimum"]') as HTMLButtonElement).click(); fixture.detectChanges();
+        expect([h.buildings.building.width, h.buildings.building.height]).toEqual([2, 2]);
+        expect(fixture.nativeElement.querySelector('[role="status"]').textContent).toContain('2 × 2');
+        fixture.componentInstance.undo(); expect(h.buildings.building.width).toBe(8);
+        const session = TestBed.inject(EditorSessionService); session.busy = true;
+        fixture.detectChanges();
+        expect((fixture.nativeElement.querySelector('[aria-label="Crop to minimum"]') as HTMLButtonElement).disabled).toBeTrue();
+        fixture.componentInstance.cropToMinimum(); expect(h.buildings.building.width).toBe(8);
+        session.busy = false; fixture.componentInstance.undo(); expect(h.buildings.building).toBe(before);
+    });
+
+    it('keeps resize dialog keys away from drawing shortcuts and clamps offsets when dimensions change', () => {
+        const fixture = TestBed.createComponent(MenuComponent); fixture.detectChanges();
+        const menu = fixture.componentInstance; menu.openResize();
+        menu.resize.width = 6; menu.resize.offsetX = 4;
+        menu.resize.width = 3; menu.clampResizeOffsets(); expect(menu.resize.offsetX).toBe(1);
+        const reachedDocument = jasmine.createSpy('drawing shortcut'); document.addEventListener('keydown', reachedDocument);
+        try {
+            menu.resizeDialog.nativeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+            expect(reachedDocument).not.toHaveBeenCalled();
+        } finally { document.removeEventListener('keydown', reachedDocument); menu.resizeDialog.nativeElement.close(); }
+    });
 
     it('saves a shared building through the project session instead of downloading a variant', () => {
         const fixture = TestBed.createComponent(MenuComponent);
@@ -45,6 +113,16 @@ describe('Native toolbar controls', () => {
         fixture.componentInstance.createXml();
         expect(session.save).toHaveBeenCalled();
         expect(download).not.toHaveBeenCalled();
+    });
+
+    it('keeps the toolbar save local until the new building is explicitly added to the world', () => {
+        const fixture = TestBed.createComponent(MenuComponent);
+        const session = TestBed.inject(EditorSessionService);
+        session.newWorldBuilding = true;
+        session.worldBuilding = { projectId: 'project', path: 'house.tbx', revision: 2 };
+        fixture.componentInstance.createXml();
+        expect(session.saveLocalDraft).toHaveBeenCalled();
+        expect(session.save).not.toHaveBeenCalled();
     });
 
     it('opens auto furnishing from its toolbar control', () => {

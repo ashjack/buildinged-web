@@ -7,7 +7,7 @@ import { AddObject } from "../app.actions";
 import { VisualFurniture } from "../models/furniture-window.models";
 import { take } from "rxjs";
 import { GUID } from "../utils/guid";
-import { furnitureDefinition } from "../utils/furniture-definition";
+import { furnitureDefinition, furnitureEntryForPlacement, furnitureEntrySize, wallFurnitureFits } from "../utils/furniture-definition";
 import { canPlaceObject } from '../utils/tool-placement';
 
 @Injectable({
@@ -18,8 +18,9 @@ export class FurnitureService {
 
     placeFurniture(x: number, y: number, level: number, orient: string, furniture: VisualFurniture) {
         this.store.select(fromRoot.getBuilding).pipe(take(1)).subscribe(b => {
-            if (!canPlaceObject(b, x, y, level) || !furniture.entries.some(entry => entry.orient === orient && entry.tiles.length))
-                return;
+            const entry = furnitureEntryForPlacement(furniture, orient), size = furnitureEntrySize(entry);
+            if (!entry || !canPlaceObject(b, x, y, level, size.width, size.height)) return;
+            if (furniture.layer === 'Walls' && !wallFurnitureFits(b!, x, y, orient, size)) return;
         
             const uid = GUID.generateGUID();
             const definition = furnitureDefinition(furniture);

@@ -33,7 +33,7 @@ describe('Project editor session', () => {
   };
   beforeEach(() => {
     localStorage.removeItem('buildinged:draft:user:project:variant');
-    api = jasmine.createSpyObj<ProjectApiService>('ProjectApiService', ['save', 'submit', 'saveWorldBuilding']);
+    api = jasmine.createSpyObj<ProjectApiService>('ProjectApiService', ['save', 'submit', 'saveWorldBuilding', 'createWorldBuilding']);
     TestBed.configureTestingModule({
       imports: [StoreModule.forRoot({}), StoreModule.forFeature('root', reducer)],
       providers: [
@@ -47,6 +47,7 @@ describe('Project editor session', () => {
   afterEach(() => {
     localStorage.removeItem('buildinged:draft:user:project:variant');
     localStorage.removeItem('buildinged:world-building:http%3A%2F%2Flocalhost%2Fapi:user:project:Buildings/house.tbx');
+    localStorage.removeItem('buildinged:new-world-building:http%3A%2F%2Flocalhost%2Fapi:user:project:Buildings/house.tbx');
   });
 
   const worldBuilding = { projectId: 'project', path: 'Buildings/house.tbx', revision: 5, xml: nativeBuildingXml };
@@ -54,6 +55,50 @@ describe('Project editor session', () => {
     const xml = session.beginWorldBuilding(worldBuilding);
     store.dispatch(new SetBuilding(readBuildingFile(new DOMParser().parseFromString(xml, 'text/xml'))));
   };
+
+  it('keeps a new building local until publishing, then uses ordinary world saves', async () => {
+    const xml = session.beginWorldBuilding(worldBuilding, true, true);
+    store.dispatch(new SetBuilding(readBuildingFile(new DOMParser().parseFromString(xml, 'text/xml'))));
+    expect(session.dirty).toBeTrue();
+    expect(session.newWorldBuilding).toBeTrue();
+    const draftKey = session.cacheTarget.key;
+    session.saveLocalDraft();
+    expect(session.message).toContain('Draft saved in this browser');
+    expect(api.createWorldBuilding).not.toHaveBeenCalled();
+    expect(draftKey).toContain('new-world-building');
+    const created = jasmine.createSpy('created');
+    session.buildingCreated$.subscribe(created);
+    api.createWorldBuilding.and.resolveTo({ projectId: 'project', path: worldBuilding.path, revision: 8 });
+    expect(await session.save()).toBeTrue();
+    expect(api.createWorldBuilding).toHaveBeenCalledOnceWith('project', worldBuilding.path, session.serialize());
+    expect(session.newWorldBuilding).toBeFalse();
+    expect(session.dirty).toBeFalse();
+    expect(localStorage.getItem(draftKey)).toBeNull();
+    expect(created).toHaveBeenCalledOnceWith(session.worldBuilding);
+    api.saveWorldBuilding.and.resolveTo({ projectId: 'project', path: worldBuilding.path, revision: 9 });
+    expect(await session.save()).toBeTrue();
+    expect(api.saveWorldBuilding).toHaveBeenCalledOnceWith('project', worldBuilding.path, session.serialize(), 8);
+    expect(api.save).not.toHaveBeenCalled();
+    expect(api.submit).not.toHaveBeenCalled();
+  });
+
+  it('recovers an unpublished building and preserves it when publishing fails', async () => {
+    let xml = session.beginWorldBuilding(worldBuilding, true, true);
+    store.dispatch(new SetBuilding(readBuildingFile(new DOMParser().parseFromString(xml, 'text/xml'))));
+    store.dispatch(new AddTile(0, 0, 0, 'Walls', 'walls_01_001.png'));
+    const draft = session.serialize();
+    session.cacheCurrent();
+    session.end();
+    xml = session.beginWorldBuilding({ ...worldBuilding, revision: 7 }, true, true);
+    expect(xml).toBe(draft);
+    store.dispatch(new SetBuilding(readBuildingFile(new DOMParser().parseFromString(xml, 'text/xml'))));
+    api.createWorldBuilding.and.rejectWith(new Error('A building already uses this path.'));
+    expect(await session.save()).toBeFalse();
+    expect(session.newWorldBuilding).toBeTrue();
+    expect(session.dirty).toBeTrue();
+    expect(session.serialize()).toBe(draft);
+    expect(localStorage.getItem(session.cacheTarget.key)).not.toBeNull();
+  });
 
   it('saves an admin edit to the shared world without creating or submitting a variant', async () => {
     openWorldBuilding();

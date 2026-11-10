@@ -28,6 +28,58 @@ describe('Background building previews', () => {
     service = TestBed.inject(BuildingPreviewService);
   });
 
+  it('retains source tiles and square/level metadata for TileZed and shares atlas images across placements', async () => {
+    const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 128;
+    canvas.getContext('2d')!.fillStyle = '#00ff00'; canvas.getContext('2d')!.fillRect(0, 0, 64, 128);
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/png'));
+    assets.load.and.resolveTo({ sheets: new Map([[1, blob]]), warnings: [], errors: new Map() });
+    const file = new File([xml.replace('</building>', '<floor><rooms>1</rooms></floor></building>')], 'two-floors.tbx');
+    const preview = await service.preview(file);
+    expect(preview.composition!.tiles.map(tile => [tile.squareX, tile.squareY, tile.level, tile.layer, tile.frame]))
+      .toEqual([[0, 0, 0, 'Floor', 0], [0, 0, 1, 'Floor', 0]]);
+    expect(preview.composition!.pages.length).toBe(1);
+    expect(preview.composition!.pages[0].width).toBe(64);
+    const lots = new BuildingLots(service, 2048, 2048, undefined, true);
+    const lot = { x: 1, y: 2, width: 1, height: 1, level: 0, map: file.name };
+    try {
+      await lots.load([{ lot, x: 0, y: 0, scale: 1 }, { lot: { ...lot, x: 3 }, x: 64, y: 0, scale: 1 }],
+        new Map([[file.name, file]]), () => {});
+      expect(lots.sprites.length).toBe(2);
+      expect(lots.sprites[0].composition!.frames!.get(0)).toBe(lots.sprites[1].composition!.frames!.get(0));
+      expect(lots.sprites[0].composition!.x).toBe(1); expect(lots.sprites[1].composition!.x).toBe(3);
+      expect(lots.revision).toBe(2);
+      const previousAtlas = lots.sprites[0].composition!.frames!.get(0);
+      assets.sheetKeys.and.callFake(async names => new Map(names.map(name => [name, 'updated'])));
+      await lots.refresh(new Set(['floor_01']), () => {});
+      expect(lots.sprites[0].composition!.frames!.get(0)).not.toBe(previousAtlas);
+      expect(lots.sprites[0].composition!.frames!.get(0)).toBe(lots.sprites[1].composition!.frames!.get(0));
+      expect(lots.revision).toBe(3);
+    } finally { lots.dispose(); }
+  });
+
+  it('loads a street of distinct buildings without retaining a full-sized preview for each lot', async () => {
+    const canvas = document.createElement('canvas'); canvas.width = 64; canvas.height = 128;
+    canvas.getContext('2d')!.fillRect(0, 0, 64, 128);
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/png'));
+    const previews = jasmine.createSpyObj<BuildingPreviewService>('BuildingPreviewService', ['preview']);
+    previews.preview.and.callFake(async () => ({ blob, width: 2048, height: 2048, warnings: [],
+      bounds: { left: -32, right: 32, top: -96, bottom: 32 }, squares: { minX: 0, minY: 0, maxX: 0, maxY: 0 },
+      composition: { pages: [{ blob, width: 64, height: 128 }], tiles: [
+        { squareX: 0, squareY: 0, level: 0, layer: 'Floor', sheet: 'floor', index: 0, frame: 0, sourceKey: 'floor-v1' },
+      ] } }));
+    const files = new Map(Array.from({ length: 10 }, (_, i) => [`house-${i}.tbx`, new File([xml], `house-${i}.tbx`)]));
+    const placements = [...files.keys()].map((map, i) => ({ lot: { x: i * 2, y: 0, width: 1, height: 1, level: 0, map },
+      x: i * 64, y: 0, scale: 1 }));
+    const lots = new BuildingLots(previews, 2048, 2048, undefined, true);
+    try {
+      await lots.load(placements, files, () => {});
+      expect(lots.loaded).toBe(10); expect(lots.renderedLots.size).toBe(10);
+      expect([...lots.warnings]).toEqual([]);
+      expect(lots.sprites.every(sprite => sprite.bitmap.width === 64 && sprite.bitmap.height === 128)).toBeTrue();
+      expect(new Set(lots.sprites.map(sprite => sprite.bitmap)).size).toBe(1);
+    } finally { lots.dispose(); }
+  });
+
   it('picks a building source tile through transparent pixels of a tile in front', async () => {
     const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 128;
     const context = canvas.getContext('2d')!;
@@ -124,7 +176,7 @@ describe('Background building previews', () => {
       context.drawImage(image, 0, 0);
       expect([...context.getImageData(32, 64, 1, 1).data]).toEqual([0, 255, 0, 255]);
     } finally { image.close(); }
-    expect(JSON.parse(storage.rememberBuildingPreview.calls.mostRecent().args[0])[0]).toBe('building-preview-v6');
+    expect(JSON.parse(storage.rememberBuildingPreview.calls.mostRecent().args[0])[0]).toBe('building-preview-v8');
   });
 
   it('replaces generated tiles with manual tiles instead of drawing both', async () => {
@@ -253,6 +305,29 @@ describe('Background building previews', () => {
 });
 
 describe('Building lot loading', () => {
+  it('does not resurrect an undone placement after a delayed preview and reuses decoded images on redo', async () => {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/png'));
+    const preview = { blob, width: 1, height: 1, warnings: [], bounds: { left: 0, right: 1, top: 0, bottom: 1 },
+      squares: { minX: 0, minY: 0, maxX: 0, maxY: 0 } };
+    let finish!: (value: typeof preview) => void;
+    const service = jasmine.createSpyObj<BuildingPreviewService>('previews', ['preview']);
+    service.preview.and.returnValue(new Promise(resolve => finish = resolve));
+    const file = new File([xml], 'house.tbx'), files = new Map([['house.tbx', file]]);
+    const placement = { lot: { x: 0, y: 0, width: 1, height: 1, level: 0, map: 'house.tbx' }, x: 0, y: 0, scale: 1 };
+    const lots = new BuildingLots(service);
+    const loading = lots.sync([placement], files, () => undefined);
+    await lots.sync([], files, () => undefined);
+    finish(preview); await loading;
+    expect(lots.sprites.length).toBe(0);
+    service.preview.and.resolveTo(preview);
+    await lots.sync([placement], files, () => undefined);
+    const bitmap = lots.sprites[0].bitmap;
+    await lots.sync([], files, () => undefined); expect(lots.sprites.length).toBe(0);
+    await lots.sync([placement], files, () => undefined); expect(lots.sprites[0].bitmap).toBe(bitmap);
+    lots.dispose();
+  });
+
   it('requests later previews early but adds sprites in lot order', async () => {
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = 1;

@@ -1,4 +1,4 @@
-import { resolveWorldedProject, worldedFileFor, worldedReferenceKey, worldedVegetationPath } from './worlded-files';
+import { resolveTilezedProject, resolveWorldedProject, worldedFileFor, worldedReferenceKey, worldedVegetationPath } from './worlded-files';
 import { readWorldedWorld } from './worlded-world';
 
 describe('WorldEd project file resolution', () => {
@@ -22,6 +22,14 @@ describe('WorldEd project file resolution', () => {
     expect(worldedReferenceKey('/project/cell.tmx')).toBeUndefined();
     expect(worldedReferenceKey('https://example.test/cell.tmx')).toBeUndefined();
     expect(worldedVegetationPath('images/terrain.png')).toBe('images/terrain_veg.png');
+  });
+
+  it('includes unplaced TBX buildings in the TileZed browser using paths relative to the open map', async () => {
+    const map = file('Project/maps/cell.tmx', '<map/>');
+    const building = file('Project/Buildings/new-house.tbx', '<building/>');
+    const result = await resolveTilezedProject([map, building, file('Project/private.txt', 'private')], map, []);
+    expect([...result.files.keys()]).toEqual(['../Buildings/new-house.tbx']);
+    expect(result.files.get('../Buildings/new-house.tbx')).toBe(building);
   });
 
   it('resolves referenced files inside the selected parent and ignores unrelated files', async () => {

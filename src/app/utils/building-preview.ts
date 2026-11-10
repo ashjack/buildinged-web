@@ -14,6 +14,17 @@ export interface BuildingPreview {
   width: number;
   height: number;
   warnings: string[];
+  composition?: { pages: { blob: Blob; width: number; height: number }[]; tiles: BuildingCompositionTile[] };
+}
+
+export interface BuildingCompositionTile {
+  squareX: number; squareY: number; level: number; layer: string;
+  sheet: string; index: number; frame: number;
+  sourceKey?: string;
+}
+
+export function buildingPreviewBytes(preview: BuildingPreview): number {
+  return preview.blob.size + (preview.composition?.pages.reduce((sum, page) => sum + page.blob.size, 0) ?? 0);
 }
 
 export interface BuildingSprite {
@@ -22,6 +33,7 @@ export interface BuildingSprite {
   /** Map level and occupied map squares, used for depth ordering. */
   level: number;
   squares: BuildingSquares;
+  composition?: { pages: ImageBitmap[]; frames?: ReadonlyMap<number, ImageBitmap>; tiles: BuildingCompositionTile[]; x: number; y: number; level: number };
 }
 
 export interface PreviewTile {
@@ -29,6 +41,7 @@ export interface PreviewTile {
   index: number;
   x: number;
   y: number;
+  squareX: number; squareY: number; level: number; layer: string;
 }
 
 /** Manual TBX layers replace generated tiles at the same level, square and layer. */
@@ -109,6 +122,7 @@ export function prepareBuildingTiles(tiles: readonly SvgTile[], firstLevel = 0):
       if (!parsed) throw new Error(`Invalid building tile name: ${tile.name ?? '(missing)'}.`);
       return {
         sheet: parsed.sheet.toLowerCase(), index: parsed.index,
+        squareX: tile.x, squareY: tile.y, level: tile.level, layer: tile.layer,
         x: (tile.x - tile.y) * 32 - 32,
         y: (tile.x + tile.y) * 16 - tile.level * 96 - 96,
       };

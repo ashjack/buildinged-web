@@ -6,10 +6,10 @@
     <button *ngFor="let group of furnitureGroups" role="option" [attr.aria-selected]="category === 'furniture' && furnitureGroup === group.label" [class.active]="category === 'furniture' && furnitureGroup === group.label" (click)="selectFurniture(group.label)">{{group.label}}</button>
   </div>
   <div class="material-list" [hidden]="category === 'furniture'" aria-label="Material choices">
-    <section *ngFor="let group of groups">
+    <section *ngFor="let group of groups; trackBy: trackGroup">
       <h3 *ngIf="group.name">{{group.name}}</h3>
       <div class="thumbnails">
-        <button *ngFor="let entry of group.entries" [class.selected]="selected(entry)" [attr.aria-pressed]="selected(entry)" [attr.aria-label]="display(entry)" [title]="display(entry)" [style.width.px]="128 * zoom + 4" [style.height.px]="256 * zoom + 4" (click)="choose(entry)" [disabled]="!building"><img [src]="image(entry)" alt="" draggable="false"></button>
+        <button *ngFor="let entry of group.entries; trackBy: trackEntry" [class.selected]="selected(entry)" [attr.aria-pressed]="selected(entry)" [attr.aria-label]="display(entry)" [title]="display(entry)" [style.width.px]="128 * zoom + 4" [style.height.px]="256 * zoom + 4" (click)="choose(entry)" [disabled]="!building"><img [src]="image(entry)" alt="" draggable="false"></button>
       </div>
     </section>
   </div>

@@ -1,6 +1,7 @@
 import { readTilezedMap } from './tilezed-map';
 import { generateTilezedScene } from './tilezed-terrain';
 import { TilezedEditDocument, tileLine, tilezedTileAtPixel } from './tilezed-edit';
+import { tilezedBuildingPlacement } from './tilezed-building-placement';
 
 const xml = `<map orientation="levelisometric" width="4" height="3" tilewidth="64" tileheight="32" custom="keep">
   <properties><property name="note" value="preserve"/></properties>
@@ -15,7 +16,93 @@ async function open(source = xml): Promise<TilezedEditDocument> {
   return new TilezedEditDocument(source, generateTilezedScene(await readTilezedMap(source)));
 }
 
+const layeredXml = xml.replace('<objectgroup',
+  '<layer name="Detail" level="0" width="4" height="3" opacity="0.5" custom="retain"><properties><property name="tag" value="detail"/></properties>' +
+  '<data encoding="csv">3,0,0,0,0,0,0,0,0,0,0,0</data></layer>' +
+  '<layer name="0_Overlay" width="4" height="3" visible="0"><data encoding="csv">0,2,0,0,0,0,0,0,0,0,0,0</data></layer><objectgroup');
+
 describe('TileZed manual editing document', () => {
+  it('raises and lowers the draw stack while keeping layer contents, generated tiles and masks together', async () => {
+    const editor = await open(layeredXml);
+    const raw = editor.scene.map.layers[0], visible = editor.scene.layers[0];
+    visible.gids[0] = 2; // A generated BMP tile can differ from the stored tile.
+    const mask = Uint8Array.from({ length: 12 }, (_, i) => i === 1 ? 1 : 0);
+    editor.scene.map.noBlend!.set(raw.name, mask);
+    expect(editor.moveLayer(raw.name, 'up')).toBeTrue();
+    expect(editor.scene.map.layers.map(layer => layer.name)).toEqual(['0_Detail', '0_Floor', '0_Overlay']);
+    expect(editor.scene.layers.map(layer => layer.name)).toEqual(['0_Detail', '0_Floor', '0_Overlay']);
+    expect(editor.scene.map.layers[1]).toBe(raw); expect(editor.scene.layers[1]).toBe(visible);
+    expect(editor.scene.map.layers[1].gids[0]).toBe(1); expect(editor.scene.layers[1].gids[0]).toBe(2);
+    expect(editor.scene.map.noBlend!.get(raw.name)).toBe(mask);
+    expect(editor.moveLayer(raw.name, 'down')).toBeTrue();
+    expect(editor.scene.map.layers[0]).toBe(raw); expect(editor.scene.layers[0]).toBe(visible);
+  });
+
+  it('round trips the reordered ground layers while preserving native XML, upper levels and object groups', async () => {
+    const editor = await open(layeredXml);
+    editor.moveLayer('0_Floor', 'up');
+    const saved = await editor.serialize(), reloaded = await open(saved);
+    expect(reloaded.scene.map.layers.map(layer => layer.name)).toEqual(['0_Detail', '0_Floor', '0_Overlay']);
+    const source = new DOMParser().parseFromString(layeredXml, 'application/xml');
+    const result = new DOMParser().parseFromString(saved, 'application/xml');
+    const originalChildren = Array.from(source.documentElement.children), savedChildren = Array.from(result.documentElement.children);
+    for (let i = 0; i < originalChildren.length; i++) {
+      const child = originalChildren[i];
+      if (child.tagName !== 'layer' || child.getAttribute('name') === '1_Floor') expect(savedChildren[i].outerHTML).toBe(child.outerHTML);
+    }
+    for (const name of ['0_Floor', 'Detail', '0_Overlay'])
+      expect(result.querySelector(`layer[name="${name}"]`)!.outerHTML).toBe(source.querySelector(`layer[name="${name}"]`)!.outerHTML);
+    expect(reloaded.scene.map.layers[0].opacity).toBe(0.5); expect(reloaded.scene.map.layers[2].visible).toBeFalse();
+    expect(saved).not.toContain('layer-order');
+    expect(editor.scene.map.layers[0].name).toBe('0_Detail');
+  });
+
+  it('keeps layer moves in undo order with layer creation and painting across a manual save', async () => {
+    const editor = await open(layeredXml), name = editor.addLayer('New');
+    editor.moveLayer(name, 'down');
+    editor.paintCells(name, [{ point: { x: 0, y: 0 }, gid: 2 }]);
+    editor.markSaved(); expect(editor.dirty).toBeFalse();
+    editor.undo(); expect(editor.dirty).toBeTrue();
+    editor.undo(); expect(editor.scene.map.layers.at(-1)?.name).toBe(name);
+    editor.undo(); expect(editor.scene.map.layers.some(layer => layer.name === name)).toBeFalse();
+    editor.redo(); editor.redo(); editor.redo(); expect(editor.dirty).toBeFalse();
+    expect(editor.scene.map.layers.map(layer => layer.name)).toEqual(['0_Floor', '0_Detail', name, '0_Overlay']);
+    const saved = await readTilezedMap(await editor.serialize());
+    expect(saved.layers[2].gids[0]).toBe(2); expect(saved.noBlend!.get(name)![0]).toBe(1);
+    editor.undo(); editor.moveLayer('0_Floor', 'up'); expect(editor.canRedo).toBeFalse();
+  });
+
+  it('ignores moves beyond the stack edges or of missing layers without dirtying or clearing redo', async () => {
+    const editor = await open(layeredXml);
+    expect(editor.canMoveLayer('0_Floor', 'down')).toBeFalse();
+    expect(editor.canMoveLayer('0_Overlay', 'up')).toBeFalse();
+    expect(editor.moveLayer('0_Floor', 'down')).toBeFalse();
+    expect(editor.moveLayer('0_Overlay', 'up')).toBeFalse();
+    expect(editor.moveLayer('missing', 'up')).toBeFalse();
+    expect(editor.dirty).toBeFalse(); expect(editor.canUndo).toBeFalse();
+    editor.moveLayer('0_Floor', 'up'); editor.undo(); expect(editor.dirty).toBeFalse();
+    editor.moveLayer('0_Floor', 'down'); expect(editor.canRedo).toBeTrue();
+    expect((await open(await editor.serialize())).scene.map.layers.map(layer => layer.name)).toEqual(['0_Floor', '0_Detail', '0_Overlay']);
+  });
+  it('keeps building placements in undo order with tile edits and serializes native TMX lot objects only for local maps', async () => {
+    expect(tilezedBuildingPlacement({ path: 'house.tbx', width: 24, height: 20 }, { x: 10.2, y: 15.8 }))
+      .toEqual({ map: 'house.tbx', width: 24, height: 20, level: 0, x: -2, y: 6 });
+    const editor = await open(), original = editor.scene.map.layers[0].gids.slice();
+    const lot = { x: 1, y: -1, width: 2, height: 3, level: 0, map: '../Buildings/house.tbx' };
+    editor.placeBuilding(lot);
+    expect(editor.dirty).toBeTrue(); expect(editor.placementsDirty).toBeTrue();
+    expect(Array.from(editor.scene.layers[0].gids)).toEqual(Array.from(original));
+    expect((await readTilezedMap(await editor.serialize())).lots).toEqual([lot]);
+    expect((await readTilezedMap(await editor.serialize(false))).lots).toEqual([]);
+    editor.markSaved(); expect(editor.placementsDirty).toBeFalse();
+    editor.paintCells('0_Floor', [{ point: { x: 0, y: 0 }, gid: 3 }]);
+    editor.undo(); expect(editor.dirty).toBeFalse(); expect(editor.placedLots).toEqual([lot]);
+    editor.undo(); expect(editor.dirty).toBeTrue(); expect(editor.placementsDirty).toBeTrue();
+    expect((await readTilezedMap(await editor.serialize())).lots).toEqual([]);
+    editor.redo(); expect(editor.dirty).toBeFalse(); expect(editor.placementsDirty).toBeFalse();
+    editor.redo(); expect(editor.scene.layers[0].gids[0]).toBe(3);
+  });
+
   it('adds an empty layer above the existing stack and saves its tiles without altering other layers', async () => {
     const editor = await open(), original = editor.scene.map.layers[0].gids.slice();
     const name = editor.addLayer('Fences');

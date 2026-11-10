@@ -54,7 +54,8 @@
 
         <section class="main-col world-buildings" aria-labelledby="world-buildings-title" *ngIf="view === 'buildings'">
           <div class="section-head">
-            <div><h2 id="world-buildings-title">World buildings ({{worldBuildings.length}})</h2><p class="muted">Uploaded buildings, sorted by their full project path.</p></div>
+            <div><h2 id="world-buildings-title">World buildings ({{worldBuildings.length}})</h2><p class="muted">Project buildings, sorted by their full project path.</p></div>
+            <a class="button primary compact" *ngIf="auth.isAdmin" [routerLink]="['/projects', project.id, 'world-buildings', 'new']">New building</a>
             <button class="button compact" type="button" (click)="loadWorldBuildings()" [disabled]="buildingsLoading || busy">Refresh list</button>
           </div>
           <p class="muted" role="status" *ngIf="buildingsLoading">Loading building list…</p>
@@ -93,7 +94,7 @@
             <p class="muted fine">Contributors can view the shared world. Only admins can change or upload it.</p>
             <a class="button primary" [routerLink]="['/worlded/project', project.id]">Open project world</a>
           </section>
-          <section class="panel" aria-labelledby="builds-title">
+          <section class="panel" aria-labelledby="builds-title" *ngIf="auth.canViewWorlds">
             <h2 id="builds-title">Original builds</h2>
             <p class="muted fine">Contributions are stored separately and never overwrite these.</p>
             <ul class="plain" *ngIf="builds.length">

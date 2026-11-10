@@ -496,6 +496,10 @@ export class BuildingService {
     }
 
     async createNewBuilding(templateName?: string, dimensions = { width: 20, height: 20 }) {
+        this.store.dispatch(new SetBuilding(await this.newBuilding(templateName, dimensions)));
+    }
+
+    async newBuilding(templateName?: string, dimensions = { width: 20, height: 20 }): Promise<Building> {
         const { width, height } = dimensions;
         if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > 256 || height > 256) {
             throw new Error('Building dimensions must be whole numbers between 1 and 256 tiles.');
@@ -566,7 +570,7 @@ export class BuildingService {
             floors
         }
 
-        this.store.dispatch(new SetBuilding(newBuilding));
+        return newBuilding;
     }
 
     renderBuilding(building: Building, resetView = false, historyFloor?: number): void {

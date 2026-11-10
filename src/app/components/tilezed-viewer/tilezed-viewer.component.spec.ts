@@ -7,14 +7,17 @@ import { DbService } from '../../services/db.service';
 import { TilezedAssetsService } from '../../services/tilezed-assets.service';
 import { TilezedHandoffService } from '../../services/tilezed-handoff.service';
 import { TilezedStorageService } from '../../services/tilezed-storage.service';
+import { TilezedSessionService } from '../../services/tilezed-session.service';
 import { TilezedViewerComponent } from './tilezed-viewer.component';
 import { BuildingPreviewService } from '../../services/building-preview.service';
 import { AuthService } from '../../services/auth.service';
 import { TilezedBuildingContext } from '../../services/tilezed-handoff.service';
 import { tilezedTileToPixel } from '../../utils/tilezed-overlays';
 import { TilezedTilePaletteComponent } from './tilezed-tile-palette.component';
+import { TilezedBuildingPaletteComponent } from './tilezed-building-palette.component';
 import { ProjectApiService } from '../../services/project-api.service';
 import { readTilezedMap } from '../../utils/tilezed-map';
+import { nativeBuildingXml } from '../../testing/native-building.fixture';
 
 const mapXml = `<map version="1.0" orientation="levelisometric" width="1" height="1" tilewidth="64" tileheight="32">
   <tileset firstgid="1" name="sheet_01" tilewidth="64" tileheight="128"><image source="sheet_01.png" width="64" height="128"/></tileset>
@@ -28,7 +31,7 @@ describe('TileZed read-only viewer', () => {
   let storage: jasmine.SpyObj<TilezedStorageService>;
   let changes: Subject<string[]>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     localStorage.removeItem('tilezed:warningsExpanded');
     const previews = jasmine.createSpyObj('BuildingPreviewService', ['preview']);
     previews.preview.and.rejectWith(new Error('Preview unavailable'));
@@ -45,7 +48,7 @@ describe('TileZed read-only viewer', () => {
     changes = new Subject<string[]>();
     TestBed.configureTestingModule({
       declarations: [TilezedViewerComponent],
-      imports: [CommonModule, RouterTestingModule, TilezedTilePaletteComponent],
+      imports: [CommonModule, RouterTestingModule, TilezedTilePaletteComponent, TilezedBuildingPaletteComponent],
       providers: [
         { provide: BuildingPreviewService, useValue: previews },
         { provide: AuthService, useValue: { isAdmin: false } },
@@ -53,11 +56,14 @@ describe('TileZed read-only viewer', () => {
         { provide: DbService, useValue: { sheetsChanged: changes } },
         { provide: TilezedAssetsService, useValue: assets },
         { provide: TilezedStorageService, useValue: storage },
+        { provide: TilezedSessionService, useValue: jasmine.createSpyObj('TilezedSessionService', {
+          restore: Promise.resolve(undefined), remember: undefined }) },
       ],
     });
     fixture = TestBed.createComponent(TilezedViewerComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve, 0));
   });
 
   afterEach(() => { fixture.destroy(); changes.complete(); localStorage.removeItem('tilezed:warningsExpanded'); });
@@ -116,7 +122,7 @@ describe('TileZed read-only viewer', () => {
     expect(event.defaultPrevented).toBeTrue();
     const menu = fixture.nativeElement.querySelector('[role="menu"]') as HTMLElement;
     expect(menu).not.toBeNull();
-    expect(menu.querySelectorAll('[role="menuitem"]').length).toBe(1);
+    expect(menu.querySelectorAll('[role="menuitem"]').length).toBe(2);
     const edit = menu.querySelector<HTMLButtonElement>('[role="menuitem"]')!;
     expect(edit.textContent).toBe('Edit building');
     expect(document.activeElement).toBe(edit);
@@ -125,6 +131,41 @@ describe('TileZed read-only viewer', () => {
     expect(navigate).toHaveBeenCalledOnceWith(['/projects', 'project', 'world-buildings', 'Buildings/house.tbx', 'edit']);
     expect(component.contextMenu).toBeUndefined();
     expect(component.dragging).toBeFalse();
+  });
+
+  it('opens task creation with the right-clicked building selected', async () => {
+    await openBuilding();
+    const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    rightClickBuilding();
+    const buttons = fixture.nativeElement.querySelectorAll('[role="menuitem"]') as NodeListOf<HTMLButtonElement>;
+    expect(buttons[1].textContent).toBe('Create task from building');
+    buttons[1].click(); await fixture.whenStable(); fixture.detectChanges();
+    expect(navigate).toHaveBeenCalledOnceWith(['/projects', 'project', 'tasks', 'new'], {
+      queryParams: { worldBuilding: 'Buildings/house.tbx' },
+    });
+    expect(component.contextMenu).toBeUndefined();
+    expect(component.dragging).toBeFalse();
+  });
+
+  it('supports keyboard navigation between building context menu actions', async () => {
+    await openBuilding(); rightClickBuilding();
+    const buttons = fixture.nativeElement.querySelectorAll('[role="menuitem"]') as NodeListOf<HTMLButtonElement>;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement).toBe(buttons[1]);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement).toBe(buttons[0]);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    expect(document.activeElement).toBe(buttons[1]);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    expect(document.activeElement).toBe(buttons[0]);
+  });
+
+  it('rechecks admin permissions before creating a task from the context menu', async () => {
+    await openBuilding(); rightClickBuilding();
+    const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    Object.assign(TestBed.inject(AuthService), { isAdmin: false });
+    await component.createTaskFromContextBuilding();
+    expect(navigate).not.toHaveBeenCalled(); expect(component.contextMenu).toBeUndefined();
   });
 
   it('shows no editing menu for contributors, local maps, hidden overlays, or empty map space', async () => {
@@ -209,6 +250,72 @@ describe('TileZed read-only viewer', () => {
     return new Promise(resolve => canvas.toBlob(blob => resolve(blob!), 'image/png'));
   }
 
+  async function prepareBuildingPlacement(hosted = false): Promise<void> {
+    await openEditableMap(hosted);
+    const file = new File([nativeBuildingXml], 'house.tbx');
+    const context = (component as any).buildingContext as TilezedBuildingContext;
+    context.files = new Map([['Buildings/house.tbx', file]]); context.cell = { x: 3, y: 4 };
+    const previews = TestBed.inject(BuildingPreviewService).preview as jasmine.Spy;
+    previews.and.resolveTo({ blob: await opaqueSheet(), width: 512, height: 1024, warnings: [],
+      bounds: { left: 0, right: 64, top: -96, bottom: 32 }, squares: { minX: 0, minY: 0, maxX: 0, maxY: 0 } });
+    await component.chooseBuilding({ path: 'Buildings/house.tbx', file, width: 1, height: 1 });
+    fixture.detectChanges(); await fixture.whenStable();
+  }
+
+  it('draws a building preview before placement, supports undo/redo, and saves WorldEd lots only on manual Save', async () => {
+    await prepareBuildingPlacement(true);
+    const draw = spyOn(component.canvas.nativeElement.getContext('2d')!, 'drawImage').and.callThrough();
+    const bitmap = (component as any).buildingPreview.bitmap;
+    pointerAt('pointermove', 1.1, 0.1);
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    expect(draw.calls.allArgs().some(args => args[0] === bitmap)).toBeTrue();
+    expect(component.dirty).toBeFalse(); expect(component.editor!.placedLots).toEqual([]);
+    const save = TestBed.inject(ProjectApiService).saveWorldMap as jasmine.Spy;
+    pointerAt('pointerdown', 1.1, 0.1); pointerAt('pointerup', 1.1, 0.1);
+    expect(component.editor!.placedLots.length).toBe(1);
+    const lot = { ...component.editor!.placedLots[0] };
+    expect(component.dirty).toBeTrue(); expect(save).not.toHaveBeenCalled(); expect(storage.rememberMap).not.toHaveBeenCalled();
+    expect(Array.from(component.scene!.layers[0].gids)).toEqual([0, 0, 0, 0]);
+    component.history(); expect(component.editor!.placedLots).toEqual([]); expect(component.dirty).toBeFalse();
+    component.history(true); expect(component.editor!.placedLots).toEqual([lot]);
+    save.and.resolveTo({ projectId: 'project', path: 'maps/editable.tmx', revision: 8 });
+    await component.saveMap();
+    expect(save.calls.mostRecent().args[4]).toEqual({ cell: { x: 3, y: 4 }, lots: [lot] });
+    expect((await readTilezedMap(save.calls.mostRecent().args[2])).lots).toEqual([]);
+    expect(component.dirty).toBeFalse();
+    component.history(); expect(component.dirty).toBeTrue();
+    save.and.resolveTo({ projectId: 'project', path: 'maps/editable.tmx', revision: 9 });
+    await component.saveMap();
+    expect(save.calls.mostRecent().args[3]).toBe(8);
+    expect(save.calls.mostRecent().args[4]).toEqual({ cell: { x: 3, y: 4 }, lots: [] });
+  });
+
+  it('exports local placements as TMX lot objects and cancels the brush without placing or saving', async () => {
+    await prepareBuildingPlacement();
+    pointerAt('pointermove', 1.1, 0.1);
+    component.onKeyDown(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(component.tool).toBe('pan'); expect(component.dirty).toBeFalse();
+    component.setTool('building'); pointerAt('pointerdown', 1.1, 0.1);
+    const download = spyOn<any>(component, 'downloadMap');
+    await component.saveMap();
+    const file = download.calls.mostRecent().args[0] as File;
+    expect((await readTilezedMap(await file.text())).lots).toEqual(component.editor!.placedLots);
+    expect(storage.rememberMap).toHaveBeenCalled(); expect(component.dirty).toBeFalse();
+  });
+
+  it('preserves unsaved placements on save conflict and blocks placement after losing admin permissions', async () => {
+    await prepareBuildingPlacement(true);
+    pointerAt('pointerdown', 1.1, 0.1);
+    const save = TestBed.inject(ProjectApiService).saveWorldMap as jasmine.Spy;
+    save.and.rejectWith(new Error('The world changed in another session.'));
+    await component.saveMap();
+    expect(component.dirty).toBeTrue(); expect(component.editor!.placedLots.length).toBe(1);
+    expect(component.error).toContain('world changed');
+    Object.assign(TestBed.inject(AuthService), { isAdmin: false });
+    pointerAt('pointerdown', 2.1, 0.1);
+    expect(component.editor!.placedLots.length).toBe(1);
+  });
+
   it('adds a named tile layer at the top of the reversed list, supports undo, and saves only manually', async () => {
     await openEditableMap(true);
     const add = fixture.nativeElement.querySelector('button[aria-label="Add tile layer"]') as HTMLButtonElement;
@@ -240,6 +347,41 @@ describe('TileZed read-only viewer', () => {
     const saved = await readTilezedMap(save.calls.mostRecent().args[2]);
     expect(saved.layers.map(layer => layer.name)).toEqual(['0_Floor', '0_Fences']);
     expect(saved.layers[1].gids[1]).toBe(1); expect(component.dirty).toBeFalse();
+  });
+
+  it('raises and lowers the selected layer, keeps it selected through undo, and persists the order only on Save', async () => {
+    await openEditableMap(true);
+    component.newLayerName = 'Detail'; component.addLayer(); fixture.detectChanges();
+    const button = (label: string) => fixture.nativeElement.querySelector(`button[aria-label="${label}"]`) as HTMLButtonElement;
+    const order = () => component.scene!.map.layers.map(layer => layer.name);
+    expect(button('Raise layer').disabled).toBeTrue(); expect(button('Lower layer').disabled).toBeFalse();
+    button('Lower layer').click(); fixture.detectChanges();
+    expect(order()).toEqual(['0_Detail', '0_Floor']); expect(component.activeLayer).toBe('0_Detail');
+    expect(component.scene!.layers.map(layer => layer.name)).toEqual(order());
+    expect(component.layerOptions.map(layer => layer.name)).toEqual(['0_Floor', '0_Detail']);
+    expect(button('Lower layer').disabled).toBeTrue(); expect(button('Raise layer').disabled).toBeFalse();
+    component.history(); fixture.detectChanges(); expect(order()).toEqual(['0_Floor', '0_Detail']);
+    expect(component.activeLayer).toBe('0_Detail');
+    component.history(true); fixture.detectChanges(); expect(order()).toEqual(['0_Detail', '0_Floor']);
+    const save = TestBed.inject(ProjectApiService).saveWorldMap as jasmine.Spy;
+    expect(save).not.toHaveBeenCalled(); expect(storage.rememberMap).not.toHaveBeenCalled();
+    save.and.resolveTo({ projectId: 'project', path: 'maps/editable.tmx', revision: 8 });
+    await component.saveMap();
+    expect((await readTilezedMap(save.calls.mostRecent().args[2])).layers.map(layer => layer.name)).toEqual(['0_Detail', '0_Floor']);
+    expect(component.dirty).toBeFalse();
+    button('Raise layer').click(); fixture.detectChanges();
+    expect(order()).toEqual(['0_Floor', '0_Detail']); expect(component.dirty).toBeTrue();
+  });
+
+  it('blocks layer moves while saving, after an account change, and for non-admins', async () => {
+    await openEditableMap(); component.newLayerName = 'Detail'; component.addLayer();
+    const order = () => component.scene!.map.layers.map(layer => layer.name);
+    component.saving = true; component.moveLayer('down'); expect(order()).toEqual(['0_Floor', '0_Detail']);
+    component.saving = false;
+    const auth = TestBed.inject(AuthService); Object.assign(auth, { user: { uid: 'different-user' } });
+    component.moveLayer('down'); expect(order()).toEqual(['0_Floor', '0_Detail']);
+    Object.assign(auth, { isAdmin: false }); component.moveLayer('down');
+    expect(order()).toEqual(['0_Floor', '0_Detail']);
   });
 
   it('keeps duplicate-name errors inside the layer dialog and lets cancellation leave the map unchanged', async () => {
@@ -287,6 +429,9 @@ describe('TileZed read-only viewer', () => {
     const blob = await opaqueSheet();
     assets.load.and.callFake(async sheets => ({ sheets: new Map(sheets.map(sheet => [sheet.firstGid, blob])), errors: new Map(), warnings: [] }));
     spyOn(component.buildings!, 'pickTile').and.resolveTo({ sheet: 'building_floor_01', index: 9 });
+    const bitmap = await createImageBitmap(blob);
+    component.buildings!.sprites.push({ bitmap, level: 0, squares: { minX: 0, minY: 0, maxX: 0, maxY: 0 },
+      bounds: { left: -10000, right: 10000, top: -10000, bottom: 10000 } });
     component.setTool('pick');
     await component.pickAtEvent(new MouseEvent('pointerdown'));
     expect(component.tool).toBe('stamp');
@@ -299,6 +444,7 @@ describe('TileZed read-only viewer', () => {
     expect(saved.layers[0].gids[0]).toBe(11);
     expect(saved.tilesets[1].name).toBe('building_floor_01');
     expect(storage.rememberMap).not.toHaveBeenCalled();
+    bitmap.close();
   });
 
   it('renders AboveLots over buildings and picks it before lots while transparent pixels reveal the building', async () => {
@@ -344,6 +490,38 @@ describe('TileZed read-only viewer', () => {
       await new Promise(resolve => requestAnimationFrame(resolve));
       expect(colorAt(16)).toEqual([0, 255, 0, 255]);
     } finally { building.close(); }
+  });
+
+  it('renders a farther AboveLots fence behind a nearer building wall using the cached square compositor', async () => {
+    Object.assign(TestBed.inject(AuthService), { isAdmin: true });
+    const source = document.createElement('canvas'); source.width = 64; source.height = 128;
+    const context = source.getContext('2d')!; context.fillStyle = '#00ff00'; context.fillRect(0, 0, 64, 128);
+    const wall = await new Promise<Blob>(resolve => source.toBlob(value => resolve(value!), 'image/png'));
+    context.fillStyle = '#0000ff'; context.fillRect(0, 0, 64, 128);
+    const fence = await new Promise<Blob>(resolve => source.toBlob(value => resolve(value!), 'image/png'));
+    assets.load.and.resolveTo({ sheets: new Map([[1, fence]]), errors: new Map(), warnings: [] });
+    const previews = TestBed.inject(BuildingPreviewService) as jasmine.SpyObj<BuildingPreviewService>;
+    previews.preview.and.resolveTo({ blob: wall, width: 64, height: 128, warnings: [],
+      bounds: { left: -32, right: 32, top: -96, bottom: 32 }, squares: { minX: 0, minY: 0, maxX: 0, maxY: 0 },
+      composition: { pages: [{ blob: wall, width: 64, height: 128 }], tiles: [
+        { squareX: 0, squareY: 0, level: 0, layer: 'Walls', frame: 0, sheet: 'sheet_01', index: 0 },
+      ] } });
+    const xml = mapXml.replace('width="1" height="1"', 'width="2" height="1"')
+      .replace('<layer name="0_Floor" width="1"', '<layer name="0_Floor" width="2"').replace('>1</data>', '>0,0</data>')
+      .replace('</map>', '<layer name="0_AboveLots" width="2" height="1"><data encoding="csv">1,0</data></layer></map>');
+    await component.openMap(new File([xml], 'depth.tmx'), true, {
+      lots: [{ x: 1, y: 0, width: 1, height: 1, level: 0, map: 'house.tbx' }], files: new Map([['house.tbx', new File([''], 'house.tbx')]]) });
+    for (let i = 0; i < 50 && component.loadingBuildings; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    expect(component.buildings!.sprites[0].composition).toBeDefined();
+    component.setTool('pan'); await new Promise(resolve => requestAnimationFrame(resolve));
+    const camera = (component as any).camera, viewport = (component as any).viewport, ratio = (component as any).pixelRatio;
+    const x = viewport.width / 2 + (40 - camera.x) * camera.zoom, y = viewport.height / 2 + (-40 - camera.y) * camera.zoom;
+    const color = component.canvas.nativeElement.getContext('2d')!.getImageData(Math.floor(x * ratio), Math.floor(y * ratio), 1, 1).data;
+    expect([...color]).toEqual([0, 255, 0, 255]);
+    component.setTool('pick');
+    const rect = component.canvas.nativeElement.getBoundingClientRect();
+    await component.pickAtEvent(new MouseEvent('pointerdown', { clientX: rect.left + x, clientY: rect.top + y }));
+    expect(component.tool).toBe('stamp'); expect(component.activeLayer).toBe('0_Floor');
   });
 
   it('previews native fences, commits a drag on release, supports gates/posts, and leaves saving manual', async () => {
@@ -610,6 +788,34 @@ describe('TileZed read-only viewer', () => {
     restored.destroy();
   });
 
+  it('restores the last hosted cell before considering an older local map', async () => {
+    const sessions = TestBed.inject(TilezedSessionService) as jasmine.SpyObj<TilezedSessionService>;
+    const file = new File([mapXml], 'last-project-cell.tmx');
+    const buildings = { projectId: 'project', mapPath: 'maps/last-project-cell.tmx', worldRevision: 9,
+      cell: { x: 4, y: 5 }, lots: [], files: new Map<string, File>() };
+    sessions.restore.and.resolveTo({ file, buildings });
+    storage.lastMap.and.resolveTo(new File([mapXml], 'older-local-map.tmx')); storage.lastMap.calls.reset();
+    const restored = TestBed.createComponent(TilezedViewerComponent); restored.detectChanges();
+    await restored.whenStable();
+    for (let i = 0; i < 50 && !restored.componentInstance.scene; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    expect(restored.componentInstance.fileName).toBe(file.name);
+    expect(restored.componentInstance.worldLink).toEqual(['/worlded/project', 'project']);
+    expect(restored.componentInstance.hostedMap).toBeTrue(); expect(restored.componentInstance.restoredMap).toBeTrue();
+    expect(storage.lastMap).not.toHaveBeenCalled(); expect(storage.rememberMap).not.toHaveBeenCalled();
+    restored.destroy();
+  });
+
+  it('reports a denied hosted restore without reopening an unrelated older local map', async () => {
+    const sessions = TestBed.inject(TilezedSessionService) as jasmine.SpyObj<TilezedSessionService>;
+    sessions.restore.and.rejectWith(new Error('Project access removed.'));
+    storage.lastMap.and.resolveTo(new File([mapXml], 'older-local-map.tmx')); storage.lastMap.calls.reset();
+    const restored = TestBed.createComponent(TilezedViewerComponent); restored.detectChanges(); await restored.whenStable();
+    for (let i = 0; i < 50 && !restored.componentInstance.storageWarning; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    expect(restored.componentInstance.scene).toBeUndefined();
+    expect(restored.componentInstance.storageWarning).toContain('Project access removed.');
+    expect(storage.lastMap).not.toHaveBeenCalled(); restored.destroy();
+  });
+
   it('opens a WorldEd cell instead of restoring the previous map', async () => {
     const file = new File([mapXml], 'cell.tmx');
     TestBed.inject(TilezedHandoffService).send(file);
@@ -642,6 +848,15 @@ describe('TileZed read-only viewer', () => {
     expect(component.worldLink).toEqual(['/worlded/project', 'shared-project']);
     expect(storage.rememberMap).not.toHaveBeenCalled();
     expect(component.restoredMap).toBeFalse();
+  });
+
+  it('remembers the hosted project, path and exact cell when opened from WorldEd', async () => {
+    const file = new File([mapXml], 'cell.tmx');
+    const buildings = { projectId: 'shared-project', mapPath: 'maps/cell.tmx', worldRevision: 5,
+      cell: { x: 4, y: 7 }, lots: [], files: new Map<string, File>() };
+    await component.openMap(file, true, buildings);
+    expect(TestBed.inject(TilezedSessionService).remember).toHaveBeenCalledWith(buildings);
+    expect(storage.rememberMap).not.toHaveBeenCalled();
   });
 
   it('shows and remembers WorldEd cell zones, with toggles saved as preferences', async () => {
@@ -730,6 +945,7 @@ describe('TileZed read-only viewer', () => {
     const restored = TestBed.createComponent(TilezedViewerComponent);
     restored.detectChanges();
     await restored.whenStable();
+    for (let i = 0; i < 50 && !restored.componentInstance.storageWarning; i++) await new Promise(resolve => setTimeout(resolve, 5));
 
     expect(restored.componentInstance.storageWarning).toContain('Storage is unavailable');
     expect(console.error).toHaveBeenCalled();

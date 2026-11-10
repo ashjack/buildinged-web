@@ -26,6 +26,28 @@ origin and API URL to reuse the same cached download between iterations.
 
 ## Hosted project worlds
 
+In TileZed, admins can choose **Place building** (L) to browse the project's TBX
+buildings. The sidebar provides a searchable, paginated thumbnail grid, a larger
+selected preview, and tile dimensions. Only the visible page requests thumbnails.
+Move over the map to see a translucent building and its footprint before clicking
+to place it. Like native WorldEd's `DnDItem`, the cursor snaps to the nearest tile
+intersection with the building's centre tile as the hotspot. Escape or right-click
+cancels placement. Buildings are placed on level 0 and share undo/redo with tile
+edits. **Save map to project** saves the TMX and the selected PZW cell's lot list
+in one world revision. Local maps export new placements as native TMX lot objects;
+choose the project folder to browse unplaced local TBX buildings. Placement never
+saves automatically.
+
+Admins can create a building from **World buildings → New building**. Choose its
+name (or relative `.tbx` path), dimensions, and starter template, then edit it in
+BuildingEd. **Save local draft** and the toolbar Save button keep the draft in the
+current browser. **Add building to world** publishes it to the project's building
+pool; it then appears in the World buildings list and WorldEd's lot picker. It is
+not placed on the map until an admin adds a lot using it. A shared world must
+already be uploaded, and publishing requires explicit project membership. Existing
+paths cannot be overwritten by new buildings. After publishing, the editor uses
+the normal manual **Save building to world** action.
+
 Admins can edit an uploaded TBX directly from **World buildings → Edit building**,
 or from a building lot in WorldEd's selected-cell controls. **Save building to world**
 updates the shared building at the same path without creating a variant or requiring
@@ -37,6 +59,9 @@ or recovery. The editor's save icon also saves to the world in this mode.
 In TileZed, admins viewing a hosted project cell can right-click a building's grey
 overlay and choose **Edit building** to open the same editor. Building outlines
 must be enabled. Clicking outside the menu or pressing Escape closes it.
+**Create task from building** opens `/projects/:projectId/tasks/new` with that
+world building selected in the existing task brief form. Project task-management
+permissions still apply; the source copy and task are created only on submission.
 
 From a project, choose **Shared world → Open project world**. Admin accounts
 can upload a `.pzw` and its project folder,
@@ -99,10 +124,17 @@ arrow keys, plus/minus, and Home.
 Choose a visible **Layer**, then a tile from the **Tilesets** dock. The layer list
 shows the topmost layer first, with the lowest layer at the bottom. **Add tile
 layer** beside the list creates a named, empty ground-level tile layer above the
-existing stack and selects it. Creation supports undo/redo and remains unsaved
-until the map is saved manually. A layer named **AboveLots** (`0_AboveLots` in
-the map) renders after buildings; its transparent pixels reveal the lots below.
-The picker follows this same order. Other map layers render before buildings.
+existing stack and selects it. **Raise layer** and **Lower layer** beside the
+picker move the selected ground-level layer one position in the draw stack,
+keeping it selected. Creation and reordering support undo/redo and remain unsaved
+until the map is saved manually; saved TMX files retain the new layer order.
+Layers whose names contain **AboveLot**, including **AboveLots** (`0_AboveLots`
+in the map), render after buildings regardless of their position in the layer
+list. Moving vegetation above AboveLots keeps vegetation below buildings.
+Ordinary layers keep their relative order; AboveLot layers keep their own
+relative order. This follows `CompositeLayerGroup::orderedCellsAt` in TileZed's
+`src/tiled/mapcomposite.cpp`, which appends AboveLot tiles after building tiles
+at each square. The picker follows the same named-layer rule.
 The dock has a
 searchable tileset list beside a continuous sheet preview, with zoom and background
 color controls below. Drag across tiles or Shift-click a second tile to form a
@@ -134,6 +166,11 @@ revision captured when opening the cell; conflicts keep the edits open for expor
 **Export .tmx** creates a backup without marking hosted edits saved. Leaving or
 opening another map prompts before discarding unsaved work. No editing action
 automatically saves to the project or the browser's last-map snapshot.
+
+Refreshing a hosted cell reopens the last selected project, cell coordinates and
+map path using the latest saved world and its current revision. Only this
+selection is remembered; access is checked again before loading project files.
+Opening a local map switches refresh restoration back to the local snapshot.
 
 Saved edits use TileZed's native per-layer `bmp-noblend` masks, so hand-placed tiles
 and erasures survive BMP regeneration. The writer preserves other layers,
@@ -189,21 +226,17 @@ Clearing site caches does not remove uploaded project worlds. BuildingEd's
 existing tiles and tilepacks are reused when opening a cell in TileZed.
 
 Building geometry is generated in a Web Worker using the existing BuildingEd
-square/roof projection. Like desktop WorldEd's lot map images, each building is
-composited with its manually placed TBX tile layers overriding generated tiles
-on the same square, layer and level, then
-rendered once to a cached image (WorldEd stores fixed-width 256 px thumbnails;
-TileZed uses full-resolution images), repeated lots share it, and pan/zoom frames
-only draw visible images, not their individual tiles. WorldEd draws lots in level
-order over the terrain. TileZed orders buildings back-to-front within each base
-level, approximating desktop TileZed's square-by-square diagonal drawing order.
-It uses the squares each building actually draws, rather than file order, lot
-rectangles or image bounds, so neighbours sharing a party-wall line order
-correctly. Only buildings whose images overlap are constrained, and the order is
-computed as lots load, not during pan/zoom. Interlocking footprints
-that require per-tile compositing produce a warning. Desktop TileZed also draws
-every lot's level 0 before any lot's level 1; whole-building images cannot
-interleave floors this way.
+square/roof projection, with manual TBX tiles replacing generated tiles on the
+same square, layer and level. WorldEd uses cached 256 px building thumbnails.
+TileZed stores the individual tiles in cached image atlases, then decodes each
+distinct source tile once across buildings in the current cell. It does not
+retain an additional full-building image in that mode. Rendering follows the
+native level-by-level, square-by-square diagonal order: ordinary map tiles,
+building tiles, then AboveLot tiles at that square. It completes that square
+before drawing the next, so nearer walls and upper floors can cover farther
+AboveLots fences. Building floors and replacement layers suppress map tiles
+at their own square using the C++ lot composition rules. Tile picking uses
+the same ordered tiles as rendering.
 PNG previews are cached by
 file contents, width, floor and the content hashes of their referenced sheets,
 with a 256 MiB LRU limit so a
@@ -214,16 +247,14 @@ re-requested for a minute); transient failures are retried. Each viewer also cap
 Up to three previews render concurrently (lots are still placed in order), and
 they share tilesheet lookups, the tilepack manifest and decoded tilesheets; the
 decoded sheets (also capped at 96 MiB) are released after 10 seconds idle.
-While buildings stream in, redraws are throttled and TileZed reuses a cached
-terrain layer, so only building images are redrawn.
+While buildings stream in, redraws are throttled. TileZed caches the composed
+viewport until its map, camera, tile images or loaded buildings change.
 Tilepack directory
 indexes are reused for five minutes (at most eight packs), avoiding repeated ZIP
 directory scans when different buildings request different sheets. Oversized or
 unsupported buildings and missing tilesheets are reported explicitly. The
-initial building preview supports TBX v2-v7 (room ceiling tiles are not drawn),
-not TMX lot submaps, and does not
-perform desktop TileZed's per-tile lot compositing, so terrain objects in front
-of a building are drawn behind it.
+building preview supports TBX v2-v7 (room ceiling tiles are not drawn),
+not TMX lot submaps or basement-access composition.
 
 ZIP uploads through Tile Administration publish an immutable release ZIP and a
 matching `SheetIndexUrl` sidecar containing each selected PNG's SHA-256 and size.
@@ -455,7 +486,15 @@ center within those bounds. Navigation never changes the building document.
   or hold and drag to override its facing. Drag direction uses eight sectors for
   furniture with corner variants and four otherwise, even beyond the grid edge.
   Missing variants fall back to an available cardinal or the selected orientation.
-  Placement stays anchored to the starting cell and is one undo/redo command.
+  Definitions marked **Walls** use the native artwork fallback (E/N reuse W;
+  S reuses N, then W). These wall pieces match an existing wall on the grid edge
+  under the pointer. If that edge has no wall, they use the facing selected in
+  the sidebar and snap to the nearest parallel grid line. Walls on other edges
+  do not pull the preview away from that line.
+  Interior grid lines and the outer boundary are both available. Larger pieces
+  stay aligned with the chosen line. Dragging retains that
+  adjusted anchor, and placement is one undo/redo command. The preview uses the
+  same wall-shaped grid overlay as a placed piece.
 - **Roofs:** drag from a cell to create a roof, with the native type-specific size
   constraints and reverse-drag anchoring. Mouse position within a cell selects
   half-depth slopes and the supported corner types. Hover a roof to reveal its

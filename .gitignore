@@ -44,3 +44,4 @@ firebase.md
 src/assets/firebase-config.json
 .env
 .env.*
+firebase-debug.log

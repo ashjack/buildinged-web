@@ -8,6 +8,11 @@
     <button class="toolbar-button" (click)="redo()" [disabled]="!(redoLabel$ | async)" [title]="'Redo ' + ((redoLabel$ | async) || '')" aria-label="Redo"><img src="assets/icons/edit-redo.png" alt=""></button>
   </div>
   <span class="separator"></span>
+  <div class="toolbar-group" aria-label="Building area">
+    <button class="toolbar-button" title="Resize building area" aria-label="Resize building area" (click)="openResize()" [disabled]="!canResize"><img src="assets/icons/icon_resize.png" alt=""></button>
+    <button class="toolbar-button" title="Crop to minimum area across all floors" aria-label="Crop to minimum" (click)="cropToMinimum()" [disabled]="!canResize"><img src="assets/icons/icon_crop.png" alt=""></button>
+  </div>
+  <span class="separator"></span>
   <div class="toolbar-group" aria-label="Room tools">
     <button class="toolbar-button" title="Draw rooms" aria-label="Draw rooms" (click)="setTool('tool-draw-room')" [class.active]="(currentTool$ | async) === 'tool-draw-room'"><img src="assets/icons/icon_pencil.png" alt=""></button>
     <button class="toolbar-button" title="Draw walls" aria-label="Wall tool" (click)="setTool('tool-wall')" [class.active]="(currentTool$ | async) === 'tool-wall'"><img src="assets/icons/icon_wall.png" alt=""></button>
@@ -51,6 +56,32 @@
   <span class="separator"></span>
   <button class="toolbar-button" title="Tilesets" aria-label="Tilesets" (click)="toggleWindow()"><img src="assets/icons/icon_tile.png" alt=""></button>
 </div>
+<p class="resize-status" role="status" *ngIf="resizeMessage">{{resizeMessage}}</p>
+<dialog #resizeDialog class="resize-dialog" aria-labelledby="resize-title" (keydown)="$event.stopPropagation()" (keyup)="$event.stopPropagation()" (close)="endResizeDrag()">
+  <form (ngSubmit)="applyResize()">
+    <h2 id="resize-title">Resize building area</h2>
+    <p>Current area: {{resizeSource?.width}} × {{resizeSource?.height}} tiles. Applies to all floors.</p>
+    <div class="resize-fields">
+      <label>Width (tiles)<input name="resizeWidth" type="number" [(ngModel)]="resize.width" (ngModelChange)="clampResizeOffsets()" min="1" [max]="maxDimension" step="1" required></label>
+      <label>Height (tiles)<input name="resizeHeight" type="number" [(ngModel)]="resize.height" (ngModelChange)="clampResizeOffsets()" min="1" [max]="maxDimension" step="1" required></label>
+      <label>Offset X<input name="resizeOffsetX" type="number" [(ngModel)]="resize.offsetX" [min]="offsetMin('X')" [max]="offsetMax('X')" step="1" required></label>
+      <label>Offset Y<input name="resizeOffsetY" type="number" [(ngModel)]="resize.offsetY" [min]="offsetMin('Y')" [max]="offsetMax('Y')" step="1" required></label>
+    </div>
+    <svg class="resize-preview" viewBox="0 0 280 170" role="img" aria-label="Resize preview: solid outline is the new area; dashed outline is the existing area. Drag to change the offset."
+      (pointerdown)="startResizeDrag($event)" (pointermove)="moveResizeDrag($event)" (pointerup)="endResizeDrag()" (pointercancel)="endResizeDrag()" (lostpointercapture)="endResizeDrag()">
+      <rect class="new-area" [attr.x]="resizePreview.x" [attr.y]="resizePreview.y" [attr.width]="resizePreview.width" [attr.height]="resizePreview.height"/>
+      <rect class="old-area" [attr.x]="resizePreview.x + (resize.offsetX || 0) * resizePreview.scale" [attr.y]="resizePreview.y + (resize.offsetY || 0) * resizePreview.scale"
+        [attr.width]="(resizeSource?.width || 1) * resizePreview.scale" [attr.height]="(resizeSource?.height || 1) * resizePreview.scale"/>
+    </svg>
+    <p>Drag the dashed area or enter offsets to position existing content.</p>
+    <p class="resize-warning" *ngIf="resizeWillCrop">Content outside the new area will be cropped. You can undo this edit.</p>
+    <p role="alert" *ngIf="!validResize">Enter whole dimensions from 1 to {{maxDimension}} and offsets within the allowed range. Reopen this dialog if the building has changed.</p>
+    <div class="dialog-footer">
+      <button type="button" (click)="resizeDialog.close()">Cancel</button>
+      <button class="resize-submit" type="submit" [disabled]="!validResize">Resize</button>
+    </div>
+  </form>
+</dialog>
 <app-rooms-dialog #roomsEditor></app-rooms-dialog>
 <app-auto-furnishing-dialog #autoFurnishing></app-auto-furnishing-dialog>
 <dialog #floorsDialog class="floors-dialog" aria-labelledby="floors-title" (keydown)="floorDialogKey($event)" (keyup)="$event.stopPropagation()">

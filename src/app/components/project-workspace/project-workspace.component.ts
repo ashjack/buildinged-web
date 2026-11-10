@@ -7,6 +7,7 @@ import { ProjectApiService } from '../../services/project-api.service';
 import { ProjectWorldDocument, ProjectWorldFile, ProjectWorldService } from '../../services/project-world.service';
 import { BuildingPreviewService } from '../../services/building-preview.service';
 import { readBuildingFile, writeBuildingFile } from '../../utils/tbx-format';
+import { worldedReferenceKey } from '../../utils/worlded-files';
 
 type TaskDraft = Pick<ProjectTask, 'title' | 'type' | 'description' | 'requirements' | 'priority' | 'references'> & { sourceBuildId: string };
 function emptyTask(): TaskDraft {
@@ -83,7 +84,7 @@ export class ProjectWorkspaceComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
-    combineLatest([this.route.paramMap, this.auth.user$]).pipe(takeUntil(this.destroyed$)).subscribe(([, user]) => {
+    combineLatest([this.route.paramMap, this.route.queryParamMap, this.auth.user$]).pipe(takeUntil(this.destroyed$)).subscribe(([, , user]) => {
       if (!user) {
         this.generation++;
         this.project = undefined;
@@ -124,7 +125,20 @@ export class ProjectWorkspaceComponent implements OnInit, OnDestroy {
       this.contributions = contributions;
       this.members = members;
       this.draft.sourceBuildId ||= builds[0]?.id || '';
-      if (!task && this.view === 'buildings') await this.loadWorldBuildings();
+      if (!task && this.route.snapshot.data?.['createTask']) {
+        if (!this.canManage) throw new Error('You do not have permission to create tasks for this project.');
+        const sourcePath = this.route.snapshot.queryParamMap.get('worldBuilding');
+        if (sourcePath !== null) {
+          const path = worldedReferenceKey(sourcePath);
+          if (!path || !/\.tbx$/i.test(path)) throw new Error('Select a TBX world building to create a task.');
+          await this.loadWorldBuildings();
+          if (generation !== this.generation) return;
+          if (this.buildingsError) throw new Error(this.buildingsError);
+          const building = this.worldBuildings.find(building => worldedReferenceKey(building.path) === path);
+          if (!building) throw new Error('The selected building is no longer available in this project world.');
+          this.taskFromBuilding(building);
+        } else { this.showTaskForm = true; this.view = 'tasks'; }
+      } else if (!task && this.view === 'buildings') await this.loadWorldBuildings();
     } catch (error) {
       if (generation === this.generation) this.error = error instanceof Error ? error.message : String(error);
     } finally { if (generation === this.generation) this.loading = false; }

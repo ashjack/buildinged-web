@@ -1,5 +1,5 @@
 import { of } from 'rxjs';
-import { AddObject, AddTile, EditRooms, PaintTileCells, Redo, SetBuilding, SetCurrentTool, TransformSelection, Undo } from '../app.actions';
+import { AddObject, AddTile, EditRooms, PaintTileCells, Redo, ResizeBuilding, SetBuilding, SetCurrentTool, TransformSelection, Undo } from '../app.actions';
 import { documentHarness } from '../testing/document-harness';
 import { nativeBuildingXml } from '../testing/native-building.fixture';
 import { readBuildingFile, writeBuildingFile } from '../utils/tbx-format';
@@ -249,6 +249,21 @@ describe('Manual tile editing tools', () => {
 });
 
 describe('Canvas tool wiring', () => {
+    it('clears stale room selections after resize, undo and redo', () => {
+        const h = setup();
+        const view = new ViewportCanvasComponent({ get: () => of([]) } as any, null!, h.store as any, null!,
+            { tilepacks: [], processTilepacks: () => {} } as any, null!, h.buildings, h.grid, h.rooms, null!, null!, null!, null!, h.settings);
+        view.ngOnInit(); h.store.dispatch(new SetCurrentTool('tool-select-rooms'));
+        const select = view.selectedTool as ToolSelect;
+        select.area = { x: 2, y: 2, width: 2, height: 2 };
+        h.store.dispatch(new ResizeBuilding({ width: 10, height: 10, offsetX: 1, offsetY: 1 }, 0));
+        expect(select.area).toBeUndefined();
+        select.area = { x: 1, y: 1, width: 2, height: 2 }; h.store.dispatch(new Undo());
+        expect(select.area).toBeUndefined();
+        select.area = { x: 1, y: 1, width: 2, height: 2 }; h.store.dispatch(new Redo());
+        expect(select.area).toBeUndefined();
+        view.ngOnDestroy(); h.destroy();
+    });
     it('updates within-cell stair facing and wall-handle hover using fractional pointer positions', () => {
         const h = setup();
         const view = new ViewportCanvasComponent(null!, null!, h.store as any, null!, null!, null!, h.buildings, h.grid, h.rooms, null!, null!, null!, null!, h.settings);

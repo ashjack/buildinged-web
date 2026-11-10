@@ -1,6 +1,6 @@
 import { Injectable, OnDestroy } from '@angular/core';
 import { Building } from '../models/app.models';
-import { BuildingPreview, BuildingSquares, PreviewTile } from '../utils/building-preview';
+import { BuildingCompositionTile, BuildingPreview, buildingPreviewBytes, BuildingSquares, PreviewTile } from '../utils/building-preview';
 import { readPngSize } from '../utils/sheet-atlas';
 import { readBuildingPreviewFile } from '../utils/tbx-format';
 import { TilezedTileset } from '../utils/tilezed-map';
@@ -140,10 +140,10 @@ export class BuildingPreviewService implements OnDestroy {
       variants.set(variant, preview);
       this.cache.delete(file);
       this.cache.set(file, variants);
-      this.cacheBytes += preview.blob.size;
+      this.cacheBytes += buildingPreviewBytes(preview);
       while (this.cacheBytes > MAX_CACHE_BYTES && this.cache.size) {
         const oldest = this.cache.keys().next().value as File;
-        for (const value of this.cache.get(oldest)!.values()) this.cacheBytes -= value.blob.size;
+        for (const value of this.cache.get(oldest)!.values()) this.cacheBytes -= buildingPreviewBytes(value);
         this.cache.delete(oldest);
       }
       return preview;
@@ -303,7 +303,7 @@ export class BuildingPreviewService implements OnDestroy {
     }
     if (!/\.tbx$/i.test(file.name)) throw new Error('Only TBX building lots are currently supported.');
     if (file.size > MAX_FILE_BYTES) throw new Error('Building files larger than 4 MiB are not supported.');
-    const cacheKey = JSON.stringify(['building-preview-v6', description.hash, firstLevel, maxWidth, configuration]);
+    const cacheKey = JSON.stringify(['building-preview-v8', description.hash, firstLevel, maxWidth, configuration]);
     const cacheWarnings: string[] = [];
     try {
       const cached = await this.storage.buildingPreview(cacheKey);
@@ -390,6 +390,17 @@ export class BuildingPreviewService implements OnDestroy {
       if (!sources.size && !sheets.some(sheet => this.decoded.has(keyOf(sheet.name)))) {
         throw new Error(`No building tiles could be loaded. ${warnings.slice(0, 3).join('; ')}`);
       }
+      // TileZed needs the original square/layer of every tile to interleave lots
+      // with map tiles. WorldEd keeps using the smaller whole-building thumbnail.
+      const atlasKeys = maxWidth === MAX_PREVIEW_SIDE ? [...new Set(prepared.tiles.map(tile => `${tile.sheet}:${tile.index}`))] : [];
+      if (atlasKeys.length * 64 * 128 * 4 > 64 * 1024 * 1024) throw new Error('Building tile atlas exceeds 64 MiB.');
+      const atlasFrames = new Map(atlasKeys.map((key, index) => [key, index]));
+      const atlasPages = Array.from({ length: Math.ceil(atlasKeys.length / 256) }, (_, page) => {
+        const count = Math.min(256, atlasKeys.length - page * 256), canvas = document.createElement('canvas');
+        canvas.width = Math.min(16, count) * 64; canvas.height = Math.ceil(count / 16) * 128;
+        return canvas;
+      });
+      const copied = new Set<number>(), compositionTiles: BuildingCompositionTile[] = [];
       for (let i = 0; i < prepared.tiles.length; i++) {
         const tile = prepared.tiles[i], source = sources.get(tile.sheet), key = keyOf(tile.sheet);
         let sheet = this.decoded.get(key);
@@ -408,6 +419,17 @@ export class BuildingPreviewService implements OnDestroy {
           if ((Math.floor(tile.index / 8) + 1) * th <= sheet.bitmap.height) {
             context.drawImage(sheet.bitmap, tile.index % 8 * tw, Math.floor(tile.index / 8) * th,
               tw, th, tile.x, tile.y, 64, 128);
+            const frame = atlasFrames.get(`${tile.sheet}:${tile.index}`);
+            if (frame !== undefined) {
+              if (!copied.has(frame)) {
+                atlasPages[Math.floor(frame / 256)].getContext('2d')!.drawImage(sheet.bitmap,
+                  tile.index % 8 * tw, Math.floor(tile.index / 8) * th, tw, th,
+                  frame % 16 * tw, Math.floor(frame % 256 / 16) * th, tw, th);
+                copied.add(frame);
+              }
+              compositionTiles.push({ squareX: tile.squareX, squareY: tile.squareY, level: tile.level,
+                layer: tile.layer, sheet: tile.sheet, index: tile.index, frame, sourceKey: keyOf(tile.sheet) });
+            }
           } else warnings.push(`${tile.sheet} does not contain tile ${tile.index}.`);
         }
         if (i % 512 === 511) await new Promise<void>(resolve => setTimeout(resolve, 0));
@@ -425,8 +447,12 @@ export class BuildingPreviewService implements OnDestroy {
       }
       const blob = await new Promise<Blob>((resolve, reject) => output.toBlob(
         value => value ? resolve(value) : reject(new Error('Could not encode the building preview.')), 'image/png'));
-      const preview = { blob, bounds: prepared.bounds, squares: prepared.squares,
-        width: output.width, height: output.height, warnings: [...new Set(warnings)] };
+      const composition = atlasPages.length ? { tiles: compositionTiles, pages: await Promise.all(atlasPages.map(async page => ({
+        width: page.width, height: page.height, blob: await new Promise<Blob>((resolve, reject) => page.toBlob(
+          value => value ? resolve(value) : reject(new Error('Could not encode the building tile atlas.')), 'image/png')),
+      }))) } : undefined;
+      const preview: BuildingPreview = { blob, bounds: prepared.bounds, squares: prepared.squares,
+        width: output.width, height: output.height, warnings: [...new Set(warnings)], ...(composition ? { composition } : {}) };
       // Like WorldEd's lot thumbnails, keep images whose gaps are fixed for this tile configuration.
       if (preview.warnings.every(warning => warning === CEILING_WARNING ||
           warning.endsWith(MISSING_SHEET_SUFFIX))) {
