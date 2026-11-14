@@ -14,10 +14,12 @@ export class ProjectApiService {
   constructor(private http: HttpClient, private auth: AuthService) { }
 
   async request<T>(method: string, path: string, body?: object): Promise<T> {
-    const token = await this.auth.token();
+    const publicRequest = path.startsWith('/guest/') || !this.auth.user;
+    const token = publicRequest ? undefined : await this.auth.token();
+    const target = publicRequest && !path.startsWith('/guest/') ? `/guest${path}` : path;
     try {
-      return await firstValueFrom(this.http.request<T>(method, `${this.auth.apiBaseUrl}${path}`, {
-        body, headers: { Authorization: `Bearer ${token}` }
+      return await firstValueFrom(this.http.request<T>(method, `${this.auth.apiBaseUrl}${target}`, {
+        body, headers: token ? { Authorization: `Bearer ${token}` } : {}
       }));
     } catch (error) {
       if (error instanceof HttpErrorResponse) {
@@ -61,7 +63,8 @@ export class ProjectApiService {
   save(id: string, xml: string, revision: number): Promise<Contribution> {
     return this.request('PUT', `/contributions/${encodeURIComponent(id)}/document`, { xml, revision });
   }
-  submit(id: string, revision: number, deliverableUrl = ''): Promise<Contribution> {
-    return this.request('POST', `/contributions/${encodeURIComponent(id)}/submit`, { revision, deliverableUrl });
+  submit(id: string, revision: number, deliverableUrl = '', submitterName?: string): Promise<Contribution> {
+    return this.request('POST', `/contributions/${encodeURIComponent(id)}/submit`, { revision, deliverableUrl,
+      ...(submitterName === undefined ? {} : { submitterName }) });
   }
 }

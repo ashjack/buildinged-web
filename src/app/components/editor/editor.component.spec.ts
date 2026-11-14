@@ -6,7 +6,7 @@ import { ActivatedRoute, convertToParamMap, Router } from '@angular/router';
 import { RouterTestingModule } from '@angular/router/testing';
 import { Store, StoreModule } from '@ngrx/store';
 import { BehaviorSubject } from 'rxjs';
-import { ClearBuilding, SetBuilding } from '../../app.actions';
+import { AddTile, ClearBuilding, SetBuilding } from '../../app.actions';
 import { getBuilding, reducer, State } from '../../app.reducers';
 import { Contribution, VariantDocument } from '../../models/project.models';
 import { AuthService } from '../../services/auth.service';
@@ -16,6 +16,8 @@ import { ProjectApiService } from '../../services/project-api.service';
 import { nativeBuildingXml } from '../../testing/native-building.fixture';
 import { readBuildingFile } from '../../utils/tbx-format';
 import { EditorComponent } from './editor.component';
+import { GuestVariantsService, GuestVariant } from '../../services/guest-variants.service';
+import { THAMES_VALLEY_PROJECT_ID } from '../../utils/default-project';
 
 const contribution: Contribution = { id: 'a', projectId: 'project', taskId: 'task', originalBuildId: 'original',
   sourceRevisionId: 'source', createdBy: 'user', name: 'Option A', status: 'draft', revision: 1, deliverableUrl: '', reviewNote: '' };
@@ -52,8 +54,67 @@ describe('Routed variant editor', () => {
   });
 
   afterEach(() => {
+    for (const key of Object.keys(localStorage)) if (key.startsWith('buildinged:guest:http%3A%2F%2Flocalhost%2Fapi:')) localStorage.removeItem(key);
     localStorage.removeItem('buildinged:new-world-building:http%3A%2F%2Flocalhost%2Fapi:user:project:Buildings/new-house.tbx');
     localStorage.removeItem('buildinged:world-building:http%3A%2F%2Flocalhost%2Fapi:user:project:Buildings/new-house.tbx');
+  });
+
+  const guestDraft = (): GuestVariant => ({ localId: 'guest-56dcf9b7-a511-4820-a709-837eb23832c1', requestId: '56dcf9b7-a511-4820-a709-837eb23832c1',
+    contribution: { ...contribution, id: 'guest-56dcf9b7-a511-4820-a709-837eb23832c1', projectId: THAMES_VALLEY_PROJECT_ID, createdBy: 'guest', guest: true }, xml: nativeBuildingXml });
+
+  it('recovers a guest variant and keeps unsaved edits when the editor closes without Save', async () => {
+    user.next(null);
+    const draft = guestDraft(), guests = TestBed.inject(GuestVariantsService); guests.persist(draft);
+    route.snapshot.paramMap = convertToParamMap({ projectId: THAMES_VALLEY_PROJECT_ID, variantId: draft.localId }); params.next(route.snapshot.paramMap);
+    const fixture = TestBed.createComponent(EditorComponent); fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    const session = TestBed.inject(EditorSessionService);
+    expect(session.guest).toBeTrue(); expect(session.editable).toBeTrue(); expect(api.variant).not.toHaveBeenCalled();
+    store.dispatch(new AddTile(0, 0, 0, 'Floor', 'floor_01_8'));
+    const changed = session.serialize(); expect(changed).toContain('floor_01_8');
+    const confirm = spyOn(window, 'confirm');
+    expect(fixture.componentInstance.canLeave()).toBeTrue(); expect(confirm).not.toHaveBeenCalled();
+    const event = new Event('beforeunload', { cancelable: true }); fixture.componentInstance.beforeUnload(event as BeforeUnloadEvent);
+    expect(event.defaultPrevented).toBeFalse(); fixture.destroy();
+    expect(guests.read(draft.localId).xml).toBe(changed);
+    const reopened = TestBed.createComponent(EditorComponent); reopened.detectChanges(); await reopened.whenStable(); reopened.detectChanges();
+    expect(TestBed.inject(EditorSessionService).serialize()).toBe(changed); expect(api.variant).not.toHaveBeenCalled(); reopened.destroy();
+  });
+
+  it('asks for a guest submitter name and preserves the local copy after submission', async () => {
+    user.next(null);
+    const draft = guestDraft(), guests = TestBed.inject(GuestVariantsService); guests.persist(draft);
+    route.snapshot.paramMap = convertToParamMap({ projectId: THAMES_VALLEY_PROJECT_ID, variantId: draft.localId }); params.next(route.snapshot.paramMap);
+    const fixture = TestBed.createComponent(EditorComponent); fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    const component = fixture.componentInstance, session = TestBed.inject(EditorSessionService);
+    component.openSubmit(); expect(component.submitDialog!.nativeElement.open).toBeTrue();
+    await component.submitVariant(); expect(api.request).not.toHaveBeenCalled();
+    session.submitterName = 'Morgan'; api.request.and.resolveTo({ ...draft.contribution, id: 'server-submission', status: 'submitted', submitterName: 'Morgan' });
+    await component.submitVariant(); fixture.detectChanges();
+    expect(api.request.calls.mostRecent().args[1]).toBe('/guest/tasks/task/submit');
+    expect(api.request.calls.mostRecent().args[2]).toEqual(jasmine.objectContaining({ submitterName: 'Morgan', requestId: draft.requestId }));
+    expect(guests.read(draft.localId).contribution.status).toBe('submitted'); expect(session.editable).toBeFalse(); fixture.destroy();
+  });
+
+  it('keeps a guest draft and entered name after a failed submission', async () => {
+    user.next(null);
+    const draft = guestDraft(), guests = TestBed.inject(GuestVariantsService); guests.persist(draft);
+    route.snapshot.paramMap = convertToParamMap({ projectId: THAMES_VALLEY_PROJECT_ID, variantId: draft.localId }); params.next(route.snapshot.paramMap);
+    const fixture = TestBed.createComponent(EditorComponent); fixture.detectChanges(); await fixture.whenStable();
+    api.request.and.rejectWith(new Error('Network unavailable'));
+    const session = TestBed.inject(EditorSessionService); await session.submit('Alex');
+    expect(session.error).toBe('Network unavailable'); expect(session.editable).toBeTrue(); expect(session.busy).toBeFalse();
+    expect(guests.read(draft.localId).contribution.submitterName).toBe('Alex');
+    expect(guests.read(draft.localId).contribution.status).toBe('draft'); fixture.destroy();
+  });
+  it('warns before closing if this browser cannot keep the latest guest draft', async () => {
+    user.next(null);
+    const draft = guestDraft(), guests = TestBed.inject(GuestVariantsService); guests.persist(draft);
+    route.snapshot.paramMap = convertToParamMap({ projectId: THAMES_VALLEY_PROJECT_ID, variantId: draft.localId }); params.next(route.snapshot.paramMap);
+    const fixture = TestBed.createComponent(EditorComponent); fixture.detectChanges(); await fixture.whenStable();
+    spyOn(Storage.prototype, 'setItem').and.throwError('Storage full'); spyOn(console, 'error');
+    const event = new Event('beforeunload', { cancelable: true }); fixture.componentInstance.beforeUnload(event as BeforeUnloadEvent);
+    expect(event.defaultPrevented).toBeTrue(); expect(TestBed.inject(EditorSessionService).error).toContain('Export your draft');
+    expect(fixture.componentInstance.canLeave()).toBeFalse(); fixture.destroy();
   });
 
   it('offers building dimensions and a template before opening a local project draft', async () => {
@@ -91,6 +152,61 @@ describe('Routed variant editor', () => {
     api.createWorldBuilding.and.resolveTo({ projectId: 'project', path: 'Buildings/new-house.tbx', revision: 5 });
     expect(await session.save()).toBeTrue();
     expect(navigate).toHaveBeenCalledOnceWith(['/projects', 'project', 'world-buildings', 'Buildings/new-house.tbx', 'edit'], { replaceUrl: true });
+    fixture.destroy();
+  });
+
+  it('suggests a separate copy path and opens creation with the source building selected', async () => {
+    route.snapshot.data = { newWorldBuilding: true };
+    route.snapshot.paramMap = convertToParamMap({ projectId: 'project' });
+    route.snapshot.queryParamMap = convertToParamMap({ copyFrom: 'Buildings/house.tbx' });
+    params.next(route.snapshot.paramMap);
+    api.worldBuilding.and.resolveTo({ projectId: 'project', path: 'Buildings/house.tbx', revision: 3, xml: nativeBuildingXml });
+    api.request.and.resolveTo({ projectId: 'project', revision: 4, files: [
+      { path: 'Buildings/house.tbx' }, { path: 'Buildings/house_COPY.tbx' }, { path: 'Buildings/house_copy2.tbx' },
+    ] });
+    const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    const fixture = TestBed.createComponent(EditorComponent);
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    expect(fixture.componentInstance.buildingName).toBe('Buildings/house_copy3.tbx');
+    expect(fixture.nativeElement.textContent).toContain('Create copy of world building');
+    expect(fixture.nativeElement.querySelector('select[name="template"]')).toBeNull();
+    await fixture.componentInstance.startNewBuilding();
+    expect(navigate).toHaveBeenCalledOnceWith(['/projects', 'project', 'world-buildings', 'Buildings/house_copy3.tbx', 'edit'], {
+      queryParams: { create: 'true', copyFrom: 'Buildings/house.tbx' },
+    });
+    expect(api.createWorldBuilding).not.toHaveBeenCalled(); fixture.destroy();
+  });
+
+  it('copies the complete source into an unpublished draft and publishes only the new path', async () => {
+    route.snapshot.paramMap = convertToParamMap({ projectId: 'project', buildingPath: 'Buildings/new-house.tbx' });
+    route.snapshot.queryParamMap = convertToParamMap({ create: 'true', copyFrom: 'Buildings/source.tbx' });
+    params.next(route.snapshot.paramMap);
+    api.request.and.resolveTo({ projectId: 'project', revision: 4, files: [{ path: 'Buildings/source.tbx' }] });
+    api.worldBuilding.and.resolveTo({ projectId: 'project', path: 'Buildings/source.tbx', revision: 3, xml: nativeBuildingXml });
+    spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    const fixture = TestBed.createComponent(EditorComponent);
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    const session = TestBed.inject(EditorSessionService);
+    expect(session.newWorldBuilding).toBeTrue();
+    expect(session.worldBuilding!.path).toBe('Buildings/new-house.tbx');
+    expect(session.savedXml).toContain('type="furniture"'); expect(session.savedXml).toContain('first line');
+    expect(buildings.newBuilding).not.toHaveBeenCalled(); expect(api.createWorldBuilding).not.toHaveBeenCalled();
+    api.createWorldBuilding.and.resolveTo({ projectId: 'project', path: 'Buildings/new-house.tbx', revision: 5 });
+    expect(await session.save()).toBeTrue();
+    expect(api.createWorldBuilding).toHaveBeenCalledOnceWith('project', 'Buildings/new-house.tbx', session.savedXml);
+    fixture.destroy();
+  });
+
+  it('rejects an existing copy destination before opening or saving the source', async () => {
+    route.snapshot.paramMap = convertToParamMap({ projectId: 'project', buildingPath: 'Buildings/source.tbx' });
+    route.snapshot.queryParamMap = convertToParamMap({ create: 'true', copyFrom: 'Buildings/source.tbx' });
+    params.next(route.snapshot.paramMap);
+    api.request.and.resolveTo({ projectId: 'project', revision: 4, files: [{ path: 'Buildings/SOURCE.tbx' }] });
+    const fixture = TestBed.createComponent(EditorComponent);
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    expect(fixture.componentInstance.ready).toBeFalse();
+    expect(fixture.componentInstance.error).toContain('already uses this path');
+    expect(api.worldBuilding).not.toHaveBeenCalled(); expect(api.createWorldBuilding).not.toHaveBeenCalled();
     fixture.destroy();
   });
 

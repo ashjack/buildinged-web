@@ -36,6 +36,21 @@ describe('Tile asset version catalog', () => {
     const initial = catalog.keys(['floor_01']); await respond('1'); await initial;
     const checking = catalog.check(); await respond('2'); expect((await checking).size).toBe(0);
   });
+  it('excludes disabled packs before requesting indexes and includes required packs without user opt-in', async () => {
+    const pending = catalog.current();
+    http.expectOne(TILEPACK_MANIFEST_URL).flush([
+      { Name: 'Hidden', Url: 'hidden.zip', Disabled: true, Required: true, SheetIndexUrl: 'hidden.json' },
+      { Name: 'Vanilla', Url: 'vanilla.zip' },
+      { Name: 'Required', Url: 'required.zip', Required: true, Version: '1', SheetIndexUrl: 'required.json' },
+      { Name: 'Optional', Url: 'optional.zip', SheetIndexUrl: 'optional.json' },
+    ]);
+    await settle();
+    http.expectOne('required.json').flush(index('1'));
+    const current = await pending;
+    expect(current.packs.map(pack => pack.name)).toEqual(['Vanilla', 'Required']);
+    http.expectNone('hidden.json');
+    http.expectNone('optional.json');
+  });
   it('rejects a mismatched ZIP index without replacing observed sheet revisions', async () => {
     const initial = catalog.keys(['floor_01']); await respond('1'); await initial;
     const checking = catalog.check();

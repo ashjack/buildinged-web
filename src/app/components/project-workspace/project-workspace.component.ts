@@ -8,6 +8,7 @@ import { ProjectWorldDocument, ProjectWorldFile, ProjectWorldService } from '../
 import { BuildingPreviewService } from '../../services/building-preview.service';
 import { readBuildingFile, writeBuildingFile } from '../../utils/tbx-format';
 import { worldedReferenceKey } from '../../utils/worlded-files';
+import { GuestVariant, GuestVariantsService } from '../../services/guest-variants.service';
 
 type TaskDraft = Pick<ProjectTask, 'title' | 'type' | 'description' | 'requirements' | 'priority' | 'references'> & { sourceBuildId: string };
 function emptyTask(): TaskDraft {
@@ -54,6 +55,8 @@ export class ProjectWorkspaceComponent implements OnInit, OnDestroy {
   memberRole: 'reviewer' | 'contributor' = 'contributor';
   buildName = '';
   contributionName = '';
+  guestDrafts: GuestVariant[] = [];
+  guestRecoveryWarning = '';
   deliverableUrls: Record<string, string | undefined> = {};
   reviewNotes: Record<string, string | undefined> = {};
   private requestId = crypto.randomUUID();
@@ -62,7 +65,7 @@ export class ProjectWorkspaceComponent implements OnInit, OnDestroy {
   private readonly destroyed$ = new Subject<void>();
 
   constructor(private route: ActivatedRoute, private router: Router, public auth: AuthService, private api: ProjectApiService,
-    private worlds: ProjectWorldService, private previews: BuildingPreviewService) { }
+    private worlds: ProjectWorldService, private previews: BuildingPreviewService, private guests: GuestVariantsService) { }
   get canManage(): boolean { return this.auth.isAdmin && (this.project?.role === 'owner' || this.project?.role === 'reviewer'); }
   get accepting(): boolean { return !!this.task && (this.task.type === 'furnish' || this.auth.canViewWorlds) && ['available', 'review_pending'].includes(this.task.status); }
   get filteredTasks(): ProjectTask[] {
@@ -85,15 +88,8 @@ export class ProjectWorkspaceComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     combineLatest([this.route.paramMap, this.route.queryParamMap, this.auth.user$]).pipe(takeUntil(this.destroyed$)).subscribe(([, , user]) => {
-      if (!user) {
-        this.generation++;
-        this.project = undefined;
-        this.task = undefined;
-        this.tasks = [];
-        this.contributions = [];
-        this.clearBuildings();
-        void this.router.navigate(['/']);
-      } else { void this.load(); }
+      this.project = undefined; this.task = undefined; this.tasks = []; this.contributions = []; this.members = [];
+      this.clearBuildings(); void this.load();
     });
   }
   ngOnDestroy(): void { this.generation++; this.closeBuildingPreview(); this.destroyed$.next(); this.destroyed$.complete(); }
@@ -123,6 +119,8 @@ export class ProjectWorkspaceComponent implements OnInit, OnDestroy {
       this.tasks = tasks;
       this.task = task;
       this.contributions = contributions;
+      this.guestDrafts = task ? this.guests.forTask(task.id) : [];
+      this.guestRecoveryWarning = task ? this.guests.recoveryWarning : '';
       this.members = members;
       this.draft.sourceBuildId ||= builds[0]?.id || '';
       if (!task && this.route.snapshot.data?.['createTask']) {
@@ -323,6 +321,12 @@ export class ProjectWorkspaceComponent implements OnInit, OnDestroy {
   }
   startContribution(): void {
     void this.run(async () => {
+      if (!this.auth.user) {
+        if (!this.task || this.task.type !== 'furnish' || !this.accepting || !this.contributionName.trim()) return;
+        const draft = await this.guests.create(this.task, this.contributionName);
+        this.contributionName = '';
+        await this.router.navigate(['/projects', this.project!.id, 'variants', draft.localId, 'edit']); return;
+      }
       const contribution = await this.api.start(this.task!.id, this.contributionName, this.requestId);
       this.requestId = crypto.randomUUID();
       this.contributionName = '';
@@ -333,6 +337,9 @@ export class ProjectWorkspaceComponent implements OnInit, OnDestroy {
         this.message = 'Tile contribution draft created. Add an HTTPS deliverable link below when it is ready.';
       }
     });
+  }
+  async signOut(): Promise<void> {
+    try { await this.auth.signOut(); } catch (error) { this.error = error instanceof Error ? error.message : String(error); }
   }
   submitTile(item: Contribution): void {
     void this.run(async () => {

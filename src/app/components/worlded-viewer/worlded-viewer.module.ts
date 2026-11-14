@@ -7,11 +7,12 @@ import { WorldedViewerComponent } from './worlded-viewer.component';
 import { ProjectWorldComponent } from './project-world.component';
 import { WorldViewerGuard } from '../../services/world-viewer.guard';
 import { WorldedProjectsComponent } from './worlded-projects.component';
+import { ProjectGuard } from '../../services/project.guard';
 
 @NgModule({
   declarations: [WorldedViewerComponent, WorldedCellPanelComponent, ProjectWorldComponent, WorldedProjectsComponent],
   imports: [CommonModule, FormsModule, RouterModule.forChild([
-    { path: 'project/:projectId', component: ProjectWorldComponent, canActivate: [WorldViewerGuard],
+    { path: 'project/:projectId', component: ProjectWorldComponent, canActivate: [WorldViewerGuard, ProjectGuard],
       canDeactivate: [(component: ProjectWorldComponent) => component.canLeave()] },
     { path: '', component: WorldedProjectsComponent, pathMatch: 'full', canActivate: [WorldViewerGuard] },
   ])],

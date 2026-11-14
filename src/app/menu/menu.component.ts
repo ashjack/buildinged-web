@@ -6,7 +6,8 @@ import { BuildingService } from '../services/building.service';
 import { Building, Room } from '../models/app.models';
 import { RoomService } from '../services/room.service';
 import { GridService } from '../services/grid.service';
-import { Undo, Redo, EditFloor, ResizeBuilding, CropBuildingToMinimum } from '../app.actions';
+import { Undo, Redo, EditFloor, ResizeBuilding, CropBuildingToMinimum, TransformBuilding } from '../app.actions';
+import { BuildingTransform, transformBuilding } from '../utils/building-transform';
 import { BuildingResize, MAX_BUILDING_DIMENSION, minimumBuildingBounds, validBuildingResize } from '../utils/building-resize';
 import { RoofService } from '../services/roof.service';
 import { RoofOption } from '../services/roof-patterns';
@@ -103,6 +104,16 @@ export class MenuComponent {
   undo(): void { this.store.dispatch(new Undo()); }
   redo(): void { this.store.dispatch(new Redo()); }
 
+  transform(operation: BuildingTransform): void {
+    if (!this.canResize) return;
+    this.closeRoofMenu();
+    this.resizeMessage = '';
+    try {
+      transformBuilding(this.buildingService.building, operation);
+      this.store.dispatch(new TransformBuilding(operation, this.selectedLevel));
+    } catch (error) { this.resizeMessage = error instanceof Error ? error.message : String(error); }
+  }
+
   get canResize(): boolean {
     return !!this.floorCount && !this.session.busy && (!this.session.projectDocument || this.session.editable);
   }
@@ -173,6 +184,7 @@ export class MenuComponent {
   }
 
   createXml(): void {
+    if (this.session.guest) { void this.session.save(); return; }
     if (this.session.newWorldBuilding) { this.session.saveLocalDraft(); return; }
     if (this.session.worldBuilding) { void this.session.save(); return; }
     this.buildingService.saveBuildingToXml().catch(error => window.alert(error.message || String(error)));

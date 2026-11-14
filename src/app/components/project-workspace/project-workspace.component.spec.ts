@@ -10,6 +10,8 @@ import { ProjectWorldDocument, ProjectWorldService } from '../../services/projec
 import { BuildingPreviewService } from '../../services/building-preview.service';
 import { Contribution, Project, ProjectTask } from '../../models/project.models';
 import { ProjectWorkspaceComponent } from './project-workspace.component';
+import { THAMES_VALLEY_PROJECT_ID } from '../../utils/default-project';
+import { nativeBuildingXml } from '../../testing/native-building.fixture';
 
 const project: Project = { id: 'project', name: 'Community map', description: 'Shared tasks', visibility: 'public', role: 'contributor' };
 const task: ProjectTask = {
@@ -30,7 +32,7 @@ describe('Project workspace pages', () => {
       { id: 'map', path: 'maps/cell.tmx', size: 10 }, { id: 'a2', path: 'a/house2.TBX', size: 10 }
     ] };
   const configure = (role: Project['role'] = 'contributor', view = 'tasks', creation?: { worldBuilding?: string }): void => {
-    api = jasmine.createSpyObj<ProjectApiService>('ProjectApiService', ['project', 'tasks', 'builds', 'task', 'contributions', 'members', 'request']);
+    api = jasmine.createSpyObj<ProjectApiService>('ProjectApiService', ['project', 'tasks', 'builds', 'task', 'contributions', 'members', 'request', 'start']);
     api.project.and.resolveTo({ ...project, role });
     api.tasks.and.resolveTo([task]);
     api.builds.and.resolveTo([]);
@@ -66,6 +68,26 @@ describe('Project workspace pages', () => {
     expect(text).toContain('Nobody owns the task exclusively');
     expect(text).not.toContain('Project access');
     expect(text).not.toContain('Create a task');
+  });
+
+  it('opens a task and starts a local building variant while logged out', async () => {
+    configure();
+    const route = TestBed.inject(ActivatedRoute), params = convertToParamMap({ projectId: THAMES_VALLEY_PROJECT_ID, taskId: 'task' });
+    Object.assign(route, { snapshot: { ...route.snapshot, paramMap: params }, paramMap: of(params) });
+    const auth = TestBed.inject(AuthService);
+    Object.assign(auth, { user: null, user$: of(null), isAdmin: false, canViewWorlds: false, apiBaseUrl: 'https://guest-workspace.example/api' });
+    const guestTask = { ...task, type: 'furnish' as const, projectId: THAMES_VALLEY_PROJECT_ID, sourceBuildId: 'build', sourceRevisionId: 'source' };
+    api.project.and.resolveTo({ id: THAMES_VALLEY_PROJECT_ID, name: 'Thames Valley', description: '', role: 'contributor', visibility: 'public' });
+    api.tasks.and.resolveTo([guestTask]); api.task.and.resolveTo(guestTask); api.request.and.resolveTo({ task: guestTask, xml: nativeBuildingXml });
+    const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    const fixture = TestBed.createComponent(ProjectWorkspaceComponent); fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('No account needed'); expect(fixture.nativeElement.textContent).toContain('Thames Valley');
+    fixture.componentInstance.contributionName = 'Guest option'; fixture.componentInstance.startContribution(); await fixture.whenStable();
+    expect(api.start).not.toHaveBeenCalled(); expect(api.members).not.toHaveBeenCalled();
+    expect(navigate.calls.mostRecent().args[0].slice(0, 3)).toEqual(['/projects', THAMES_VALLEY_PROJECT_ID, 'variants']);
+    expect(navigate.calls.mostRecent().args[0][3]).toMatch(/^guest-/);
+    fixture.destroy();
+    for (const key of Object.keys(localStorage)) if (key.startsWith('buildinged:guest:https%3A%2F%2Fguest-workspace.example%2Fapi:')) localStorage.removeItem(key);
   });
 
   it('owners can manage visibility, membership, and task creation', async () => {

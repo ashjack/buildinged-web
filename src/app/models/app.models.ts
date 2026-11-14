@@ -77,6 +77,8 @@ export interface Tilepack {
     name: string;
     url: string;
     enabled: boolean;
+    disabled?: boolean;
+    required?: boolean;
     version?: string;
     sheetIndexUrl?: string;
 }

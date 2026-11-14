@@ -30,6 +30,7 @@ export class BuildingLots {
     const ordered = [...this.placements.values()].map(item => item.sprite), placed = new Set(ordered);
     return [...ordered, ...this.sprites.filter(sprite => !placed.has(sprite))];
   }
+  spriteFor(lot: WorldedLot): BuildingSprite | undefined { return this.placements.get(lot)?.sprite; }
   private readonly atlases = new Map<File, Map<number, LoadedAtlas>>();
   private readonly sharedTiles = new Map<string, { bitmap: ImageBitmap; references: number }>();
   private readonly atlasIds = new WeakMap<NonNullable<BuildingPreview['composition']>, number>();
@@ -148,6 +149,22 @@ export class BuildingLots {
       const hit = await this.previews.pickTile(item.file, Math.max(0, -item.placement.lot.level),
         (x - item.placement.x) / item.placement.scale, (y - item.placement.y) / item.placement.scale);
       if (hit) return hit;
+    }
+    return undefined;
+  }
+
+  /** WorldEd uses whole-building previews; test alpha in their actual paint order. */
+  lotAt(x: number, y: number): WorldedLot | undefined {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) return undefined;
+    for (let i = this.sprites.length - 1; i >= 0; i--) {
+      const sprite = this.sprites[i], b = sprite.bounds;
+      if (sprite.composition || x < b.left || x >= b.right || y < b.top || y >= b.bottom) continue;
+      context.clearRect(0, 0, 1, 1);
+      context.drawImage(sprite.bitmap, (x - b.left) * sprite.bitmap.width / (b.right - b.left),
+        (y - b.top) * sprite.bitmap.height / (b.bottom - b.top), 1, 1, 0, 0, 1, 1);
+      if (context.getImageData(0, 0, 1, 1).data[3]) return [...this.placements.values()].find(item => item.sprite === sprite)?.placement.lot;
     }
     return undefined;
   }

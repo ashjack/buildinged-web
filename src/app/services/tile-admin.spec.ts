@@ -5,6 +5,9 @@ import { AdminGuard, isAdmin } from './admin.guard';
 import { AuthService } from './auth.service';
 import { TileAdminService } from './tile-admin.service';
 import { TileAdminComponent } from '../components/tile-admin/tile-admin.component';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { RouterTestingModule } from '@angular/router/testing';
 
 const ADMIN = 'gK0MQfxb5XVs8SGlF1GVKUYXQdK2';
 
@@ -30,6 +33,41 @@ describe('admin access', () => {
     expect(TileAdminComponent.slugify("Pert's Party Tiles!")).toBe('pert-s-party-tiles');
     expect(TileAdminComponent.slugify('  Café  Décor ')).toBe('cafe-decor');
     expect(TileAdminComponent.slugify('a'.repeat(60) + ' b').length).toBeLessThanOrEqual(48);
+  });
+});
+
+describe('Tile admin availability controls', () => {
+  let api: jasmine.SpyObj<TileAdminService>;
+  beforeEach(() => {
+    api = jasmine.createSpyObj<TileAdminService>('TileAdminService', ['list', 'setAvailability']);
+    api.list.and.resolveTo([
+      { id: 'vanilla', name: 'Vanilla', url: 'vanilla.zip', format: 'zip', exists: true, size: 1, updatedAt: null, disabled: false, required: true },
+      { id: 'custom', name: 'Custom', url: 'custom.zip', format: 'zip', exists: true, size: 1, updatedAt: null, disabled: false, required: false },
+    ]);
+    TestBed.configureTestingModule({
+      imports: [CommonModule, FormsModule, RouterTestingModule], declarations: [TileAdminComponent],
+      providers: [{ provide: TileAdminService, useValue: api }, { provide: AuthService, useValue: { user: null } }],
+    });
+  });
+  it('saves each availability choice and restores the displayed choice after a failed save', async () => {
+    const fixture = TestBed.createComponent(TileAdminComponent);
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    const [vanilla, custom] = [...fixture.nativeElement.querySelectorAll('select')] as HTMLSelectElement[];
+    expect(vanilla.disabled).toBeTrue(); expect(vanilla.value).toBe('required');
+    expect(custom.value).toBe('optional');
+    for (const value of ['disabled', 'required', 'optional']) {
+      const settings = { disabled: value === 'disabled', required: value === 'required' };
+      api.setAvailability.and.resolveTo(settings);
+      custom.value = value; custom.dispatchEvent(new Event('change'));
+      fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+      expect(api.setAvailability).toHaveBeenCalledWith('custom', settings);
+      expect(custom.value).toBe(value);
+    }
+    api.setAvailability.and.rejectWith(new Error('Save failed.'));
+    custom.value = 'disabled'; custom.dispatchEvent(new Event('change'));
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    expect(custom.value).toBe('optional');
+    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain('Save failed.');
   });
 });
 
@@ -82,5 +120,16 @@ describe('TileAdminService', () => {
     await flushMicrotasks();
     http.expectOne('https://api.test/adminApi/tilepacks').flush({ error: 'Forbidden.' }, { status: 403, statusText: 'Forbidden' });
     expect(await result).toBe('Forbidden.');
+  });
+
+  it('saves availability with admin authentication without uploading a pack', async () => {
+    const done = service.setAvailability('mine', { disabled: true, required: false });
+    await flushMicrotasks();
+    const request = http.expectOne('https://api.test/adminApi/tilepacks/mine/availability');
+    expect(request.request.method).toBe('PUT');
+    expect(request.request.headers.get('Authorization')).toBe('Bearer tok');
+    expect(request.request.body).toEqual({ disabled: true, required: false });
+    request.flush({ disabled: true, required: false });
+    expect(await done).toEqual({ disabled: true, required: false });
   });
 });

@@ -11,6 +11,7 @@ import { editRoomDefinitions } from './utils/room-definitions';
 import { resolveObjectMaterials, setBuildingMaterial } from './utils/object-materials';
 import { addFurnishingObjects } from './utils/furnishing-edits';
 import { cropBuildingToMinimum, resizeBuilding } from './utils/building-resize';
+import { BUILDING_TRANSFORM_LABELS, transformBuilding } from './utils/building-transform';
 
 export interface State
 {
@@ -57,6 +58,7 @@ export const HISTORY_LIMIT = 100;
 
 function commandLabel(action: Actions.ActionsUnion): string {
     switch (action.type) {
+      case Actions.ActionTypes.TransformBuilding: return BUILDING_TRANSFORM_LABELS[action.operation];
       case Actions.ActionTypes.ResizeBuilding: return 'Resize building';
       case Actions.ActionTypes.CropBuildingToMinimum: return 'Crop building';
       case Actions.ActionTypes.ApplyFurnishing: return 'Auto furnish rooms';
@@ -109,6 +111,11 @@ export function reducer(state = initialState, action: Actions.ActionsUnion): Sta
 
 function reduceState(state: State, action: Actions.ActionsUnion): State {
     switch (action.type) {
+      case Actions.ActionTypes.TransformBuilding: {
+        if (!state.building) return state;
+        try { return { ...state, building: transformBuilding(state.building, action.operation) }; }
+        catch { return state; } // The toolbar reports preflight errors; a rejected edit is atomic.
+      }
       case Actions.ActionTypes.ResizeBuilding:
       case Actions.ActionTypes.CropBuildingToMinimum: {
         if (!state.building) return state;

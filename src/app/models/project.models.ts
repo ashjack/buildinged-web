@@ -48,6 +48,8 @@ export interface ProjectTask {
 }
 
 export interface Contribution {
+  guest?: boolean;
+  submitterName?: string;
   id: string;
   projectId: string;
   taskId: string;

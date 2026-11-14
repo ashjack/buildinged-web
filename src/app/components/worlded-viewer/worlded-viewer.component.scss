@@ -30,3 +30,10 @@ footer { display: flex; justify-content: space-between; gap: 12px; padding: 7px 
   .world-name { flex-basis: 100%; margin-left: 0; }
   footer { flex-wrap: wrap; padding: 7px 12px; }
 }
+.building-context-menu {
+  position: fixed; z-index: 100; min-width: 170px; padding: 4px;
+  background: #242b31; border: 1px solid #55616b; border-radius: 4px; box-shadow: 0 4px 12px #0008;
+  button { display: block; width: 100%; padding: 8px 12px; text-align: left; color: #f0f2f4; background: transparent; border: 0; cursor: pointer;
+    &:hover, &:focus-visible { background: #3c4853; outline: 1px solid #92aec5; }
+  }
+}

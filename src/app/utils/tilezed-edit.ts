@@ -3,7 +3,7 @@ import { TilezedScene } from './tilezed-terrain';
 import { TilezedCamera, TilezedViewport } from './tilezed-renderer';
 import { WorldedLot } from './worlded-world';
 
-export type TilezedTool = 'pan' | 'stamp' | 'bucket' | 'eraser' | 'select' | 'pick' | 'fence' | 'building';
+export type TilezedTool = 'pan' | 'stamp' | 'bucket' | 'eraser' | 'select' | 'pick' | 'fence' | 'building' | 'move-building';
 export interface TilePoint { x: number; y: number; }
 export interface TileRectangle extends TilePoint { width: number; height: number; }
 export interface TileStamp { width: number; height: number; gids: Uint32Array; }
@@ -12,7 +12,7 @@ interface Edit {
   layer: string; changes: Change[]; before: number; after: number;
   newLayer?: { index: number; raw: TilezedLayer; visible: TilezedLayer; mask: Uint8Array };
   movedLayer?: { from: number; to: number };
-  lot?: WorldedLot;
+  lotChange?: { index: number; before?: WorldedLot; after?: WorldedLot };
 }
 
 export function tilezedTilePositionAtPixel(map: { height: number; tileWidth: number; tileHeight: number },
@@ -52,12 +52,15 @@ export function tileLine(a: TilePoint, b: TilePoint): TilePoint[] {
   return points;
 }
 
-/** Owns unsaved tile edits only. Persistence is always initiated by the caller's Save action. */
+/** Owns tile and building placement edits. Persistence always requires an explicit Save. */
 export class TilezedEditDocument {
   readonly scene: TilezedScene;
-  readonly placedLots: WorldedLot[] = [];
+  readonly lots: WorldedLot[];
+  private readonly origins = new Map<WorldedLot, { kind: 'map' | 'world' | 'new'; index: number }>();
+  private readonly savedLotIndices = new Map<object, number>();
+  get placedLots(): WorldedLot[] { return this.lots.filter(lot => this.origins.get(lot)?.kind === 'new'); }
   private savedLots: WorldedLot[] = [];
-  get placementsDirty(): boolean { return this.placedLots.length !== this.savedLots.length || this.placedLots.some((lot, i) => lot !== this.savedLots[i]); }
+  get placementsDirty(): boolean { return this.lots.length !== this.savedLots.length || this.lots.some((lot, i) => lot !== this.savedLots[i]); }
   selection?: TileRectangle;
   private readonly source: Document;
   private readonly touched = new Set<string>();
@@ -70,8 +73,12 @@ export class TilezedEditDocument {
   private readonly initialLayerCount: number;
   private readonly initialLayerNames: Set<string>;
 
-  constructor(xml: string, scene: TilezedScene) {
+  constructor(xml: string, scene: TilezedScene, worldLots?: readonly WorldedLot[]) {
     this.source = new DOMParser().parseFromString(xml, 'application/xml');
+    this.lots = [...(worldLots ?? scene.map.lots ?? [])];
+    this.lots.forEach((lot, index) => this.origins.set(lot, { kind: worldLots ? 'world' : 'map', index }));
+    this.savedLots = this.lots.slice();
+    if (worldLots) this.lots.forEach((lot, index) => this.savedLotIndices.set(this.origins.get(lot)!, index));
     this.initialLayerCount = Array.from(this.source.documentElement.children).filter(item => item.tagName === 'layer').length;
     this.initialLayerNames = new Set(scene.map.layers.map(layer => layer.name));
     this.scene = { ...scene, map: { ...scene.map, tilesets: scene.map.tilesets.slice(),
@@ -127,14 +134,43 @@ export class TilezedEditDocument {
     this.record({ layer: name, changes: [], newLayer });
     return name;
   }
-  markSaved(): void { this.finish(); this.savedState = this.state; this.savedLots = this.placedLots.slice(); }
+  markSaved(): void {
+    this.finish(); this.savedState = this.state; this.savedLots = this.lots.slice();
+    this.savedLotIndices.clear();
+    this.lots.forEach((lot, index) => this.savedLotIndices.set(this.origins.get(lot)!, index));
+  }
+  worldLotsForSave(): (WorldedLot & { sourceIndex?: number })[] {
+    return this.lots.map(lot => {
+      const sourceIndex = this.savedLotIndices.get(this.origins.get(lot)!);
+      return sourceIndex === undefined ? { ...lot } : { ...lot, sourceIndex };
+    });
+  }
   placeBuilding(lot: WorldedLot): void {
     if (![lot.x, lot.y, lot.width, lot.height, lot.level].every(Number.isSafeInteger) ||
       lot.width < 1 || lot.height < 1 || lot.level !== 0 || !/\.tbx$/i.test(lot.map)) throw new Error('Choose a valid ground-level building.');
     this.finish();
     const placement = { ...lot };
-    this.placedLots.push(placement);
-    this.record({ layer: '', changes: [], lot: placement });
+    this.origins.set(placement, { kind: 'new', index: -1 });
+    this.lots.push(placement);
+    this.record({ layer: '', changes: [], lotChange: { index: this.lots.length - 1, after: placement } });
+  }
+  moveBuilding(lot: WorldedLot, point: TilePoint): WorldedLot | undefined {
+    const index = this.lots.indexOf(lot);
+    if (index < 0 || ![point.x, point.y].every(Number.isSafeInteger) || Math.abs(point.x) > 1000000 || Math.abs(point.y) > 1000000) return undefined;
+    if (point.x === lot.x && point.y === lot.y) return lot;
+    this.finish();
+    const moved = { ...lot, x: point.x, y: point.y };
+    this.origins.set(moved, this.origins.get(lot)!);
+    this.lots[index] = moved;
+    this.record({ layer: '', changes: [], lotChange: { index, before: lot, after: moved } });
+    return moved;
+  }
+  removeBuilding(lot: WorldedLot): boolean {
+    const index = this.lots.indexOf(lot);
+    if (index < 0) return false;
+    this.finish(); this.lots.splice(index, 1);
+    this.record({ layer: '', changes: [], lotChange: { index, before: lot } });
+    return true;
   }
   contains(point: TilePoint): boolean {
     return inside(point, { x: 0, y: 0, width: this.scene.map.width, height: this.scene.map.height });
@@ -253,9 +289,10 @@ export class TilezedEditDocument {
       this.state = forward ? edit.after : edit.before;
       return;
     }
-    if (edit.lot) {
-      if (forward) this.placedLots.push(edit.lot);
-      else this.placedLots.splice(this.placedLots.indexOf(edit.lot), 1);
+    if (edit.lotChange) {
+      const { index, before, after } = edit.lotChange;
+      const from = forward ? before : after, to = forward ? after : before;
+      this.lots.splice(index, from ? 1 : 0, ...(to ? [to] : []));
       this.state = forward ? edit.after : edit.before;
       return;
     }
@@ -332,16 +369,29 @@ export class TilezedEditDocument {
       for (let offset = 0; offset < compressed.length; offset += 32768) parts.push(String.fromCharCode(...compressed.subarray(offset, offset + 32768)));
       bitElement.textContent = btoa(parts.join(''));
     }
-    if (includePlacedLots && this.placedLots.length) {
-      const group = document.createElement('objectgroup');
-      group.setAttribute('name', '0_Buildings');
-      for (const lot of this.placedLots) {
+    // Update original TMX lot nodes in place, retaining object/group properties and IDs.
+    const mapLots = Array.from(root.children).filter(group => group.tagName === 'objectgroup' && group.getAttribute('visible') !== '0')
+      .flatMap(group => Array.from(group.children).filter(object => object.tagName === 'object' && object.getAttribute('name') === 'lot' && object.getAttribute('visible') !== '0'));
+    const managedMapLots = new Map(this.lots.filter(lot => this.origins.get(lot)?.kind === 'map').map(lot => [this.origins.get(lot)!.index, lot]));
+    const managesMapLots = [...this.origins.values()].some(origin => origin.kind === 'map');
+    mapLots.forEach((element, index) => {
+      // WorldEd lots are stored in the PZW; embedded TMX objects belong to the map itself.
+      if (!managesMapLots) return;
+      const current = managedMapLots.get(index);
+      if (!current) { element.remove(); return; }
+      for (const key of ['x', 'y', 'width', 'height'] as const) element.setAttribute(key, String(current[key] * this.scene.map.tileHeight));
+    });
+    const additional = this.lots.filter(lot => this.origins.get(lot)?.kind !== 'map');
+    if (includePlacedLots && additional.length) {
+      // Separate groups retain placement levels when exporting WorldEd lots.
+      for (const lot of additional) {
+        let target = Array.from(root.children).find(item => item.tagName === 'objectgroup' && item.getAttribute('visible') !== '0' && item.getAttribute('name') === `${lot.level}_Buildings` && tilezedLayerName(item).level === lot.level);
+        if (!target) { target = document.createElement('objectgroup'); target.setAttribute('name', `${lot.level}_Buildings`); root.appendChild(target); }
         const object = document.createElement('object');
         object.setAttribute('name', 'lot'); object.setAttribute('type', lot.map);
         for (const key of ['x', 'y', 'width', 'height'] as const) object.setAttribute(key, String(lot[key] * this.scene.map.tileHeight));
-        group.appendChild(object);
+        target.appendChild(object);
       }
-      root.appendChild(group);
     }
     return new XMLSerializer().serializeToString(document);
   }

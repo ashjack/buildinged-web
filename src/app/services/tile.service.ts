@@ -5,6 +5,7 @@ import { Tilepack } from "../models/app.models";
 import { BehaviorSubject, firstValueFrom } from "rxjs";
 import { JSZipObject } from "jszip";
 import { readPngSize, TILE_HEIGHT, TILE_WIDTH } from "../utils/sheet-atlas";
+import { isTilepackRequired, isTilepackSelected } from '../utils/tilepack-manifest';
 
 export interface TileDownloadProgress {
   active: boolean;
@@ -101,7 +102,7 @@ export class TileService {
 
     /** Queues packs for download. Requests made during a download run after it rather than being dropped. */
     processTilepacks(tilepacks: Tilepack[], tilepackIndex = 0): Promise<void> {
-      tilepacks.slice(tilepackIndex).forEach((pack, offset) => this.enqueue(pack, false, tilepackIndex + offset === 0));
+      tilepacks.slice(tilepackIndex).forEach(pack => this.enqueue(pack, false, isTilepackRequired(pack)));
       return this.drain();
     }
 
@@ -112,6 +113,7 @@ export class TileService {
     }
 
     private enqueue(pack: Tilepack, force: boolean, required: boolean): void {
+      if (pack.disabled) return;
       const queued = this.queue.find(item => item.pack.name === pack.name);
       if (queued) {
         queued.force ||= force;
@@ -150,7 +152,9 @@ export class TileService {
     }
 
     private async processTilepack({ pack, force, required }: QueuedTilepack): Promise<void> {
-      pack.enabled = pack.enabled || localStorage.getItem(pack.name) === '1';
+      // Admin-disabled packs retain their installed sheets and version, even for a forced redownload.
+      if (pack.disabled) return;
+      pack.enabled = pack.enabled || isTilepackSelected(pack);
       if (!(pack.enabled || required)) return;
 
       // Records the version that is fully cached. Sheets are cached by name, so a republished pack must drop its old sheets first.

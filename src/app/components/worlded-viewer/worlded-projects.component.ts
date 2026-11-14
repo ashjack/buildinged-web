@@ -4,6 +4,7 @@ import { Subscription } from 'rxjs';
 import { Project } from '../../models/project.models';
 import { AuthService } from '../../services/auth.service';
 import { ProjectApiService } from '../../services/project-api.service';
+import { THAMES_VALLEY_PROJECT_ID } from '../../utils/default-project';
 
 @Component({
   selector: 'app-worlded-projects',
@@ -37,7 +38,7 @@ export class WorldedProjectsComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.error = '';
     try {
-      const projects = await this.api.projects();
+      const projects = (await this.api.projects()).filter(project => project.id === THAMES_VALLEY_PROJECT_ID);
       if (generation !== this.generation || uid !== this.auth.user?.uid) return;
       this.projects = projects;
       if (projects.length === 1) {

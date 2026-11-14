@@ -99,6 +99,9 @@ describe('Background building previews', () => {
       new Map([[file.name, file]]), () => undefined);
     expect(await lots.pickTile(68, 136)).toEqual({ sheet: 'furniture_01', index: 0 });
     expect(await lots.pickTile(132, 136)).toEqual({ sheet: 'floor_01', index: 0 });
+    expect(lots.lotAt(68, 136)?.map).toBe('house.tbx');
+    expect(lots.lotAt(132, 136)?.map).toBe('house.tbx');
+    expect(lots.lotAt(200, 136)).toBeUndefined();
     lots.dispose();
   });
 

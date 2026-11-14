@@ -16,4 +16,15 @@ describe('tilepack manifest', () => {
   it('rejects a malformed manifest', () => {
     expect(() => parseTilepackManifest({ Name: 'Vanilla' })).toThrowError(/not a list/);
   });
+
+  it('keeps admin availability separate from a user enabling a pack', () => {
+    const packs = parseTilepackManifest([
+      { Name: 'Hidden', Url: 'hidden.zip', Disabled: true, Required: false },
+      { Name: 'Mandatory', Url: 'required.zip', Required: true },
+      { Name: 'Optional', Url: 'optional.zip', Disabled: 'true', Required: 'true' },
+    ]);
+    expect(packs.map(pack => [pack.disabled, pack.required, pack.enabled])).toEqual([
+      [true, false, false], [undefined, true, false], [false, false, false],
+    ]);
+  });
 });

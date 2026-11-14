@@ -16,7 +16,7 @@
       <h1>Tile packs</h1>
       <p class="lede">Packs listed here are loaded by the editor from <code>tilepacks.json</code> in the storage bucket.</p>
     </div>
-    <button class="button primary" *ngIf="!showCreate" (click)="showCreate = true" [disabled]="!!uploadingKey">New tile pack</button>
+    <button class="button primary" *ngIf="!showCreate" (click)="showCreate = true" [disabled]="!!uploadingKey || !!savingKey">New tile pack</button>
   </div>
 
   <p *ngIf="error" class="notice error" role="alert">{{error}}</p>
@@ -33,7 +33,7 @@
       <ng-container *ngIf="newId && !newIdValid">Use lowercase letters, numbers, dashes or underscores.</ng-container>
     </p>
     <div class="tools">
-      <button class="button primary" type="submit" [disabled]="!!uploadingKey || !newFile || !newName.trim() || !newIdValid">
+      <button class="button primary" type="submit" [disabled]="!!uploadingKey || !!savingKey || !newFile || !newName.trim() || !newIdValid">
         {{uploadingKey === newPackKey ? 'Uploading ' + (progress * 100 | number:'1.0-0') + '%' : 'Create pack'}}
       </button>
       <button class="button" type="button" (click)="cancelCreate()" [disabled]="!!uploadingKey">Cancel</button>
@@ -44,8 +44,10 @@
   <section class="packs">
     <div class="section-head">
       <h2>{{packs.length}} {{packs.length === 1 ? 'pack' : 'packs'}}</h2>
-      <button class="link" (click)="load()" [disabled]="loading || !!uploadingKey">Refresh</button>
+      <button class="link" (click)="load()" [disabled]="loading || !!uploadingKey || !!savingKey">Refresh</button>
     </div>
+
+    <p class="availability-help muted" id="availability-help">Optional packs start off until a user enables them. Required packs download automatically alongside Vanilla. Disabled packs are hidden from the editor's Tilesets popup and never downloaded; existing local tiles are kept.</p>
 
     <p *ngIf="loading && !packs.length" class="muted">Loading…</p>
     <ul class="list" *ngIf="packs.length">
@@ -55,9 +57,19 @@
           <span class="muted">{{pack.id || '—'}} · {{pack.format}} · {{formatSize(pack.size)}}<ng-container *ngIf="pack.updatedAt"> · updated {{pack.updatedAt | date:'mediumDate'}}</ng-container></span>
           <div class="bar-track" *ngIf="uploadingKey === pack.id"><span [style.width.%]="progress * 100"></span></div>
         </div>
+        <label class="availability">{{savingKey === pack.id ? 'Saving…' : 'Availability'}}
+          <select #availability [attr.aria-label]="pack.name + ' availability'" aria-describedby="availability-help"
+                  [value]="pack.disabled ? 'disabled' : (pack.required || pack.name === 'Vanilla') ? 'required' : 'optional'"
+                  (change)="setAvailability(pack, availability)"
+                  [disabled]="loading || !!uploadingKey || !!savingKey || !pack.id || pack.name === 'Vanilla'">
+            <option value="optional">Optional</option>
+            <option value="required">Required</option>
+            <option value="disabled">Disabled</option>
+          </select>
+        </label>
         <span class="status" [attr.data-status]="pack.exists ? 'available' : 'rejected'">{{pack.exists ? 'Live' : 'Missing'}}</span>
         <input #file type="file" accept=".zip,application/zip" hidden (change)="replace(pack, file)">
-        <button class="button compact" (click)="file.click()" [disabled]="!!uploadingKey || !pack.id">
+        <button class="button compact" (click)="file.click()" [disabled]="loading || !!uploadingKey || !!savingKey || !pack.id">
           {{uploadingKey === pack.id ? (progress * 100 | number:'1.0-0') + '%' : 'Upload zip'}}
         </button>
       </li>

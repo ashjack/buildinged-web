@@ -8,6 +8,7 @@ import { AuthService } from './auth.service';
 import { ProjectApiService } from './project-api.service';
 import { readBuildingFile, writeBuildingFile } from '../utils/tbx-format';
 import { SetDocumentLocked } from '../app.actions';
+import { GuestVariant, GuestVariantsService } from './guest-variants.service';
 
 export interface DocumentCacheTarget {
   key: string;
@@ -25,22 +26,27 @@ export class EditorSessionService {
   message = '';
   error = '';
   busy = false;
+  submitterName = '';
+  private guestDraft?: GuestVariant;
+  get guest(): boolean { return !!this.guestDraft; }
   private building?: Building;
   private checkedBuilding?: Building;
   private checkedSavedXml = '';
   private checkedDirty = false;
   private epoch = 0;
 
-  constructor(private store: Store<fromRoot.State>, private auth: AuthService, private api: ProjectApiService) {
+  constructor(private store: Store<fromRoot.State>, private auth: AuthService, private api: ProjectApiService, private guests: GuestVariantsService) {
     this.store.select(fromRoot.getBuilding).subscribe(building => this.building = building);
   }
 
   get editable(): boolean {
+    if (this.guestDraft) return this.contribution?.status === 'draft';
     if (this.worldBuilding) return !!this.auth.user && this.auth.isAdmin;
     return !!this.contribution && this.contribution.createdBy === this.auth.user?.uid &&
       ['draft', 'changes_requested'].includes(this.contribution.status);
   }
   get cacheTarget(): DocumentCacheTarget {
+    if (this.guestDraft) return this.guests.cacheTarget(this.guestDraft.localId);
     if (this.worldBuilding && this.auth.user) return {
       key: `buildinged:${this.newWorldBuilding ? 'new-world-building' : 'world-building'}:${this.apiBaseKey()}:${this.auth.user.uid}:${this.worldBuilding.projectId}:${this.worldBuilding.path}`,
       revision: this.worldBuilding.revision
@@ -67,6 +73,8 @@ export class EditorSessionService {
   }
 
   begin(document: VariantDocument, recover = true): string {
+    this.guestDraft = undefined;
+    this.submitterName = document.contribution.submitterName || this.auth.user?.displayName || '';
     this.newWorldBuilding = false;
     this.worldBuilding = undefined;
     this.contribution = document.contribution;
@@ -74,11 +82,21 @@ export class EditorSessionService {
   }
 
   beginWorldBuilding(document: WorldBuildingDocument, recover = true, creating = false): string {
+    this.guestDraft = undefined;
     this.newWorldBuilding = creating;
     this.contribution = undefined;
     const { xml, ...building } = document;
     this.worldBuilding = building;
     return this.beginDocument(xml, recover);
+  }
+
+  beginGuest(draft: GuestVariant): string {
+    this.guestDraft = draft;
+    this.newWorldBuilding = false; this.worldBuilding = undefined; this.contribution = draft.contribution;
+    this.submitterName = draft.contribution.submitterName || '';
+    const xml = this.beginDocument(draft.xml, false);
+    this.message = draft.contribution.status === 'draft' ? 'Your variant is saved automatically in this browser.' : 'This variant has been submitted. Your local copy is kept.';
+    return xml;
   }
 
   private apiBaseKey(): string { return encodeURIComponent(this.auth.apiBaseUrl); }
@@ -117,6 +135,11 @@ export class EditorSessionService {
 
   async save(): Promise<boolean> {
     if (!this.editable || !this.projectDocument || this.busy) return false;
+    if (this.guestDraft) {
+      this.error = ''; this.cacheCurrent();
+      if (this.error) return false;
+      this.savedXml = this.serialize(); this.message = 'Variant saved in this browser.'; return true;
+    }
     this.busy = true;
     this.store.dispatch(new SetDocumentLocked(true));
     this.error = '';
@@ -157,8 +180,9 @@ export class EditorSessionService {
     }
   }
 
-  async submit(): Promise<void> {
+  async submit(submitterName?: string): Promise<void> {
     if (!this.contribution || !this.editable || this.busy) return;
+    if (this.guestDraft) { await this.submitGuest(submitterName ?? this.submitterName); return; }
     if (!(await this.save())) return;
     if (this.dirty) {
       this.error = 'Your document changed while saving. Save the latest edits before submitting.';
@@ -169,7 +193,8 @@ export class EditorSessionService {
     const epoch = this.epoch;
     const item = this.contribution;
     try {
-      const updated = await this.api.submit(item.id, item.revision);
+      const updated = submitterName === undefined ? await this.api.submit(item.id, item.revision)
+        : await this.api.submit(item.id, item.revision, '', submitterName);
       if (epoch !== this.epoch) return;
       this.contribution = updated;
       this.message = 'Submitted for review. The original build is unchanged.';
@@ -184,6 +209,27 @@ export class EditorSessionService {
     }
   }
 
+  private async submitGuest(name: string): Promise<void> {
+    if (!name.trim() || name.trim().length > 120) { this.error = 'Enter your name (up to 120 characters).'; return; }
+    this.submitterName = name.trim(); this.error = ''; this.cacheCurrent();
+    if (this.error) return;
+    const draft = { ...this.guestDraft!, contribution: { ...this.contribution!, submitterName: this.submitterName }, xml: this.serialize() };
+    const epoch = this.epoch;
+    this.busy = true; this.store.dispatch(new SetDocumentLocked(true)); this.message = 'Submitting variant…';
+    try {
+      const updated = await this.guests.submit(draft, this.submitterName);
+      if (epoch !== this.epoch) return;
+      this.contribution = updated; this.guestDraft = { ...draft, contribution: updated }; this.savedXml = draft.xml;
+      this.message = 'Variant submitted for review. Your local copy is kept.';
+      try { this.guests.persist(this.guestDraft); }
+      catch { this.message = 'Variant submitted for review.'; this.error = 'Submission succeeded, but this browser could not update the local copy. Export the TBX to keep a separate copy.'; }
+    } catch (error) {
+      if (epoch === this.epoch) { this.error = error instanceof Error ? error.message : String(error); this.message = 'Submission failed. Your variant is still saved in this browser.'; }
+    } finally {
+      if (epoch === this.epoch) { this.busy = false; this.store.dispatch(new SetDocumentLocked(!this.editable)); }
+    }
+  }
+
   saveLocalDraft(): void {
     if (!this.newWorldBuilding || this.busy || !this.editable) return;
     this.error = '';
@@ -194,6 +240,10 @@ export class EditorSessionService {
   cacheCurrent(): void {
     if (!this.editable) return;
     try {
+      if (this.guestDraft) {
+        this.guestDraft = { ...this.guestDraft, xml: this.serialize(), contribution: { ...this.contribution!, submitterName: this.submitterName } };
+        this.guests.persist(this.guestDraft); return;
+      }
       localStorage.setItem(this.cacheTarget.key, JSON.stringify({ xml: this.serialize(), revision: this.cacheTarget.revision }));
     } catch (error) {
       this.error = 'Could not save a local recovery copy. Export your draft before leaving.';
@@ -205,6 +255,8 @@ export class EditorSessionService {
     this.busy = false;
     this.store.dispatch(new SetDocumentLocked(false));
     this.contribution = undefined;
+    this.guestDraft = undefined;
+    this.submitterName = '';
     this.worldBuilding = undefined;
     this.newWorldBuilding = false;
     this.savedXml = '';
@@ -215,6 +267,7 @@ export class EditorSessionService {
       window.alert('Wait for the project save or submission to finish.');
       return false;
     }
+    if (this.guestDraft) { this.error = ''; this.cacheCurrent(); return !this.error; }
     if (!this.dirty) return true;
     this.cacheCurrent();
     return window.confirm('Leave with unsaved project changes? A local recovery copy will be kept on this browser.');

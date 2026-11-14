@@ -8,8 +8,10 @@ import { VisualFurniture } from "./models/furniture-window.models";
 import { SelectionEdit, TileCellEdit } from './utils/selection-edits';
 import { FurnishingAddition } from './utils/furnishing-edits';
 import { BuildingResize } from './utils/building-resize';
+import { BuildingTransform } from './utils/building-transform';
 
 export enum ActionTypes {
+    TransformBuilding = '[Building] Transform Building',
     ResizeBuilding = '[Building] Resize Building',
     CropBuildingToMinimum = '[Building] Crop to Minimum',
     ApplyFurnishing = '[Building] Auto furnish rooms',
@@ -99,6 +101,10 @@ export class RemoveObjects implements Action {
 }
 
 export class Undo implements Action { readonly type = ActionTypes.Undo; }
+export class TransformBuilding implements Action {
+    readonly type = ActionTypes.TransformBuilding;
+    constructor(public operation: BuildingTransform, public level: number) { }
+}
 export class ResizeBuilding implements Action {
     readonly type = ActionTypes.ResizeBuilding;
     constructor(public edit: BuildingResize, public level: number) { }
@@ -209,6 +215,7 @@ export class ScheduleRedraw implements Action {
 }
 
 export type ActionsUnion = 
+    TransformBuilding |
     ResizeBuilding |
     CropBuildingToMinimum |
     ApplyFurnishing |

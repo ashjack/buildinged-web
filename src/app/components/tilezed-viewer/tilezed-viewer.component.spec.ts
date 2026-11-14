@@ -191,7 +191,7 @@ describe('TileZed read-only viewer', () => {
     expect(event.defaultPrevented).toBeTrue();
     const menu = fixture.nativeElement.querySelector('[role="menu"]') as HTMLElement;
     expect(menu).not.toBeNull();
-    expect(menu.querySelectorAll('[role="menuitem"]').length).toBe(2);
+    expect(menu.querySelectorAll('[role="menuitem"]').length).toBe(3);
     const edit = menu.querySelector<HTMLButtonElement>('[role="menuitem"]')!;
     expect(edit.textContent).toBe('Edit building');
     expect(document.activeElement).toBe(edit);
@@ -222,11 +222,24 @@ describe('TileZed read-only viewer', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
     expect(document.activeElement).toBe(buttons[1]);
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-    expect(document.activeElement).toBe(buttons[0]);
+    expect(document.activeElement).toBe(buttons[2]);
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
-    expect(document.activeElement).toBe(buttons[1]);
+    expect(document.activeElement).toBe(buttons[2]);
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
-    expect(document.activeElement).toBe(buttons[0]);
+    expect(document.activeElement).toBe(buttons[1]);
+  });
+
+  it('opens a new world building copy from the right-clicked source', async () => {
+    await openBuilding(); rightClickBuilding();
+    const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    const buttons = fixture.nativeElement.querySelectorAll('[role="menuitem"]') as NodeListOf<HTMLButtonElement>;
+    expect(buttons[2].textContent).toBe('Create copy'); buttons[2].click(); await fixture.whenStable();
+    expect(navigate).toHaveBeenCalledOnceWith(['/projects', 'project', 'world-buildings', 'new'], {
+      queryParams: { copyFrom: 'Buildings/house.tbx' },
+    });
+    expect(component.contextMenu).toBeUndefined();
+    rightClickBuilding(); Object.assign(TestBed.inject(AuthService), { isAdmin: false });
+    await component.copyContextBuilding(); expect(navigate).toHaveBeenCalledTimes(1);
   });
 
   it('rechecks admin permissions before creating a task from the context menu', async () => {
@@ -237,7 +250,7 @@ describe('TileZed read-only viewer', () => {
     expect(navigate).not.toHaveBeenCalled(); expect(component.contextMenu).toBeUndefined();
   });
 
-  it('shows no editing menu for contributors, local maps, hidden overlays, or empty map space', async () => {
+  it('shows no menu for contributors, hidden overlays or empty space, and offers placement actions on local maps', async () => {
     await openBuilding();
     Object.assign(TestBed.inject(AuthService), { isAdmin: false });
     rightClickBuilding();
@@ -251,7 +264,9 @@ describe('TileZed read-only viewer', () => {
     expect(component.contextMenu).toBeUndefined();
     await openBuilding(null);
     rightClickBuilding();
-    expect(component.contextMenu).toBeUndefined();
+    expect(component.contextMenu).toBeDefined();
+    expect(fixture.nativeElement.querySelector('[role="menu"]').textContent).toContain('Delete building');
+    expect(fixture.nativeElement.querySelector('[role="menu"]').textContent).not.toContain('Edit building');
   });
 
   it('dismisses the menu on Escape, outside pointer down, zoom, and map changes', async () => {
@@ -330,6 +345,87 @@ describe('TileZed read-only viewer', () => {
     await component.chooseBuilding({ path: 'Buildings/house.tbx', file, width: 1, height: 1 });
     fixture.detectChanges(); await fixture.whenStable();
   }
+
+  it('selects, drags and deletes buildings with undo/redo and saves an empty lot list manually', async () => {
+    await prepareBuildingPlacement(true);
+    pointerAt('pointerdown', 0.1, 0.1);
+    const original = component.allLots[0];
+    component.editor!.markSaved(); component.setTool('move-building');
+    pointerAt('pointerdown', original.x, original.y);
+    expect(component.selectedLot).toBe(original);
+    pointerAt('pointermove', original.x + 2, original.y);
+    expect(component.allLots[0]).toBe(original); expect(component.dirty).toBeFalse();
+    pointerAt('pointerup', original.x + 2, original.y);
+    const moved = component.allLots[0];
+    expect(moved.x).toBe(original.x + 2); expect(component.dirty).toBeTrue();
+    const save = TestBed.inject(ProjectApiService).saveWorldMap as jasmine.Spy;
+    expect(save).not.toHaveBeenCalled();
+    component.history(); expect(component.allLots[0]).toBe(original); expect(component.dirty).toBeFalse();
+    component.history(true); expect(component.allLots[0]).toBe(moved);
+    component.selectedLot = moved;
+    component.canvas.nativeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true, cancelable: true }));
+    expect(component.allLots).toEqual([]); expect(save).not.toHaveBeenCalled();
+    component.history(); expect(component.allLots[0]).toBe(moved);
+    component.history(true); expect(component.allLots).toEqual([]);
+    save.and.resolveTo({ revision: 8 }); await component.saveMap();
+    expect(save.calls.mostRecent().args[4]).toEqual({ cell: { x: 3, y: 4 }, lots: [] });
+    expect(component.dirty).toBeFalse();
+  });
+
+  it('cancels building drags on Escape, pointer cancellation, and permission loss without history edits', async () => {
+    await prepareBuildingPlacement(); pointerAt('pointerdown', 0.1, 0.1);
+    const original = component.allLots[0]; component.editor!.markSaved(); component.setTool('move-building');
+    for (const cancel of ['escape', 'pointercancel', 'permission']) {
+      pointerAt('pointerdown', original.x, original.y); pointerAt('pointermove', original.x + 2, original.y);
+      if (cancel === 'escape') component.onKeyDown(new KeyboardEvent('keydown', { key: 'Escape' }));
+      else if (cancel === 'permission') { Object.assign(TestBed.inject(AuthService), { isAdmin: false }); pointerAt('pointerup', original.x + 2, original.y); }
+      else pointerAt('pointercancel', original.x + 2, original.y);
+      expect(component.allLots).toEqual([original]); expect(component.dirty).toBeFalse();
+    }
+  });
+
+  it('renders the moving building at its preview position and restores the original when cancelled', async () => {
+    await prepareBuildingPlacement(); pointerAt('pointerdown', 0.1, 0.1);
+    for (let i = 0; i < 100 && component.buildings!.loaded === 0; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    expect(component.buildings!.loaded).toBeGreaterThan(0);
+    component.setTool('move-building'); component.editor!.markSaved();
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    const before = (component as any).terrain.commands.find((command: any) => command.building);
+    expect(before).toBeDefined();
+    const original = component.allLots[0];
+    pointerAt('pointerdown', original.x, original.y); pointerAt('pointermove', original.x + 1, original.y);
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    const during = (component as any).terrain.commands.find((command: any) => command.building);
+    expect(during.x).toBe(before.x + component.scene!.map.tileWidth / 2);
+    expect(during.y).toBe(before.y + component.scene!.map.tileHeight / 2);
+    expect(component.dirty).toBeFalse();
+    component.onKeyDown(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    const after = (component as any).terrain.commands.find((command: any) => command.building);
+    expect(after.x).toBe(before.x); expect(after.y).toBe(before.y);
+  });
+
+  it('moves and deletes existing local lots from the context menu and ignores Delete in a text field', async () => {
+    await openBuilding(null); rightClickBuilding();
+    const buttons = fixture.nativeElement.querySelectorAll('[role="menuitem"]') as NodeListOf<HTMLButtonElement>;
+    expect(buttons[0].textContent).toBe('Move building'); buttons[0].click(); fixture.detectChanges();
+    expect(component.tool).toBe('move-building'); expect(component.selectedLot).toBe(component.allLots[0]);
+    const input = document.createElement('input'); document.body.appendChild(input);
+    try { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true })); expect(component.allLots.length).toBe(1); }
+    finally { input.remove(); }
+    rightClickBuilding(); component.deleteContextBuilding();
+    expect(component.allLots).toEqual([]); expect(component.dirty).toBeTrue();
+    component.history(); expect(component.allLots.length).toBe(1); expect(component.dirty).toBeFalse();
+  });
+
+  it('enables placement history and Save without an active tile layer', async () => {
+    await openBuilding(null); component.activeLayer = ''; component.setTool('move-building');
+    component.selectedLot = component.allLots[0]; component.deleteSelectedBuilding(); fixture.detectChanges();
+    expect(component.canEdit).toBeFalse(); expect(component.canPlaceBuildings).toBeTrue();
+    expect((fixture.nativeElement.querySelector('button[aria-label="Undo"]') as HTMLButtonElement).disabled).toBeFalse();
+    expect((fixture.nativeElement.querySelector('.edit-toolbar > .button.primary') as HTMLButtonElement).disabled).toBeFalse();
+    component.history(); expect(component.allLots.length).toBe(1); expect(component.dirty).toBeFalse();
+  });
 
   it('draws a building preview before placement, supports undo/redo, and saves WorldEd lots only on manual Save', async () => {
     await prepareBuildingPlacement(true);

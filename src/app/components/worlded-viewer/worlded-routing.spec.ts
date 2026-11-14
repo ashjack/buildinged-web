@@ -16,13 +16,14 @@ import { fitTilezedCamera } from '../../utils/tilezed-renderer';
 import { worldedBounds } from '../../utils/worlded-renderer';
 import { WorldedViewerModule } from './worlded-viewer.module';
 import { WorldedViewerComponent } from './worlded-viewer.component';
+import { THAMES_VALLEY_PROJECT_ID } from '../../utils/default-project';
 
 @Component({ selector: 'app-worlded-route-test-host', template: '<router-outlet></router-outlet>' })
 class WorldedRouteHost { }
 @Component({ selector: 'app-worlded-test-landing', template: 'Sign in to open your projects.' })
 class WorldedLandingStub { }
 
-const project: Project = { id: 'shared', name: 'Shared map', description: '', role: 'contributor', visibility: 'private' };
+const project: Project = { id: THAMES_VALLEY_PROJECT_ID, name: 'Thames Valley', description: '', role: 'contributor', visibility: 'private' };
 const localXml = '<world version="1.0" width="1" height="1" cellFormat="legacy-300"/>';
 const cloudXml = '<world version="1.0" width="2" height="2" cellFormat="native-256"/>';
 
@@ -40,7 +41,7 @@ describe('WorldEd uploaded-world routing', () => {
     api.projects.and.resolveTo([project]);
     api.project.and.resolveTo(project);
     worlds = jasmine.createSpyObj('ProjectWorldService', ['world', 'resources', 'save', 'upload']);
-    worlds.world.and.resolveTo({ projectId: 'shared', name: 'uploaded.pzw', revision: 2, xml: cloudXml,
+    worlds.world.and.resolveTo({ projectId: project.id, name: 'uploaded.pzw', revision: 2, xml: cloudXml,
       files: [], updatedAt: '2026-11-08T12:00:00Z', updatedBy: 'admin' });
     worlds.resources.and.resolveTo(new Map());
     storage = jasmine.createSpyObj('WorldedStorageService', ['lastWorld', 'rememberWorld']);
@@ -78,22 +79,21 @@ describe('WorldEd uploaded-world routing', () => {
 
   it('opens the uploaded world from the main WorldEd link despite cached local worlds', async () => {
     await openWorlded();
-    expect(router.url).toBe('/worlded/project/shared');
-    expect(worlds.world).toHaveBeenCalledOnceWith('shared');
+    expect(router.url).toBe(`/worlded/project/${project.id}`);
+    expect(worlds.world).toHaveBeenCalledOnceWith(project.id);
     expect(fixture.nativeElement.textContent).toContain('uploaded.pzw');
     expect(fixture.nativeElement.textContent).toContain('256 tiles per cell');
     expect(fixture.nativeElement.textContent).not.toContain('local.pzw');
     expect(storage.lastWorld).not.toHaveBeenCalled();
     expect(storage.rememberWorld).not.toHaveBeenCalled();
   });
-  it('offers project worlds when several projects are available', async () => {
+  it('opens only Thames Valley when several projects are available', async () => {
     api.projects.and.resolveTo([project, { ...project, id: 'other', name: 'Other map' }]);
     await openWorlded();
-    expect(router.url).toBe('/worlded');
-    expect(fixture.nativeElement.querySelector('a[href="/worlded/project/shared"]')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('a[href="/worlded/project/other"]')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('input[type="file"]')).toBeNull();
-    expect(worlds.world).not.toHaveBeenCalled();
+    expect(router.url).toBe(`/worlded/project/${project.id}`);
+    expect(fixture.nativeElement.querySelector('a[href="/worlded/project/other"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('input[type="file"]:not([hidden])')).toBeNull();
+    expect(worlds.world).toHaveBeenCalledOnceWith(project.id);
     expect(storage.lastWorld).not.toHaveBeenCalled();
   });
   it('fits and paints the initial project map without mouse input or ResizeObserver', async () => {

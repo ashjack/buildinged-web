@@ -76,6 +76,34 @@ describe('TileZed tile sources', () => {
     http.expectNone(TILEPACK_MANIFEST_URL);
   });
 
+  it('keeps cached tiles from disabled packs and never requests their archive', async () => {
+    localStorage.setItem('TilezedTestPack', '1');
+    getBuildingEdSheet.and.callFake(async (name: string) => name === 'cached_01' ? { name, blob: png } : undefined);
+    const pending = service.load([sheet('cached_01', 1), sheet('missing_01', 2)]);
+    await settle(); http.expectOne(TILEPACK_MANIFEST_URL).flush([
+      { Name: 'TilezedTestPack', Url: customUrl, Disabled: true },
+      { Name: 'Vanilla', Url: vanillaUrl },
+    ]);
+    const result = await pending;
+    expect(result.sheets.get(1)).toBe(png);
+    expect(result.errors.has(2)).toBeTrue();
+    expect(archives.load.calls.allArgs().map(args => args[0])).toEqual([vanillaUrl]);
+    http.expectNone(customUrl);
+  });
+
+  it('uses required packs for previews even when locally switched off', async () => {
+    localStorage.setItem('TilezedTestPack', '0');
+    const pending = service.load([sheet('custom_01', 1)]);
+    await settle(); http.expectOne(TILEPACK_MANIFEST_URL).flush([
+      { Name: 'Vanilla', Url: vanillaUrl },
+      { Name: 'TilezedTestPack', Url: customUrl, Required: true },
+    ]);
+    await settle(); http.expectOne(customUrl).flush([{ name: 'custom_01', url: 'custom.png' }]);
+    const result = await pending;
+    expect(result.sheets.get(1)).toBe(png);
+    expect(tileService.fetchTilesheet).toHaveBeenCalledWith('custom.png');
+  });
+
   it('reads the actual BuildingEd IndexedDB cache before requesting a tilepack', async () => {
     const name = `tilezed-test-${Date.now()}-${Math.random()}`;
     const db = new DbService();

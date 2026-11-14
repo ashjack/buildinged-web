@@ -13,6 +13,8 @@ export interface AdminTilepack {
   exists: boolean;
   size: number | null;
   updatedAt: string | null;
+  disabled: boolean;
+  required: boolean;
 }
 
 export interface TilepackTarget { packId: string; create: boolean; name?: string; }
@@ -40,6 +42,10 @@ export class TileAdminService {
 
   async list(): Promise<AdminTilepack[]> {
     return (await this.request<{ packs: AdminTilepack[] }>('GET', '/tilepacks')).packs;
+  }
+
+  setAvailability(packId: string, settings: { disabled: boolean; required: boolean }): Promise<{ disabled: boolean; required: boolean }> {
+    return this.request('PUT', `/tilepacks/${encodeURIComponent(packId)}/availability`, settings);
   }
 
   /** The published furniture file, or null text before the first save. */

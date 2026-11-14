@@ -9,6 +9,10 @@
   </div>
   <span class="separator"></span>
   <div class="toolbar-group" aria-label="Building area">
+    <button class="toolbar-button" title="Rotate building left" aria-label="Rotate building left" (click)="transform('rotate-left')" [disabled]="!canResize"><img src="assets/icons/icon_rotate_left.png" alt=""></button>
+    <button class="toolbar-button" title="Rotate building right" aria-label="Rotate building right" (click)="transform('rotate-right')" [disabled]="!canResize"><img src="assets/icons/icon_rotate_right.png" alt=""></button>
+    <button class="toolbar-button" title="Flip building horizontally" aria-label="Flip building horizontally" (click)="transform('flip-horizontal')" [disabled]="!canResize"><img src="assets/icons/icon_flip_horizontal.png" alt=""></button>
+    <button class="toolbar-button" title="Flip building vertically" aria-label="Flip building vertically" (click)="transform('flip-vertical')" [disabled]="!canResize"><img src="assets/icons/icon_flip_vertical.png" alt=""></button>
     <button class="toolbar-button" title="Resize building area" aria-label="Resize building area" (click)="openResize()" [disabled]="!canResize"><img src="assets/icons/icon_resize.png" alt=""></button>
     <button class="toolbar-button" title="Crop to minimum area across all floors" aria-label="Crop to minimum" (click)="cropToMinimum()" [disabled]="!canResize"><img src="assets/icons/icon_crop.png" alt=""></button>
   </div>

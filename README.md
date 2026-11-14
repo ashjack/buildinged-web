@@ -26,6 +26,32 @@ origin and API URL to reuse the same cached download between iterations.
 
 ## Hosted project worlds
 
+The app opens Thames Valley (`35a386b9-0ced-4aa0-8a1b-7e3e06c9221e`) directly.
+Project routes for other IDs redirect to Thames Valley. Its public building tasks
+can be viewed without signing in. Start a named variant from a task, edit it, and
+enter **Your name** when submitting for review. Guest variants stay entirely in
+browser storage until submission; no anonymous Firebase account is created.
+
+Guest drafts are independent local copies, scoped to the API URL and draft ID.
+Edits are cached automatically, on page hide, and before leaving/closing. Reopen
+the task and choose **Resume** under **Your variants in this browser**, or revisit
+the variant URL. Save local draft and Export .tbx are also available. Failed
+submissions keep both the edited document and entered name. A successful submission
+keeps a local copy and creates a separate, reviewable server contribution without
+changing the task's pinned source. Browser storage must be available; drafts stay
+on the same browser/device and are removed if its site storage is deleted.
+
+The app does not read/store visitor IP addresses, initialize analytics, or create
+guest identity cookies. Deployment runs `scripts/configure-privacy.ps1` to exclude
+Cloud Run, Functions, Firebase Hosting and Storage request logs containing visitor IPs from
+non-required project log sinks, preserving other exclusions. This stops future
+retention in those sinks; it does not delete old logs or control Google's separate
+infrastructure processing or required administrative audit records. See
+[Firebase request logging](https://firebase.google.com/docs/hosting/web-request-logs-and-metrics).
+Google sign-in and existing permissions still protect administration, TileZed,
+WorldEd, shared building edits, and non-public API routes. Only scoped `/guest/`
+task reads and guest building submissions bypass Google authentication.
+
 In TileZed, admins can choose **Place building** (L) to browse the project's TBX
 buildings. The sidebar provides a searchable, paginated thumbnail grid, a larger
 selected preview, and tile dimensions. Only the visible page requests thumbnails.
@@ -38,6 +64,18 @@ in one world revision. Local maps export new placements as native TMX lot object
 choose the project folder to browse unplaced local TBX buildings. Placement never
 saves automatically.
 
+Use **Move buildings** (M) to select and drag an existing placement. The grabbed
+tile stays under the cursor, following native WorldEd `SubMapTool` drag offsets.
+The building previews its new position while dragging; dropping records one undo
+step. Escape, right-click, or pointer cancellation restores its original position.
+Press Delete/Backspace or choose **Delete building** to remove the selected placement.
+Right-click a lot for **Move building** and **Delete building** as well. These actions
+work on existing WorldEd lots, embedded TMX lots, and newly placed buildings, including
+lots whose preview is unavailable. Undo/redo includes both moves and deletions.
+Nothing is saved automatically: manually save the map to persist its placements.
+The building's TBX file remains available in the project. Local TMX saves update lot
+objects in place; hosted saves retain native lot metadata while changing their bounds.
+
 Admins can create a building from **World buildings → New building**. Choose its
 name (or relative `.tbx` path), dimensions, and starter template, then edit it in
 BuildingEd. **Save local draft** and the toolbar Save button keep the draft in the
@@ -47,6 +85,23 @@ not placed on the map until an admin adds a lot using it. A shared world must
 already be uploaded, and publishing requires explicit project membership. Existing
 paths cannot be overwritten by new buildings. After publishing, the editor uses
 the normal manual **Save building to world** action.
+
+Admins can choose **Create copy** in the World buildings list, the shared building
+editor, WorldEd's lot controls, or a building's right-click menu in WorldEd or
+TileZed. Choose a new path (a free `_copy` name is suggested), then edit the complete
+source building as a local draft. **Add building to world** publishes the copy as
+a separate file. Existing placements continue to reference the source; place the
+copy from the building palette when ready. The create endpoint rejects existing paths.
+
+BuildingEd's toolbar rotates the whole building left/right or flips it horizontally/
+vertically, across every floor, as one undoable edit. These follow native
+`BuildingFloor`, `BuildingObject`, `Stairs`, `FurnitureObject`, `WallObject`, and
+`RoofObject` transforms: wall-edge anchors, stair length, resolved furniture sizes
+and orientations, roof shape, footprint and cap directions are handled separately.
+Painted cells move with the layout while retaining their tile artwork. Following
+`TransformBuildingContents::prepare`, a painted border tile that would move outside
+the area rejects the entire edit with an explanation; enlarge the area or move the
+tile inward first. The original document and undo history survive a rejected edit.
 
 Admins can edit an uploaded TBX directly from **World buildings → Edit building**,
 or from a building lot in WorldEd's selected-cell controls. **Save building to world**
@@ -270,6 +325,17 @@ matching `SheetIndexUrl` sidecar containing each selected PNG's SHA-256 and size
 The manifest switches only after both are ready. Existing packs keep working;
 upload their ZIP once through Tile Administration to enable per-sheet updates.
 Old release ZIPs are retained so in-flight readers can finish safely.
+
+Each pack's **Availability** in Tile Administration can be **Optional**,
+**Required**, or **Disabled**. Optional packs start off until a user enables them
+in BuildingEd's Tilesets popup. Required packs download automatically alongside
+Vanilla and cannot be switched off in that popup. Disabled packs are hidden from
+the popup and excluded from downloads, including preview asset requests, without
+clearing previously installed local tiles or their cached version. Vanilla stays
+required. Availability is saved separately in the public manifest's `Disabled`
+and `Required` boolean fields and survives replacement ZIP uploads. Deploy both
+the frontend and `adminApi` to enable the availability controls.
+
 WorldEd checks the small manifest/index on opening, focus and once a minute while
 visible; its toolbar also has **Check for tile updates**. TileZed checks on focus.
 Unchanged PNGs remain cached even when the ZIP is repacked. Changed sheets are
@@ -376,7 +442,8 @@ $env:BUILDINGED_API_URL = 'https://REGION-PROJECT.cloudfunctions.net/workspaceAp
 npm start
 ```
 
-Each request obtains a Firebase ID token. Backend setup, storage permissions,
+Signed-in requests obtain a Firebase ID token; public guest task requests do not.
+Backend setup, storage permissions,
 deployment and legacy migration are documented in
 [the functions README](../buildinged-functions/README.md).
 

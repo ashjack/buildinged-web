@@ -22,6 +22,55 @@ const layeredXml = xml.replace('<objectgroup',
   '<layer name="0_Overlay" width="4" height="3" visible="0"><data encoding="csv">0,2,0,0,0,0,0,0,0,0,0,0</data></layer><objectgroup');
 
 describe('TileZed manual editing document', () => {
+  it('moves and deletes existing TMX lots without duplicating them or changing group metadata', async () => {
+    const source = xml.replace('<extension', '<objectgroup name="2_Buildings" custom="keep"><properties><property name="group" value="keep"/></properties>' +
+      '<object id="17" name="lot" type="Buildings/house.tbx" x="32" y="64" width="64" height="96" custom="retain"><properties><property name="room" value="keep"/></properties></object>' +
+      '<object name="zone" type="ParkingStall" x="0" y="0" width="32" height="32"/></objectgroup><extension');
+    const editor = await open(source), original = editor.lots[0];
+    expect(editor.placementsDirty).toBeFalse(); expect(original.level).toBe(2);
+    expect(editor.moveBuilding(original, { x: 1, y: 2 })).toBe(original); expect(editor.canUndo).toBeFalse();
+    const moved = editor.moveBuilding(original, { x: -2, y: 4 })!;
+    expect(moved).toEqual({ ...original, x: -2, y: 4 }); expect(original.x).toBe(1);
+    const saved = await editor.serialize(), parsed = new DOMParser().parseFromString(saved, 'text/xml');
+    expect((await readTilezedMap(saved)).lots).toEqual([moved]);
+    expect(parsed.querySelectorAll('object[name="lot"]').length).toBe(1);
+    expect(parsed.querySelector('object[id="17"]')?.getAttribute('custom')).toBe('retain');
+    expect(parsed.querySelector('object[id="17"] property')?.getAttribute('value')).toBe('keep');
+    editor.markSaved(); expect(editor.placementsDirty).toBeFalse();
+    expect(editor.removeBuilding(moved)).toBeTrue(); expect(editor.lots).toEqual([]);
+    expect((await readTilezedMap(await editor.serialize())).lots).toEqual([]);
+    expect((await editor.serialize())).toContain('name="zone"');
+    editor.undo(); expect(editor.lots).toEqual([moved]); expect(editor.dirty).toBeFalse();
+    editor.undo(); expect(editor.lots).toEqual([original]); expect(editor.placementsDirty).toBeTrue();
+    editor.redo(); expect(editor.lots).toEqual([moved]); expect(editor.dirty).toBeFalse();
+  });
+
+  it('keeps duplicate WorldEd placements independent, preserves order, and rebases save identities', async () => {
+    const scene = generateTilezedScene(await readTilezedMap(xml));
+    const a = { x: 1, y: 1, width: 2, height: 2, level: -1, map: 'Buildings/a.tbx' };
+    const b = { ...a };
+    const editor = new TilezedEditDocument(xml, scene, [a, b]);
+    const moved = editor.moveBuilding(b, { x: 4, y: 5 })!;
+    expect(editor.worldLotsForSave()).toEqual([{ ...a, sourceIndex: 0 }, { ...moved, sourceIndex: 1 }]);
+    editor.removeBuilding(a); expect(editor.lots).toEqual([moved]);
+    editor.undo(); expect(editor.lots).toEqual([a, moved]);
+    expect((await readTilezedMap(await editor.serialize(false))).lots).toEqual([]);
+    expect((await readTilezedMap(await editor.serialize())).lots).toEqual([a, moved]);
+    editor.removeBuilding(a); editor.markSaved();
+    expect(editor.worldLotsForSave()).toEqual([{ ...moved, sourceIndex: 0 }]);
+    expect(editor.removeBuilding(a)).toBeFalse();
+    expect(editor.moveBuilding(moved, { x: NaN, y: 0 })).toBeUndefined();
+  });
+
+  it('serializes repeated saves from the source without resurrecting deleted or duplicating new lots', async () => {
+    const editor = await open();
+    const lot = { x: 0, y: 0, width: 1, height: 1, level: 0, map: 'new.tbx' };
+    editor.placeBuilding(lot); editor.markSaved();
+    const moved = editor.moveBuilding(editor.lots[0], { x: 2, y: 1 })!;
+    expect((await readTilezedMap(await editor.serialize())).lots).toEqual([moved]);
+    editor.markSaved(); expect((await readTilezedMap(await editor.serialize())).lots).toEqual([moved]);
+    editor.removeBuilding(moved); expect((await readTilezedMap(await editor.serialize())).lots).toEqual([]);
+  });
   it('raises and lowers the draw stack while keeping layer contents, generated tiles and masks together', async () => {
     const editor = await open(layeredXml);
     const raw = editor.scene.map.layers[0], visible = editor.scene.layers[0];

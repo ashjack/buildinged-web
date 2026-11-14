@@ -38,6 +38,24 @@ describe('Native toolbar controls', () => {
     });
     afterEach(() => h.destroy());
 
+    it('rotates all floors from the toolbar with one history entry and reports unsafe border tiles', () => {
+        const fixture = TestBed.createComponent(MenuComponent); fixture.detectChanges();
+        const before = h.buildings.building;
+        const rotate = fixture.nativeElement.querySelector('[aria-label="Rotate building right"]') as HTMLButtonElement;
+        rotate.click(); fixture.detectChanges();
+        expect(h.buildings.building).toBe(before); // Fixture has a painted southeast border tile.
+        expect(fixture.nativeElement.querySelector('[role="status"]').textContent).toContain('would move outside');
+        h.store.dispatch(new ResizeBuilding({ width: 4, height: 3, offsetX: 0, offsetY: 0 }, 0));
+        const enlarged = h.buildings.building;
+        rotate.click(); fixture.detectChanges();
+        expect([h.buildings.building.width, h.buildings.building.height]).toEqual([3, 4]);
+        expect(h.state.value.past.length).toBe(2);
+        fixture.componentInstance.undo(); expect(h.buildings.building).toBe(enlarged);
+        const session = TestBed.inject(EditorSessionService); session.busy = true; fixture.detectChanges();
+        expect(rotate.disabled).toBeTrue(); fixture.componentInstance.transform('flip-horizontal');
+        expect(h.buildings.building).toBe(enlarged);
+    });
+
     it('resizes through the dimension and offset controls and supports undo', async () => {
         const fixture = TestBed.createComponent(MenuComponent); fixture.detectChanges();
         await fixture.whenStable(); fixture.detectChanges();

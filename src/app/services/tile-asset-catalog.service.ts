@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom, Subject } from 'rxjs';
 import { Tilepack } from '../models/app.models';
-import { parseTilepackManifest } from '../utils/tilepack-manifest';
+import { isTilepackSelected, parseTilepackManifest } from '../utils/tilepack-manifest';
 import { tilezedSheetName } from '../utils/tilezed-sheets';
 
 const MANIFEST = 'https://storage.googleapis.com/buildinged-online.appspot.com/tilepacks.json';
@@ -27,7 +27,7 @@ export class TileAssetCatalogService {
     return this.request.promise;
   }
   async current(): Promise<TileAssetCatalog> {
-    const packs = (await this.packs()).filter((pack, i) => i === 0 || localStorage.getItem(pack.name) === '1');
+    const packs = (await this.packs()).filter(isTilepackSelected);
     const indexes = new Map<string, Map<string, IndexedTileSheet>>();
     await Promise.all(packs.filter(pack => pack.sheetIndexUrl).map(async pack => {
       const key = JSON.stringify([pack.sheetIndexUrl, pack.version]);

@@ -10,9 +10,10 @@ import { AccountAdminComponent } from './components/account-admin/account-admin.
 import { WorldViewerGuard } from './services/world-viewer.guard';
 import { TileAdminComponent } from './components/tile-admin/tile-admin.component';
 import { FurnitureAdminComponent } from './components/furniture-admin/furniture-admin.component';
+import { THAMES_VALLEY_PROJECT_ID } from './utils/default-project';
 
 const routes: Routes = [
-  { path: '', component: BuildingSelectionWindowComponent, pathMatch: 'full' },
+  { path: '', redirectTo: `projects/${THAMES_VALLEY_PROJECT_ID}`, pathMatch: 'full' },
   { path: 'admin', component: TileAdminComponent, canActivate: [AdminGuard] },
   { path: 'admin/accounts', component: AccountAdminComponent, canActivate: [AdminGuard] },
   { path: 'admin/furniture', component: FurnitureAdminComponent, canActivate: [AdminGuard],

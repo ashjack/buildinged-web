@@ -12,6 +12,7 @@ describe('SiteDataService', () => {
   const kept = {
     buildingXml: '<building/>',
     [`buildinged:draft:user:project:${suffix}`]: '{"xml":"<building/>","revision":1}',
+    [`buildinged:guest:https%3A%2F%2Fapi.example:guest-${suffix}:xml`]: '{"xml":"<building/>","revision":1}',
     'buildinged.roomTileLibrary.v1': '{"entries":[]}',
     selectedLayer: 'Floor',
     [`SiteDataTestPack-${suffix}`]: '1',

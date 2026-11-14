@@ -5,11 +5,14 @@
       <ng-container *ngIf="project"><span aria-hidden="true">/</span><a [routerLink]="['/projects', project.id]" [attr.aria-current]="task ? null : 'page'">{{project.name}}</a></ng-container>
       <ng-container *ngIf="task"><span aria-hidden="true">/</span><span class="current" aria-current="page">{{task.title}}</span></ng-container>
     </nav>
-    <span class="user">{{auth.user?.displayName}}</span>
+    <span class="user">{{auth.user?.displayName || 'Guest'}}</span>
+    <button *ngIf="!auth.user" class="button compact" type="button" (click)="auth.signIn()" [disabled]="auth.busy">Sign in</button>
+    <button *ngIf="auth.user" class="button compact" type="button" (click)="signOut()">Sign out</button>
   </div>
 </header>
 
 <main class="shell">
+  <p class="notice error" role="alert" *ngIf="auth.error">{{auth.error}}</p>
   <p class="muted loading" role="status" *ngIf="loading && !project">Loading project…</p>
   <p class="notice error" role="alert" *ngIf="error"><span>{{error}}</span><button class="link" (click)="load()" [disabled]="busy">Retry</button></p>
   <p class="notice" role="status" *ngIf="message"><span>{{message}}</span><button class="link" (click)="message = ''">Dismiss</button></p>
@@ -67,7 +70,7 @@
                 <div class="building-path"><strong>{{building.path}}</strong><span class="fine muted">{{building.size / 1024 | number:'1.0-1'}} KiB</span>
                   <a class="fine" *ngFor="let task of buildingTasks(building)" [routerLink]="['/projects', project.id, 'tasks', task.id]">{{task.title}} · {{task.status.replace('_', ' ')}}</a>
                 </div>
-                <div class="tools"><button class="button compact" type="button" (click)="viewBuilding(building)" [attr.aria-expanded]="previewBuilding?.id === building.id" [attr.aria-controls]="previewBuilding?.id === building.id ? 'building-preview' : null">View</button><a class="button compact" *ngIf="auth.isAdmin" [routerLink]="['/projects', project.id, 'world-buildings', building.path, 'edit']">Edit building</a><button class="button compact" *ngIf="canManage" type="button" (click)="taskFromBuilding(building)" [disabled]="busy">Create task</button></div>
+                <div class="tools"><button class="button compact" type="button" (click)="viewBuilding(building)" [attr.aria-expanded]="previewBuilding?.id === building.id" [attr.aria-controls]="previewBuilding?.id === building.id ? 'building-preview' : null">View</button><a class="button compact" *ngIf="auth.isAdmin" [routerLink]="['/projects', project.id, 'world-buildings', building.path, 'edit']">Edit building</a><a class="button compact" *ngIf="auth.isAdmin" [routerLink]="['/projects', project.id, 'world-buildings', 'new']" [queryParams]="{copyFrom: building.path}">Create copy</a><button class="button compact" *ngIf="canManage" type="button" (click)="taskFromBuilding(building)" [disabled]="busy">Create task</button></div>
               </div>
               <section id="building-preview" class="panel building-preview" *ngIf="previewBuilding?.id === building.id" aria-labelledby="building-preview-title">
                 <div class="section-head"><h3 id="building-preview-title">{{building.path}}</h3><button class="link" type="button" (click)="closeBuildingPreview()">Close preview</button></div>
@@ -161,7 +164,13 @@
               <label>{{task.type === 'furnish' ? 'Variant name' : 'Contribution name'}}<input name="contributionName" [(ngModel)]="contributionName" required maxlength="200"></label>
               <button class="button primary" [disabled]="busy || !contributionName.trim()">{{task.type === 'furnish' ? 'Start a furnishing variant' : 'Start tile contribution'}}</button>
             </form>
+            <p class="muted" *ngIf="!auth.user">No account needed. Your unfinished variant stays in this browser, even when you close the page.</p>
+            <p role="status" *ngIf="guestRecoveryWarning">{{guestRecoveryWarning}}</p>
             <p class="muted" *ngIf="!accepting">This task is not accepting new contributions.</p>
+            <div *ngIf="guestDrafts.length" aria-label="Local variants">
+              <h3>Your variants in this browser</h3>
+              <p *ngFor="let draft of guestDrafts"><a [routerLink]="['/projects', project.id, 'variants', draft.localId, 'edit']">Resume {{draft.contribution.name}}</a></p>
+            </div>
           </section>
 
           <section class="block" aria-labelledby="contributions-title">
@@ -169,7 +178,7 @@
             <ul class="list" *ngIf="contributions.length">
               <li *ngFor="let item of contributions" class="contribution">
                 <div class="item-top">
-                  <span class="item-main"><strong>{{item.name}}</strong><span class="muted">Revision {{item.revision}}<ng-container *ngIf="item.originalBuildId"> · variant of {{item.originalBuildId}}</ng-container></span></span>
+                  <span class="item-main"><strong>{{item.name}}</strong><span *ngIf="item.submitterName">By {{item.submitterName}}</span><span class="muted">Revision {{item.revision}}<ng-container *ngIf="item.originalBuildId"> · variant of {{item.originalBuildId}}</ng-container></span></span>
                   <span class="status" [attr.data-status]="item.status">{{item.status.replace('_', ' ')}}</span>
                 </div>
                 <p class="prose review-note" *ngIf="item.reviewNote"><span class="muted">Review:</span> {{item.reviewNote}}</p>
@@ -186,7 +195,7 @@
                   <label>Review note<textarea [(ngModel)]="reviewNotes[item.id]" maxlength="5000"></textarea></label>
                   <div class="tools">
                     <button class="button primary compact" (click)="review(item, 'approved')" [disabled]="busy">Approve</button>
-                    <button class="button compact" (click)="review(item, 'changes_requested')" [disabled]="busy || !reviewNotes[item.id]?.trim()">Request changes</button>
+                    <button *ngIf="!item.guest" class="button compact" (click)="review(item, 'changes_requested')" [disabled]="busy || !reviewNotes[item.id]?.trim()">Request changes</button>
                     <button class="button compact" (click)="review(item, 'rejected')" [disabled]="busy || !reviewNotes[item.id]?.trim()">Reject</button>
                   </div>
                 </div>

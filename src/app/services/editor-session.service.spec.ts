@@ -56,6 +56,14 @@ describe('Project editor session', () => {
     store.dispatch(new SetBuilding(readBuildingFile(new DOMParser().parseFromString(xml, 'text/xml'))));
   };
 
+  it('records the entered submitter name for signed-in variants too', async () => {
+    open(); api.save.and.resolveTo({ ...item, revision: 2 });
+    api.submit.and.resolveTo({ ...item, revision: 3, status: 'submitted', submitterName: 'Morgan' });
+    await session.submit('Morgan');
+    expect(api.submit).toHaveBeenCalledOnceWith(item.id, 2, '', 'Morgan');
+    expect(session.contribution!.submitterName).toBe('Morgan');
+  });
+
   it('keeps a new building local until publishing, then uses ordinary world saves', async () => {
     const xml = session.beginWorldBuilding(worldBuilding, true, true);
     store.dispatch(new SetBuilding(readBuildingFile(new DOMParser().parseFromString(xml, 'text/xml'))));

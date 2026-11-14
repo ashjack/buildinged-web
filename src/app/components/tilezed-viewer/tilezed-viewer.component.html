@@ -38,7 +38,7 @@
   <div class="edit-toolbar" *ngIf="auth.isAdmin && editor && scene as mapScene" aria-label="TileZed editing tools">
     <div class="tool-buttons" role="group" aria-label="Map tools">
       <button class="button compact tool-icon" *ngFor="let item of toolOptions" type="button" [class.active]="tool === item.id" [attr.aria-label]="item.label"
-              [attr.aria-pressed]="tool === item.id" [title]="item.label + (item.key ? ' (' + item.key + ')' : '')" [disabled]="item.id === 'building' ? !canPlaceBuildings : !canEdit"
+              [attr.aria-pressed]="tool === item.id" [title]="item.label + (item.key ? ' (' + item.key + ')' : '')" [disabled]="item.id === 'building' || item.id === 'move-building' ? !canPlaceBuildings : !canEdit"
               (click)="setTool(item.id)"><img [src]="'assets/tilezed-tools/' + item.icon" alt="" width="24" height="24"></button>
     </div>
     <label>Layer <select aria-label="Active tile layer" [value]="activeLayer" [disabled]="!canEdit" (change)="selectLayer($any($event.target).value)">
@@ -55,16 +55,18 @@
         <div class="layer-actions"><button class="button" type="button" (click)="closeAddLayer()">Cancel</button><button class="button primary" type="submit" [disabled]="!canEdit">Add layer</button></div>
       </form>
     </dialog>
-    <button class="button compact tool-icon" type="button" (click)="history()" [disabled]="!canEdit || !editor.canUndo" aria-label="Undo" title="Undo (Ctrl+Z)"><img src="assets/tilezed-tools/edit-undo.png" alt=""></button>
-    <button class="button compact tool-icon" type="button" (click)="history(true)" [disabled]="!canEdit || !editor.canRedo" aria-label="Redo" title="Redo (Ctrl+Y)"><img src="assets/tilezed-tools/edit-redo.png" alt=""></button>
+    <button class="button compact tool-icon" type="button" (click)="history()" [disabled]="(!canEdit && !canPlaceBuildings) || !editor.canUndo" aria-label="Undo" title="Undo (Ctrl+Z)"><img src="assets/tilezed-tools/edit-undo.png" alt=""></button>
+    <button class="button compact tool-icon" type="button" (click)="history(true)" [disabled]="(!canEdit && !canPlaceBuildings) || !editor.canRedo" aria-label="Redo" title="Redo (Ctrl+Y)"><img src="assets/tilezed-tools/edit-redo.png" alt=""></button>
     <button class="button compact tool-icon" type="button" (click)="captureSelection()" [disabled]="!canEdit || !editor.selection" aria-label="Use selection as stamp" title="Use selection as stamp (Ctrl+C)"><img src="assets/tilezed-tools/edit-copy.png" alt=""></button>
     <button class="button compact tool-icon" type="button" (click)="eraseSelection()" [disabled]="!canEdit || !editor.selection" aria-label="Erase selection" title="Erase selection (Delete)"><img src="assets/tilezed-tools/stock-tool-eraser.png" alt=""></button>
     <button class="button compact tool-icon" type="button" (click)="clearSelection()" [disabled]="!canEdit || !editor.selection" aria-label="Clear selection" title="Clear selection (Escape)"><img src="assets/tilezed-tools/edit-clear.png" alt=""></button>
     <label *ngIf="tool === 'fence'">Fence <select aria-label="Fence style" [value]="fenceIndex" [disabled]="!canEdit || preparingFence" (change)="fenceIndex = +$any($event.target).value; prepareFence()"><option *ngFor="let fence of fences; let i = index" [value]="i">{{fence.label}}</option></select></label>
     <span *ngIf="tool === 'fence'" class="fence-help" role="status">{{preparingFence ? 'Loading fence tiles…' : 'Drag to draw · Alt: gate · Ctrl: toggle post'}}</span>
     <span *ngIf="tool === 'building'" class="fence-help" role="status">{{preparingBuilding ? 'Preparing building preview…' : selectedBuilding ? 'Click to place · Escape or right-click to cancel' : 'Choose a building preview in the sidebar'}}</span>
+    <span *ngIf="tool === 'move-building'" class="fence-help" role="status">Drag a building to move · Delete to remove · Escape to cancel</span>
+    <button *ngIf="tool === 'move-building'" class="button compact" type="button" (click)="deleteSelectedBuilding()" [disabled]="!canPlaceBuildings || !selectedLot">Delete building</button>
     <span class="save-state" role="status">{{saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'No unsaved changes'}}</span>
-    <button class="button primary" type="button" (click)="saveMap()" [disabled]="!canEdit || !dirty">{{hostedMap ? 'Save map to project' : 'Save .tmx'}}</button>
+    <button class="button primary" type="button" (click)="saveMap()" [disabled]="(!canEdit && !canPlaceBuildings) || !dirty">{{hostedMap ? 'Save map to project' : 'Save .tmx'}}</button>
     <button class="button compact" *ngIf="hostedMap" type="button" (click)="exportMap()" [disabled]="saving || loadingMap">Export .tmx</button>
   </div>
 
@@ -111,8 +113,11 @@
     <ng-container *ngIf="auth.isAdmin">
       <div #buildingMenu *ngIf="contextMenu as menu" class="building-context-menu" role="menu" aria-label="Building actions"
            [style.left.px]="menu.x" [style.top.px]="menu.y" (contextmenu)="$event.preventDefault()">
-        <button type="button" role="menuitem" (click)="editContextBuilding()">Edit building</button>
-        <button type="button" role="menuitem" (click)="createTaskFromContextBuilding()">Create task from building</button>
+        <button *ngIf="contextSharedBuilding" type="button" role="menuitem" (click)="editContextBuilding()">Edit building</button>
+        <button *ngIf="contextSharedBuilding" type="button" role="menuitem" (click)="createTaskFromContextBuilding()">Create task from building</button>
+        <button *ngIf="contextSharedBuilding" type="button" role="menuitem" (click)="copyContextBuilding()">Create copy</button>
+        <button *ngIf="canPlaceBuildings" type="button" role="menuitem" (click)="moveContextBuilding()">Move building</button>
+        <button *ngIf="canPlaceBuildings" type="button" role="menuitem" (click)="deleteContextBuilding()">Delete building</button>
       </div>
     </ng-container>
     <div class="empty" *ngIf="!scene">

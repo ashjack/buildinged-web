@@ -81,7 +81,7 @@ function required(element: Element, name: string): string {
 
 function integer(value: string, label: string, min: number, max: number): number {
   const number = Number(value);
-  if (!/^\d+$/.test(value) || !Number.isSafeInteger(number) || number < min || number > max) {
+  if (!/^-?\d+$/.test(value) || !Number.isSafeInteger(number) || number < min || number > max) {
     throw new Error(`Invalid ${label}: ${value}.`);
   }
   return number;
@@ -101,10 +101,10 @@ function words(value: string | null): string[] {
 export function tilezedLayerName(element: Element): { name: string; level: number } {
   const name = required(element, 'name');
   const explicitLevel = element.getAttribute('level');
-  const prefixed = /^(\d+)_(.+)$/.exec(name);
+  const prefixed = /^(-?\d+)_(.+)$/.exec(name);
   const level = explicitLevel === null
-    ? (prefixed ? integer(prefixed[1], 'layer level', 0, 1000) : 0)
-    : integer(explicitLevel, 'layer level', 0, 1000);
+    ? (prefixed ? integer(prefixed[1], 'layer level', -32, 1000) : 0)
+    : integer(explicitLevel, 'layer level', -32, 1000);
   return { name: `${level}_${prefixed ? prefixed[2] : name}`, level };
 }
 

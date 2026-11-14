@@ -28,6 +28,42 @@ describe('TileService download queue', () => {
 
   afterEach(clearStorage);
 
+  it('never requests or clears an admin-disabled pack, including forced downloads and version changes', async () => {
+    localStorage.setItem('QueueA', '1');
+    localStorage.setItem('tilepack-version:QueueA', '1');
+    const disabled = { ...pack('QueueA', 'disabled.zip', '2'), disabled: true, required: true };
+    await service.processTilepacks([disabled]);
+    await service.redownloadTilepack(disabled);
+    expect(requests.size).toBe(0);
+    expect(db.clearTiles).not.toHaveBeenCalled();
+    expect(localStorage.getItem('QueueA')).toBe('1');
+    expect(localStorage.getItem('tilepack-version:QueueA')).toBe('1');
+  });
+
+  it('downloads required packs despite a saved off setting and leaves optional packs off even in first position', async () => {
+    localStorage.setItem('QueueB', '0');
+    const done = service.processTilepacks([
+      { ...pack('QueueA', 'optional.json'), enabled: false },
+      { ...pack('QueueB', 'required.json'), enabled: false, required: true },
+    ]);
+    await settle();
+    expect(requests.has('optional.json')).toBeFalse();
+    expect(requests.has('required.json')).toBeTrue();
+    respond('required.json', []);
+    await done;
+  });
+
+  it('downloads Vanilla regardless of its position or saved setting', async () => {
+    const done = service.processTilepacks([
+      { ...pack('QueueA', 'optional.json'), enabled: false },
+      { name: 'Vanilla', url: 'vanilla.json', enabled: false },
+    ]);
+    await settle();
+    expect(requests.has('vanilla.json')).toBeTrue();
+    respond('vanilla.json', []);
+    await done;
+  });
+
   it('queues a redownload requested during another download instead of dropping it', async () => {
     const first = service.processTilepacks([pack('QueueA', 'a.json')], 0);
     await settle();

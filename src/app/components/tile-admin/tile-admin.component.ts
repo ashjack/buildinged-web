@@ -16,6 +16,7 @@ export class TileAdminComponent implements OnInit {
   error = '';
   notice = '';
   uploadingKey: string | null = null;
+  savingKey: string | null = null;
   progress = 0;
 
   showCreate = false;
@@ -74,8 +75,27 @@ export class TileAdminComponent implements OnInit {
     await this.upload(pack.id, { packId: pack.id, create: false }, file);
   }
 
+  async setAvailability(pack: AdminTilepack, input: HTMLSelectElement) {
+    if (!pack.id || this.savingKey || this.uploadingKey || pack.name === 'Vanilla') return;
+    const availability = input.value;
+    this.savingKey = pack.id;
+    this.error = this.notice = '';
+    try {
+      const settings = await this.tileAdmin.setAvailability(pack.id, {
+        disabled: availability === 'disabled', required: availability === 'required',
+      });
+      Object.assign(pack, settings);
+      this.notice = `Saved availability for ${pack.name}.`;
+    } catch (error) {
+      this.error = this.message(error);
+    } finally {
+      this.savingKey = null;
+      input.value = pack.disabled ? 'disabled' : pack.required ? 'required' : 'optional';
+    }
+  }
+
   private async upload(key: string, target: TilepackTarget, file: File): Promise<boolean> {
-    if (this.uploadingKey) return false;
+    if (this.uploadingKey || this.savingKey) return false;
     this.error = this.notice = '';
     if (!/\.zip$/i.test(file.name)) { this.error = 'Choose a .zip file.'; return false; }
     if (file.size > MAX_ZIP_BYTES) { this.error = 'Zips must be 1 GB or smaller.'; return false; }

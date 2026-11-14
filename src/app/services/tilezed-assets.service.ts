@@ -9,6 +9,7 @@ import { TileService } from './tile.service';
 import { TilepackHttpError, TilezedArchiveService, TilezedArchiveSheets } from './tilezed-archive.service';
 import { TilezedStorageService } from './tilezed-storage.service';
 import { TileAssetCatalog, TileAssetCatalogService } from './tile-asset-catalog.service';
+import { isTilepackSelected } from '../utils/tilepack-manifest';
 
 export interface TilezedAssets {
   sheets: Map<number, Blob>;
@@ -59,12 +60,8 @@ export class TilezedAssetsService {
   async configurationKey(): Promise<string> {
     let packs: Tilepack[] = [];
     try { packs = await this.manifest(); } catch { /* load() reports the failure */ }
-    return JSON.stringify(packs.map((pack, index) =>
-      [pack.name, pack.url, pack.version ?? null, this.usesPack(pack, index)]));
-  }
-
-  private usesPack(pack: Tilepack, index: number): boolean {
-    return index === 0 || localStorage.getItem(pack.name) === '1';
+    return JSON.stringify(packs.map(pack =>
+      [pack.name, pack.url, pack.version ?? null, isTilepackSelected(pack)]));
   }
 
   async load(tilesets: readonly TilezedTileset[]): Promise<TilezedAssets> {
@@ -93,7 +90,7 @@ export class TilezedAssetsService {
     try {
       const available = await this.manifest();
       if (!available.length) throw new Error('The tilepack manifest contains no usable packs.');
-      packs = available.filter((pack, index) => this.usesPack(pack, index));
+      packs = available.filter(isTilepackSelected);
     } catch (error) {
       const detail = `Could not load the tilepack list: ${errorText(error)}`;
       for (const tileset of pending.values()) errors.set(tileset.firstGid, `${tileset.name}: ${detail}`);

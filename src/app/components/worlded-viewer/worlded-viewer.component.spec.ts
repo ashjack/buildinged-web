@@ -10,7 +10,7 @@ import { BuildingPreviewService } from '../../services/building-preview.service'
 import { WorldedViewerComponent } from './worlded-viewer.component';
 import { readWorldedWorld } from '../../utils/worlded-world';
 import { fitTilezedCamera } from '../../utils/tilezed-renderer';
-import { worldedBounds } from '../../utils/worlded-renderer';
+import { worldedBounds, worldedProject } from '../../utils/worlded-renderer';
 
 const worldXml = `<world version="1.0" width="2" height="1" cellFormat="legacy-300">
   <cell x="1" y="0" map="maps/cell.tmx">
@@ -57,6 +57,37 @@ describe('WorldEd read-only viewer', () => {
   });
 
   afterEach(() => fixture.destroy());
+
+  it('offers a copy for a right-clicked hosted building, navigates the menu, and rechecks permissions', async () => {
+    await component.openWorld(new File([worldXml], 'world.pzw'));
+    component.workspace!.files.set('house.tbx', new File(['<building/>'], 'house.tbx'));
+    component.hosted = true; component.projectId = 'shared'; component.canEditBuildings = true;
+    fixture.detectChanges();
+    const point = worldedProject(component.workspace!.world, 1 + 4 / 300, 5 / 300);
+    (component as any).camera = { x: point.x, y: point.y, zoom: 10 };
+    const camera = (component as any).camera, viewport = (component as any).viewport;
+    const rect = component.canvas.nativeElement.getBoundingClientRect();
+    const click = () => {
+      component.canvas.nativeElement.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
+        clientX: rect.left + viewport.width / 2 + (point.x - camera.x) * camera.zoom,
+        clientY: rect.top + viewport.height / 2 + (point.y - camera.y) * camera.zoom,
+      })); fixture.detectChanges();
+    };
+    click();
+    const buttons = fixture.nativeElement.querySelectorAll('[role="menuitem"]') as NodeListOf<HTMLButtonElement>;
+    expect(buttons.length).toBe(2); expect(buttons[1].textContent).toBe('Create copy');
+    expect(document.activeElement).toBe(buttons[0]);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    expect(document.activeElement).toBe(buttons[1]);
+    buttons[1].click(); await fixture.whenStable();
+    expect(navigate).toHaveBeenCalledOnceWith(['/projects', 'shared', 'world-buildings', 'new'], { queryParams: { copyFrom: 'house.tbx' } });
+    expect(component.contextMenu).toBeUndefined();
+    click(); component.canEditBuildings = false;
+    await component.buildingMenuAction(true); expect(navigate).toHaveBeenCalledTimes(1);
+    click(); expect(component.contextMenu).toBeUndefined();
+    component.canEditBuildings = true; component.hosted = false;
+    click(); expect(component.contextMenu).toBeUndefined();
+  });
 
   it('fits and paints a world loaded while hidden as soon as it becomes visible, without wheel input', async () => {
     const hosted = TestBed.createComponent(WorldedViewerComponent);

@@ -1,26 +1,38 @@
 <section class="new-building-panel" *ngIf="newBuildingSetup && auth.isAdmin" aria-labelledby="new-building-title">
   <a [routerLink]="['/projects', projectId]" [queryParams]="{view: 'buildings'}">Back to buildings</a>
-  <h1 id="new-building-title">New project building</h1>
-  <p>Create a building, edit it in BuildingEd, then choose Add building to world when it is ready.</p>
+  <h1 id="new-building-title">{{copyFrom ? 'Create copy of world building' : 'New project building'}}</h1>
+  <p *ngIf="copyFrom">Copying {{copyFrom}}. Choose a new name, edit the copy, then add it to the world.</p>
+  <p *ngIf="!copyFrom">Create a building, edit it in BuildingEd, then choose Add building to world when it is ready.</p>
   <form (ngSubmit)="startNewBuilding()">
     <label>Building name or path<input name="buildingName" [(ngModel)]="buildingName" placeholder="Buildings/house.tbx" maxlength="1000" required></label>
-    <div class="dimensions">
+    <div class="dimensions" *ngIf="!copyFrom">
       <label>Width (tiles)<input name="width" type="number" [(ngModel)]="width" min="1" max="256" required></label>
       <label>Height (tiles)<input name="height" type="number" [(ngModel)]="height" min="1" max="256" required></label>
     </div>
-    <label>Starter template<select name="template" [(ngModel)]="templateName"><option value="">Empty building</option><option *ngFor="let name of templateNames" [value]="name">{{name}}</option></select></label>
-    <button type="submit" [disabled]="!validSetup || setupBusy">Create and edit building</button>
+    <label *ngIf="!copyFrom">Starter template<select name="template" [(ngModel)]="templateName"><option value="">Empty building</option><option *ngFor="let name of templateNames" [value]="name">{{name}}</option></select></label>
+    <button type="submit" [disabled]="!validSetup || setupBusy">{{copyFrom ? 'Create and edit copy' : 'Create and edit building'}}</button>
   </form>
 </section>
 <div class="project-editor-bar" *ngIf="session.contribution as item">
   <a [routerLink]="['/projects', item.projectId, 'tasks', item.taskId]">Back to task</a>
   <strong>{{item.name}}</strong>
   <span>Variant of {{item.originalBuildId}} · {{item.status}}</span>
-  <span role="status">{{session.busy ? 'Saving...' : session.dirty ? 'Unsaved changes' : 'Saved revision ' + item.revision}}</span>
-  <button (click)="session.save()" [disabled]="!session.editable || session.busy">Save draft</button>
-  <button (click)="session.submit()" [disabled]="!session.editable || session.busy">Submit for review</button>
-  <button (click)="reload()" [disabled]="session.busy">Reload cloud copy</button>
+  <span role="status">{{session.busy ? 'Saving...' : session.guest ? 'Kept in this browser' : session.dirty ? 'Unsaved changes' : 'Saved revision ' + item.revision}}</span>
+  <button (click)="session.save()" [disabled]="!session.editable || session.busy">{{session.guest ? 'Save local draft' : 'Save draft'}}</button>
+  <button (click)="openSubmit()" [disabled]="!session.editable || session.busy">Submit for review</button>
+  <button *ngIf="!session.guest" (click)="reload()" [disabled]="session.busy">Reload cloud copy</button>
+  <button *ngIf="session.guest" (click)="exportBuilding()" [disabled]="session.busy">Export .tbx</button>
 </div>
+<dialog *ngIf="session.contribution" #submitDialog class="submit-dialog" aria-labelledby="submit-variant-title" (keydown)="$event.stopPropagation()" (keyup)="$event.stopPropagation()">
+  <form (ngSubmit)="submitVariant()">
+    <h2 id="submit-variant-title">Submit your variant</h2>
+    <label>Your name<input name="submitterName" [(ngModel)]="session.submitterName" required maxlength="120" autocomplete="name"></label>
+    <p>Your name will appear with this submission.</p>
+    <p *ngIf="session.error" role="alert">{{session.error}}</p>
+    <button type="button" (click)="submitDialog.close()" [disabled]="session.busy">Cancel</button>
+    <button type="submit" [disabled]="session.busy || !session.submitterName.trim()">Submit for review</button>
+  </form>
+</dialog>
 <div class="project-editor-bar" *ngIf="session.worldBuilding as item">
   <a [routerLink]="['/projects', item.projectId]" [queryParams]="{view: 'buildings'}">Back to buildings</a>
   <strong>{{item.path}}</strong>
@@ -30,6 +42,7 @@
   <button (click)="session.save()" [disabled]="!session.editable || session.busy">{{session.newWorldBuilding ? 'Add building to world' : 'Save building to world'}}</button>
   <button (click)="exportBuilding()" [disabled]="session.busy">Export .tbx</button>
   <button *ngIf="!session.newWorldBuilding" (click)="reload()" [disabled]="session.busy">Reload cloud copy</button>
+  <a *ngIf="!session.newWorldBuilding && auth.isAdmin" [routerLink]="['/projects', item.projectId, 'world-buildings', 'new']" [queryParams]="{copyFrom: item.path}">Create copy</a>
 </div>
 <p class="project-editor-notice" role="status" *ngIf="session.message">{{session.message}}</p>
 <p class="project-editor-notice error" role="alert" *ngIf="error || session.error">{{error || session.error}} <a routerLink="/">Projects</a></p>
@@ -47,4 +60,4 @@
     </div>
   </div>
 </div>
-<p class="project-editor-notice" *ngIf="ready && session.contribution && !session.editable">This submission is locked for review. Download its TBX from the task page to inspect it in the standalone editor.</p>
+<p class="project-editor-notice" *ngIf="ready && session.contribution && !session.editable">{{session.guest ? 'This variant has been submitted. You can export the local copy above.' : 'This submission is locked for review. Download its TBX from the task page to inspect it in the standalone editor.'}}</p>

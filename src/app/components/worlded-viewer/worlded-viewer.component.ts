@@ -32,6 +32,9 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
   @Input() hosted = false;
   @Input() minimal = false;
   @Input() projectId?: string;
+  @Input() canEditBuildings = false;
+  @ViewChild('buildingMenu') buildingMenu?: ElementRef<HTMLElement>;
+  contextMenu?: { x: number; y: number; projectId: string; path: string };
   @ViewChild('canvas') canvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('viewport') viewportElement!: ElementRef<HTMLElement>;
 
@@ -71,6 +74,70 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
   ) { }
 
   get zoomPercent(): number { return Math.round(this.camera.zoom * 100); }
+
+  onContextMenu(event: MouseEvent): void {
+    event.preventDefault(); this.closeBuildingMenu();
+    const workspace = this.workspace;
+    if (!this.canEditBuildings || !this.hosted || !this.projectId || !workspace) return;
+    const rect = this.canvas.nativeElement.getBoundingClientRect();
+    const x = this.camera.x + (event.clientX - rect.left - this.viewport.width / 2) / this.camera.zoom;
+    const y = this.camera.y + (event.clientY - rect.top - this.viewport.height / 2) / this.camera.zoom;
+    let lot = this.buildings?.lotAt(x, y);
+    if (!lot) {
+      const tx = (y / 128 + x / 256 - workspace.world.height) / 2 * workspace.world.cellSize;
+      const ty = (y / 128 - x / 256 + workspace.world.height) / 2 * workspace.world.cellSize;
+      const cells = [...workspace.world.cells.values()];
+      for (const cell of cells.reverse()) {
+        lot = [...cell.lots].reverse().find(item => !this.buildings?.renderedLots.has(item) &&
+          tx >= cell.x * workspace.world.cellSize + item.x && tx < cell.x * workspace.world.cellSize + item.x + item.width &&
+          ty >= cell.y * workspace.world.cellSize + item.y && ty < cell.y * workspace.world.cellSize + item.y + item.height);
+        if (lot) break;
+      }
+    }
+    const file = lot && worldedFileFor(workspace.files, lot.map);
+    const path = file && [...workspace.files].find(([, candidate]) => candidate === file)?.[0];
+    if (!path || !/\.tbx$/i.test(path)) return;
+    this.contextMenu = { x: event.clientX, y: event.clientY, projectId: this.projectId, path };
+    this.changeDetector.detectChanges();
+    const menu = this.buildingMenu?.nativeElement;
+    const bounds = menu?.getBoundingClientRect();
+    if (bounds) {
+      this.contextMenu.x = Math.max(0, Math.min(event.clientX, document.documentElement.clientWidth - bounds.width));
+      this.contextMenu.y = Math.max(0, Math.min(event.clientY, window.innerHeight - bounds.height));
+    }
+    menu?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+  }
+  closeBuildingMenu(focus = false): void {
+    if (!this.contextMenu) return;
+    this.contextMenu = undefined;
+    if (focus) this.canvas.nativeElement.focus({ preventScroll: true });
+  }
+  @HostListener('document:pointerdown', ['$event']) dismissBuildingMenu(event: PointerEvent): void {
+    if (!this.buildingMenu?.nativeElement.contains(event.target as Node)) this.closeBuildingMenu();
+  }
+  @HostListener('document:keydown', ['$event']) buildingMenuKey(event: KeyboardEvent): void {
+    if (!this.contextMenu) return;
+    if (event.key === 'Escape') { event.preventDefault(); this.closeBuildingMenu(true); }
+    else if (event.key === 'Tab') this.closeBuildingMenu();
+    else if (['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+      event.preventDefault();
+      const items = Array.from(this.buildingMenu!.nativeElement.querySelectorAll<HTMLButtonElement>('button'));
+      const current = items.indexOf(document.activeElement as HTMLButtonElement);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+        : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+      items[next]?.focus();
+    }
+  }
+  async buildingMenuAction(copy: boolean): Promise<void> {
+    const menu = this.contextMenu; this.closeBuildingMenu(true);
+    if (!menu || !this.canEditBuildings || !this.hosted || menu.projectId !== this.projectId) return;
+    try {
+      const opened = copy
+        ? await this.router.navigate(['/projects', menu.projectId, 'world-buildings', 'new'], { queryParams: { copyFrom: menu.path } })
+        : await this.router.navigate(['/projects', menu.projectId, 'world-buildings', menu.path, 'edit']);
+      if (!opened) this.error = 'Could not open the building editor. Try again.';
+    } catch (error) { this.error = error instanceof Error ? error.message : String(error); }
+  }
 
   get storageWarning(): string { return this.workspace?.storageWarning ?? this.restoreWarning; }
 
@@ -150,6 +217,7 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   async openWorld(file: File): Promise<void> {
+    this.closeBuildingMenu();
     const generation = ++this.generation;
     this.loadingFolder = false;
     if (!/\.pzw$/i.test(file.name)) {
@@ -184,6 +252,7 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   async openHosted(project: WorldedSession): Promise<void> {
+    this.closeBuildingMenu();
     const previous = this.workspace;
     const sameSize = !!previous && previous.world.width === project.world.width &&
       previous.world.height === project.world.height && previous.world.cellSize === project.world.cellSize;
@@ -346,6 +415,7 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   fit(): void {
+    this.closeBuildingMenu();
     if (!this.workspace) return;
     // Hidden project viewers have no usable size yet. Keep the fit pending
     // until ResizeObserver measures the visible viewport.
@@ -354,12 +424,14 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   zoom(factor: number, x = this.viewport.width / 2, y = this.viewport.height / 2): void {
+    this.closeBuildingMenu();
     if (!this.workspace) return;
     this.camera = zoomTilezedCamera(this.camera, worldedBounds(this.workspace.world), this.viewport, factor, x, y);
     this.requestDraw();
   }
 
   onWheel(event: WheelEvent): void {
+    this.closeBuildingMenu();
     if (!this.workspace) return;
     event.preventDefault();
     const rect = this.canvas.nativeElement.getBoundingClientRect();
@@ -368,6 +440,7 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   onPointerDown(event: PointerEvent): void {
+    this.closeBuildingMenu();
     if (!this.workspace || this.pointer || (event.button !== 0 && event.button !== 1)) return;
     event.preventDefault();
     this.pointer = { id: event.pointerId, x: event.clientX, y: event.clientY,
@@ -453,6 +526,7 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   private resize(): void {
+    this.closeBuildingMenu();
     if (!this.canvas) return;
     const canvas = this.canvas.nativeElement;
     const rect = this.viewportElement.nativeElement.getBoundingClientRect();

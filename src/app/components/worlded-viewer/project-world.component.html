@@ -19,7 +19,7 @@
 
   <div class="world-stage">
     <p *ngIf="!!viewer?.tileUpdateMessage" class="workspace-alert" role="status">{{viewer.tileUpdateMessage}}</p>
-    <app-worlded-viewer [hosted]="true" [minimal]="true" [projectId]="projectId" [worldRevision]="cloud?.revision" [hidden]="!ready || !cloud"></app-worlded-viewer>
+    <app-worlded-viewer [hosted]="true" [minimal]="true" [canEditBuildings]="isAdmin" [projectId]="projectId" [worldRevision]="cloud?.revision" [hidden]="!ready || !cloud"></app-worlded-viewer>
     <div class="world-empty" *ngIf="!ready || !cloud">
       <ng-container *ngIf="!ready && !error">
         <h1>Opening project world…</h1><p role="status">{{progress || 'Checking for the latest saved world.'}}</p>
@@ -82,6 +82,7 @@
       <div class="entry" *ngFor="let lot of lots">
         <label>Building <select [value]="attr(lot, 'map')" (change)="set(lot, 'map', $event)"><option value="">Choose a building</option><option *ngFor="let path of lotPaths" [value]="path">{{path}}</option></select></label>
         <a *ngIf="buildingPath(lot) as path" [routerLink]="['/projects', projectId, 'world-buildings', path, 'edit']">Edit building</a>
+        <a *ngIf="buildingPath(lot) as path" [routerLink]="['/projects', projectId, 'world-buildings', 'new']" [queryParams]="{copyFrom: path}">Create copy</a>
         <label *ngFor="let key of ['x', 'y', 'width', 'height', 'level']">{{key}}<input type="number" step="1" [value]="attr(lot, key)" (input)="set(lot, key, $event)"></label>
         <button type="button" (click)="remove(lot)">Remove lot</button>
       </div>

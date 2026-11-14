@@ -112,7 +112,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
 
     
     this.http.get<unknown>(TILEPACK_MANIFEST_URL, { headers: { 'Cache-Control': 'no-cache' } }).subscribe((data) => {
-      this.tileService.tilepacks.push(...parseTilepackManifest(data));
+      this.tileService.tilepacks = parseTilepackManifest(data);
 
       if(!localStorage.getItem('Vanilla'))
       {

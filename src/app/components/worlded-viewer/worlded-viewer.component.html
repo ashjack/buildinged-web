@@ -48,7 +48,12 @@
             (wheel)="onWheel($event)" (pointerdown)="onPointerDown($event)"
             (pointermove)="onPointerMove($event)" (pointerup)="onPointerEnd($event)"
             (pointercancel)="onPointerEnd($event)" (lostpointercapture)="onPointerEnd($event)"
-            (keydown)="onKeyDown($event)" (contextmenu)="$event.preventDefault()"></canvas>
+            (keydown)="onKeyDown($event)" (contextmenu)="onContextMenu($event)"></canvas>
+    <div #buildingMenu *ngIf="canEditBuildings && contextMenu as menu" class="building-context-menu" role="menu" aria-label="Building actions"
+         [style.left.px]="menu.x" [style.top.px]="menu.y" (contextmenu)="$event.preventDefault()">
+      <button type="button" role="menuitem" (click)="buildingMenuAction(false)">Edit building</button>
+      <button type="button" role="menuitem" (click)="buildingMenuAction(true)">Create copy</button>
+    </div>
 
     <div class="empty" *ngIf="!workspace && !hosted">
       <h1>Open a WorldEd world</h1>

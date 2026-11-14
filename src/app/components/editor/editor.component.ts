@@ -1,4 +1,4 @@
-import { Component, HostListener, OnDestroy, OnInit } from '@angular/core';
+import { Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Store } from '@ngrx/store';
 import { Subscription } from 'rxjs';
@@ -10,6 +10,8 @@ import { ProjectApiService } from '../../services/project-api.service';
 import { AuthService } from '../../services/auth.service';
 import { ProjectWorldDocument } from '../../services/project-world.service';
 import { writeBuildingFile } from '../../utils/tbx-format';
+import { worldBuildingCopyPath } from '../../utils/world-building-copy';
+import { GuestVariantsService } from '../../services/guest-variants.service';
 
 @Component({
   selector: 'app-editor',
@@ -17,6 +19,7 @@ import { writeBuildingFile } from '../../utils/tbx-format';
   styleUrls: ['../../app.component.scss', './editor.component.scss']
 })
 export class EditorComponent implements OnInit, OnDestroy {
+  @ViewChild('submitDialog') submitDialog?: ElementRef<HTMLDialogElement>;
   readonly selectedTool$ = this.store.select(fromRoot.getCurrentTool);
   ready = false;
   error = '';
@@ -27,6 +30,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   height = 20;
   templateNames: string[] = [];
   templateName = '';
+  get copyFrom(): string { return this.route.snapshot.queryParamMap?.get('copyFrom') || ''; }
   get projectId(): string { return this.route.snapshot.paramMap.get('projectId')!; }
   get validSetup(): boolean {
     return !!this.buildingName.trim() && Number.isInteger(this.width) && Number.isInteger(this.height) &&
@@ -42,7 +46,7 @@ export class EditorComponent implements OnInit, OnDestroy {
 
   constructor(private route: ActivatedRoute, private router: Router, private store: Store<fromRoot.State>,
     private buildings: BuildingService, public session: EditorSessionService,
-    private api: ProjectApiService, public auth: AuthService) { }
+    private api: ProjectApiService, public auth: AuthService, private guests: GuestVariantsService) { }
 
   ngOnInit(): void {
     this.variantId = this.route.snapshot.paramMap.get('variantId') || undefined;
@@ -62,7 +66,7 @@ export class EditorComponent implements OnInit, OnDestroy {
       });
       const uid = this.auth.user?.uid;
       this.authSubscription = this.auth.user$.subscribe(user => {
-        if (user?.uid !== uid || ((this.buildingPath || this.newBuildingSetup) && !this.auth.isAdmin)) {
+        if (!this.session.guest && (user?.uid !== uid || ((this.buildingPath || this.newBuildingSetup) && !this.auth.isAdmin))) {
           this.loadGeneration++;
           this.ready = false;
           this.session.end();
@@ -78,6 +82,25 @@ export class EditorComponent implements OnInit, OnDestroy {
 
   async load(recover = true): Promise<void> {
     if (this.newBuildingSetup) {
+      this.error = '';
+      const generation = ++this.loadGeneration;
+      const uid = this.auth.user?.uid;
+      if (this.copyFrom) {
+        this.setupBusy = true;
+        try {
+          const projectId = this.projectId, source = this.copyFrom;
+          const [document, world] = await Promise.all([
+            this.api.worldBuilding(projectId, source),
+            this.api.request<ProjectWorldDocument | null>('GET', `/projects/${encodeURIComponent(projectId)}/world`),
+          ]);
+          if (this.destroyed || this.auth.user?.uid !== uid || generation !== this.loadGeneration) return;
+          if (!world || document.projectId !== projectId || document.path !== source) throw new Error('Could not load the source building from this project.');
+          this.buildingName = worldBuildingCopyPath(source, world.files.map(file => file.path));
+        } catch (error) {
+          if (!this.destroyed && generation === this.loadGeneration) this.error = error instanceof Error ? error.message : String(error);
+        } finally { if (generation === this.loadGeneration) this.setupBusy = false; }
+        return;
+      }
       try {
         this.templateNames = await this.buildings.getTemplateNames();
         this.templateName = this.templateNames[0] || '';
@@ -92,6 +115,14 @@ export class EditorComponent implements OnInit, OnDestroy {
     const generation = ++this.loadGeneration;
     try {
       const projectId = this.route.snapshot.paramMap.get('projectId')!;
+      if (this.variantId?.startsWith('guest-')) {
+        const draft = this.guests.read(this.variantId);
+        if (draft.contribution.projectId !== projectId) throw new Error('This local variant belongs to another project.');
+        const xml = this.session.beginGuest(draft);
+        await this.buildings.createBuildingFromXml(new DOMParser().parseFromString(xml, 'text/xml'));
+        this.store.dispatch(new SetDocumentLocked(!this.session.editable));
+        this.store.dispatch(new SetCurrentTool('tool-furniture')); this.ready = true; return;
+      }
       if (this.buildingPath && this.route.snapshot.queryParamMap?.get('create') === 'true') {
         const world = await this.api.request<ProjectWorldDocument | null>('GET', `/projects/${encodeURIComponent(projectId)}/world`);
         if (this.destroyed || this.auth.user?.uid !== uid || generation !== this.loadGeneration) return;
@@ -99,12 +130,20 @@ export class EditorComponent implements OnInit, OnDestroy {
         if (world.files.some(file => file.path.toLowerCase() === this.buildingPath!.toLowerCase())) {
           throw new Error('A building already uses this path. Return to the building list and choose another name.');
         }
-        const width = Number(this.route.snapshot.queryParamMap.get('width'));
-        const height = Number(this.route.snapshot.queryParamMap.get('height'));
-        const building = await this.buildings.newBuilding(this.route.snapshot.queryParamMap.get('template') || undefined, { width, height });
+        let sourceXml: string;
+        if (this.copyFrom) {
+          const source = await this.api.worldBuilding(projectId, this.copyFrom);
+          if (source.projectId !== projectId || source.path !== this.copyFrom) throw new Error('This source building does not belong to this project.');
+          sourceXml = source.xml;
+        } else {
+          const width = Number(this.route.snapshot.queryParamMap.get('width'));
+          const height = Number(this.route.snapshot.queryParamMap.get('height'));
+          const building = await this.buildings.newBuilding(this.route.snapshot.queryParamMap.get('template') || undefined, { width, height });
+          sourceXml = new XMLSerializer().serializeToString(writeBuildingFile(building));
+        }
         if (this.destroyed || this.auth.user?.uid !== uid || generation !== this.loadGeneration) return;
         const xml = this.session.beginWorldBuilding({ projectId, path: this.buildingPath, revision: world.revision,
-          xml: new XMLSerializer().serializeToString(writeBuildingFile(building)) }, recover, true);
+          xml: sourceXml }, recover, true);
         await this.buildings.createBuildingFromXml(new DOMParser().parseFromString(xml, 'text/xml'));
         this.store.dispatch(new SetDocumentLocked(!this.session.editable));
         this.store.dispatch(new SetCurrentTool('tool-draw-room'));
@@ -141,7 +180,8 @@ export class EditorComponent implements OnInit, OnDestroy {
     this.error = '';
     try {
       await this.router.navigate(['/projects', this.projectId, 'world-buildings', path, 'edit'], {
-        queryParams: { create: 'true', width: this.width, height: this.height, template: this.templateName || null }
+        queryParams: this.copyFrom ? { create: 'true', copyFrom: this.copyFrom }
+          : { create: 'true', width: this.width, height: this.height, template: this.templateName || null }
       });
     } catch (error) { this.error = error instanceof Error ? error.message : String(error); }
     finally { this.setupBusy = false; }
@@ -159,7 +199,24 @@ export class EditorComponent implements OnInit, OnDestroy {
   canLeave(): boolean {
     return this.session.canLeave();
   }
+  openSubmit(): void {
+    if (!this.session.editable || this.session.busy) return;
+    this.submitDialog?.nativeElement.showModal();
+    this.submitDialog?.nativeElement.querySelector('input')?.focus();
+  }
+  async submitVariant(): Promise<void> {
+    if (!this.session.submitterName.trim() || this.session.submitterName.trim().length > 120) return;
+    await this.session.submit(this.session.submitterName.trim());
+    if (this.session.contribution?.status === 'submitted') this.submitDialog?.nativeElement.close();
+  }
+  @HostListener('window:pagehide') keepLocalDraft(): void { this.session.cacheCurrent(); }
+  @HostListener('document:visibilitychange') cacheHiddenDraft(): void { if (document.visibilityState === 'hidden') this.session.cacheCurrent(); }
   @HostListener('window:beforeunload', ['$event']) beforeUnload(event: BeforeUnloadEvent): void {
+    if (this.session.guest && !this.session.busy) {
+      this.session.error = ''; this.session.cacheCurrent();
+      if (!this.session.error) return;
+      event.preventDefault(); event.returnValue = ''; return;
+    }
     if (this.session.dirty || this.session.busy) {
       this.session.cacheCurrent();
       event.preventDefault();
