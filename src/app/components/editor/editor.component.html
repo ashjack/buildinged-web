@@ -50,7 +50,7 @@
   <app-tile-download-window></app-tile-download-window>
   <app-tileset-list-window></app-tileset-list-window>
   <div [attr.inert]="session.busy ? '' : null">
-    <app-menu></app-menu>
+    <app-menu>
     <div class="editor-workspace">
       <app-tool-options></app-tool-options>
       <app-viewport-canvas></app-viewport-canvas>
@@ -58,6 +58,7 @@
       <app-roof-selection-menu *ngIf="(selectedTool$|async) == 'tool-roof'"></app-roof-selection-menu>
       <app-tiles-furniture-sidebar *ngIf="!['tool-tile', 'tool-select-tiles'].includes((selectedTool$|async) || '')" [tool]="(selectedTool$|async) || ''"></app-tiles-furniture-sidebar>
     </div>
+    </app-menu>
   </div>
 </div>
 <p class="project-editor-notice" *ngIf="ready && session.contribution && !session.editable">{{session.guest ? 'This variant has been submitted. You can export the local copy above.' : 'This submission is locked for review. Download its TBX from the task page to inspect it in the standalone editor.'}}</p>

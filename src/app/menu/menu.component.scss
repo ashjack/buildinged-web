@@ -1,5 +1,25 @@
 ﻿:host { display: block; position: relative; z-index: 20; }
-.toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; min-height: 36px; padding: 3px 5px; background: #eee; border-bottom: 1px solid #a0a0a0; color: #222; font: 13px Arial, sans-serif; }
+.editor-shell { display: grid; grid-template-columns: 70px 36px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); background: #eee; color: #222; font: 13px Arial, sans-serif; }
+.mode-sidebar { grid-column: 1; grid-row: 1 / 3; display: flex; flex-direction: column; background: linear-gradient(90deg, #656565, #4d4d4d); border-right: 1px solid #333; }
+.mode-button { flex: 0 0 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 0; border-bottom: 1px solid #444; background: transparent; color: #eee; font: bold 11px Arial, sans-serif; text-shadow: 0 1px #333; }
+.mode-button img { width: 32px; height: 32px; }
+.mode-button.active { background: linear-gradient(#f3f3f3, #ccc); color: #222; text-shadow: 0 1px #fff; box-shadow: inset 0 1px #fff, inset 0 -1px #aaa; }
+.common-toolbar { grid-column: 2; grid-row: 2; display: flex; flex-direction: column; align-items: center; padding-top: 3px; border-right: 1px solid #aaa; }
+.common-toolbar img { width: 16px; height: 16px; }
+.common-toolbar .toolbar-button { width: 30px; height: 28px; flex-shrink: 0; }
+.common-toolbar .separator { flex: 0 0 1px; width: 26px; margin: 5px; }
+.canvas-workspace { grid-column: 3; grid-row: 2; min-width: 0; background: #343434; }
+.toolbar { grid-column: 2 / 4; grid-row: 1; display: flex; align-items: center; flex-wrap: wrap; gap: 2px; min-height: 36px; padding: 3px 5px; background: #eee; border-bottom: 1px solid #a0a0a0; }
+.menu-bar { display: flex; gap: 2px; padding: 1px 4px; background: #eee; border-bottom: 1px solid #bbb; color: #222; font: 13px Arial, sans-serif; }
+.menu-bar details { position: relative; }
+.menu-bar summary { padding: 3px 8px; cursor: pointer; list-style: none; }
+.menu-bar summary::-webkit-details-marker { display: none; }
+.menu-bar details[open] summary, .menu-bar summary:hover { background: #dceafa; }
+.application-menu { position: absolute; z-index: 40; top: 100%; left: 0; min-width: 210px; padding: 3px; background: #f5f5f5; border: 1px solid #999; box-shadow: 2px 3px 7px #0003; }
+.application-menu button { display: block; width: 100%; padding: 5px 12px; text-align: left; border: 1px solid transparent; background: transparent; white-space: nowrap; }
+.application-menu hr { margin: 3px; }
+.help-menu { width: 240px; padding: 10px; }
+.scope-button { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 3px; border: 1px solid transparent; background: transparent; }
 .toolbar-group { display: flex; align-items: center; }
 button { color: inherit; font: inherit; cursor: pointer; }
 .toolbar-button, .dropdown-arrow, .room-button, .floor-button { height: 30px; border: 1px solid transparent; border-radius: 2px; background: transparent; display: inline-flex; align-items: center; justify-content: center; padding: 3px; }
@@ -10,7 +30,7 @@ button:focus-visible { outline: 2px solid #2677c8; outline-offset: -2px; }
 button:disabled { opacity: .4; cursor: default; }
 .toolbar-button.active, .roof-split.active { background: #c4ddf5; border-radius: 2px; box-shadow: inset 0 0 0 1px #7ba7d0; }
 .separator { display: inline-block; flex: 0 0 1px; align-self: stretch; background: #c4c4c4; margin: 3px 5px; }
-.roof-split { position: relative; display: inline-flex; }
+.roof-split, .unavailable-roof { position: relative; display: inline-flex; }
 .dropdown-arrow { width: 14px; font-size: 11px; border-left: 1px solid #ccc; padding: 0; }
 .roof-menu { position: absolute; z-index: 30; top: 100%; left: 0; min-width: 210px; padding: 3px; background: #f5f5f5; border: 1px solid #999; box-shadow: 2px 3px 7px #0003; }
 .roof-menu button { width: 100%; display: flex; align-items: center; text-align: left; gap: 8px; border: 1px solid transparent; background: transparent; padding: 3px 7px; white-space: nowrap; }

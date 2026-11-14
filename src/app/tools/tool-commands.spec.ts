@@ -17,6 +17,8 @@ import ToolDoor from './tool-door';
 import ToolWindow from './tool-window';
 import ToolDraw from './tool-draw';
 import { isolatePanelKey } from '../utils/editor-shortcuts';
+import { EditorViewService } from '../services/editor-view.service';
+import { fractionalCellPosition } from '../utils/native-pointer';
 
 function setup() {
     const building = readBuildingFile(new DOMParser().parseFromString(nativeBuildingXml, 'text/xml'));
@@ -53,6 +55,31 @@ function targetedKey(target: HTMLElement, key: string, modifiers: KeyboardEventI
 }
 
 describe('Tool edit commands', () => {
+    it('renders Ortho room colours on square cells and maps pointer positions to the same editable cells', () => {
+        const scene = setup(), view = scene.view;
+        const modes = new EditorViewService(scene.store as any);
+        view.editorView = modes; modes.setMode('ortho');
+        view.selectedTool = scene.tools[0];
+        const canvas = view.canvasElement.nativeElement as HTMLCanvasElement;
+        canvas.width = 600; canvas.height = 400;
+        spyOn(canvas, 'getBoundingClientRect').and.returnValue(new DOMRect(0, 0, 600, 400));
+        const ctx = canvas.getContext('2d')!; (view as any).ctx = ctx;
+        scene.rooms.rooms[0].tiles = [{ x: 0, y: 0, level: 0 }];
+        const sprites = spyOn(view, 'drawTiles');
+        view.drawCanvas(); expect(sprites).not.toHaveBeenCalled();
+        const cell = view.newPositions.find(position => position.localPoint.x === 0 && position.localPoint.y === 0)!;
+        const origin = cell.point[2];
+        expect(cell.point[1].x - origin.x).toBe(30);
+        expect(cell.point[3].y - origin.y).toBe(30);
+        expect(Array.from(ctx.getImageData(origin.x + 15, origin.y + 15, 1, 1).data).slice(0, 3)).toEqual([100, 120, 140]);
+        const pointer = { x: origin.x + 21, y: origin.y + 9 };
+        expect(fractionalCellPosition(pointer, cell.point)).toEqual({ x: 0.7, y: 0.3 });
+        view.getMousePos(new MouseEvent('mousemove', { clientX: pointer.x, clientY: pointer.y }));
+        expect(view.currentHoverCoords).toEqual({ x: 0, y: 0 });
+        expect(view.selectedTool.pointerPosition).toEqual({ x: 0.7, y: 0.3 });
+        modes.ngOnDestroy(); scene.destroy();
+    });
+
     for (const facing of ['W', 'N', 'E', 'S']) {
         it(`draws the ${facing} wall furniture preview with the same overlay polygon as the placed object`, () => {
             const scene = setup(), view = scene.view, tool = scene.tools[2] as ToolFurniture;

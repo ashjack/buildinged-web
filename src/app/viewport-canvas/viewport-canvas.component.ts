@@ -32,6 +32,7 @@ import { ToolSettingsService } from '../services/tool-settings.service';
 import { fractionalCellPosition, nativeTileEdge, nativeWallCorner } from '../utils/native-pointer';
 import { buildingCameraBounds, constrainCamera, nativeWheelZoom, safeZoom, wheelAngle, wheelScroll, zoomAroundPoint } from '../utils/native-camera';
 import { parseTilepackManifest } from '../utils/tilepack-manifest';
+import { EditorViewService } from '../services/editor-view.service';
 
 @Component({
     selector: 'app-viewport-canvas',
@@ -80,6 +81,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
   private cameraInitialized = false;
   private cameraLevel = 0;
   private resizeObserver?: ResizeObserver;
+  get isOrtho(): boolean { return this.editorView?.mode === 'ortho'; }
 
   constructor(
     private http: HttpClient, 
@@ -96,7 +98,8 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     private windowService: WindowService,
     private roofService: RoofService,
     public toolSettings: ToolSettingsService = new ToolSettingsService(),
-    @Optional() private zone?: NgZone)
+    @Optional() private zone?: NgZone,
+    @Optional() public editorView: EditorViewService | null = null)
   { 
     this.selectedTool$ = store.select(fromRoot.getCurrentTool);
     this.scheduleRedraw$ = store.select(fromRoot.getRedrawSchedule);
@@ -182,7 +185,8 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     });
     this.gridService.selectedLevelChanges.pipe(takeUntil(this.unsubscribe)).subscribe(level => {
       // The web renderer rebases all floors around the selected level; keep the camera in world space.
-      this.yOffset += (level - this.cameraLevel) * 300; this.cameraLevel = level;
+      if (!this.isOrtho) this.yOffset += (level - this.cameraLevel) * 300;
+      this.cameraLevel = level;
       this.cancelGesture(); this.selectedTool.reset();
     });
 
@@ -198,6 +202,13 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
 
     this.gridService.tileFetched.pipe(takeUntil(this.unsubscribe)).subscribe(() => this.requestRedraw());
     this.db?.sheetsChanged?.pipe(takeUntil(this.unsubscribe)).subscribe(sheets => this.forgetSheets(sheets));
+    let wasOrtho = this.isOrtho;
+    this.editorView?.mode$.pipe(takeUntil(this.unsubscribe)).subscribe(() => {
+      this.cancelGesture();
+      if (wasOrtho !== this.isOrtho) this.cameraInitialized = false;
+      wasOrtho = this.isOrtho;
+      this.requestRedraw();
+    });
   }
 
   ngAfterViewInit() {
@@ -407,6 +418,9 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
   //Drawing functions
 
   private cameraBounds() {
+    if (this.isOrtho) return { left: -30, top: -30,
+      right: ((this.buildingService.building?.width ?? 20) + 1) * 30,
+      bottom: ((this.buildingService.building?.height ?? 20) + 1) * 30 };
     return buildingCameraBounds(this.buildingService.building, this.gridService.getSelectedLevel(), [...this.gridService.roomTiles, ...this.gridService.userTiles]);
   }
   private constrainViewport(): void {
@@ -448,7 +462,8 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     this.newPositions = [];
 
     //Tiles
-    this.drawTiles();
+    if (this.isOrtho) this.drawOrthoRooms();
+    else this.drawTiles();
 
     //Object Overlay
     this.drawTileOverlays();
@@ -470,6 +485,45 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     //this.drawTile(6, 10, tile);
     //this.drawTile(6, 11, tile);
 
+  }
+
+  /** OrthoBuildingRenderer uses 30-pixel cells and room colours instead of tile sprites. */
+  private drawOrthoRooms(): void {
+    const ctx = this.ctx!;
+    const level = this.gridService.getSelectedLevel();
+    for (const room of this.roomService.rooms) {
+      const cells = room.tiles.filter(tile => tile.level === level);
+      const occupied = new Set(cells.map(tile => `${tile.x},${tile.y}`));
+      ctx.fillStyle = `rgb(${room.room.Color})`;
+      for (const tile of cells) {
+        const p = this.projectPoint(tile);
+        ctx.fillRect(p.x, p.y, 30 * this.zoom, 30 * this.zoom);
+      }
+      ctx.beginPath(); ctx.setLineDash([]); ctx.strokeStyle = '#222'; ctx.lineWidth = 2;
+      for (const { x, y } of cells) {
+        for (const [dx, dy, ax, ay, bx, by] of [[-1, 0, 0, 0, 0, 1], [1, 0, 1, 0, 1, 1], [0, -1, 0, 0, 1, 0], [0, 1, 0, 1, 1, 1]]) {
+          if (occupied.has(`${x + dx},${y + dy}`)) continue;
+          const a = this.projectPoint({ x: x + ax, y: y + ay }), b = this.projectPoint({ x: x + bx, y: y + by });
+          ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+        }
+      }
+      ctx.stroke();
+    }
+  }
+
+  private projectPoint(p: Point): Point {
+    const x = this.isOrtho ? p.x * 30 : 2500 + (p.x - p.y) * 100;
+    const y = this.isOrtho ? p.y * 30 : (p.x + p.y) * 50;
+    return { x: (x - this.xOffset) * this.zoom, y: (y - this.yOffset) * this.zoom };
+  }
+
+  private orthoRectangle(x: number, y: number, width: number, height: number, stroke: string, fill: string): Point[] {
+    const points = [{ x: x + width, y: y + height }, { x: x + width, y }, { x, y }, { x, y: y + height }].map(p => this.projectPoint(p));
+    const ctx = this.ctx!;
+    ctx.beginPath(); ctx.setLineDash([]);
+    points.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+    ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke();
+    return points;
   }
 
   drawTiles() {
@@ -598,8 +652,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
       if (!this.ctx || !overlay.points.length) continue;
       this.ctx.beginPath(); this.ctx.setLineDash([]);
       overlay.points.forEach((p, i) => {
-        const x = (2500 + p.x * 100 - p.y * 100 - this.xOffset) * this.zoom;
-        const y = (p.x * 50 + p.y * 50 - this.yOffset) * this.zoom;
+        const { x, y } = this.projectPoint(p);
         if (i === 0) this.ctx!.moveTo(x, y); else this.ctx!.lineTo(x, y);
       });
       this.ctx.closePath(); this.ctx.fillStyle = overlay.fill; this.ctx.fill();
@@ -608,14 +661,15 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
         this.ctx.beginPath();
         for (const [a, b] of [[0, 2], [1, 3]]) {
           const first = overlay.points[a], last = overlay.points[b];
-          this.ctx.moveTo((2500 + first.x * 100 - first.y * 100 - this.xOffset) * this.zoom, (first.x * 50 + first.y * 50 - this.yOffset) * this.zoom);
-          this.ctx.lineTo((2500 + last.x * 100 - last.y * 100 - this.xOffset) * this.zoom, (last.x * 50 + last.y * 50 - this.yOffset) * this.zoom);
+          const start = this.projectPoint(first), end = this.projectPoint(last);
+          this.ctx.moveTo(start.x, start.y); this.ctx.lineTo(end.x, end.y);
         }
         this.ctx.stroke();
       } else if (overlay.label) {
         const center = overlay.points.reduce((p, q) => ({ x: p.x + q.x / overlay.points.length, y: p.y + q.y / overlay.points.length }), { x: 0, y: 0 });
         this.ctx.fillStyle = '#000'; this.ctx.font = `${14 * this.zoom}px sans-serif`; this.ctx.textAlign = 'center'; this.ctx.textBaseline = 'middle';
-        this.ctx.fillText(overlay.label, (2500 + center.x * 100 - center.y * 100 - this.xOffset) * this.zoom, (center.x * 50 + center.y * 50 - this.yOffset) * this.zoom);
+        const p = this.projectPoint(center);
+        this.ctx.fillText(overlay.label, p.x, p.y);
       }
     }
     if(this.selectedTool instanceof ToolDraw && !(this.selectedTool instanceof ToolDoor) && !(this.selectedTool instanceof ToolWindow))
@@ -642,6 +696,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   drawOverlaySquare(x: number, y: number, lineColor: string, fillColor: string) {
+    if (this.isOrtho) return this.orthoRectangle(x, y, 1, 1, lineColor, fillColor);
 
     if(!this.ctx) {
       throw new Error('Canvas context is not defined')
@@ -680,6 +735,16 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   drawOverlayBlock(x: number, y: number, length: number, width: number, lineColor: string, fillColor: string, orient?: string, type?: string, obj?: SvgObject) {
+    if (this.isOrtho) {
+      let w = length + 1, h = width + 1;
+      if (['Wall', 'Door', 'Window', 'WallFurniture'].includes(type || '')) {
+        if (orient?.includes('W') || orient?.includes('E')) { x -= 0.1; w = 0.2; }
+        else { y -= 0.1; h = 0.2; }
+      }
+      const points = this.orthoRectangle(x, y, w, h, lineColor, fillColor);
+      if (obj) this.gridService.objectOverlays.push({ points, object: obj });
+      return;
+    }
     if(!this.ctx) {
       throw new Error('Canvas context is not defined')
     };
@@ -1024,6 +1089,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
 }
 
   drawIsometricSquare(x: number, y: number): Point[] {
+    if (this.isOrtho) return this.orthoRectangle(x, y, 1, 1, '#00000030', '#00000000');
 
     if(!this.ctx) {
       throw new Error('Canvas context is not defined')

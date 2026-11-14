@@ -38,6 +38,40 @@ describe('Native toolbar controls', () => {
     });
     afterEach(() => h.destroy());
 
+    it('switches views from the three mode buttons and restores each mode’s editing tool', () => {
+        const fixture = TestBed.createComponent(MenuComponent); fixture.detectChanges();
+        const el: HTMLElement = fixture.nativeElement, menu = fixture.componentInstance;
+        const click = (label: string) => { el.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!.click(); fixture.detectChanges(); };
+        expect(Array.from(el.querySelectorAll('.mode-button')).map(button => button.textContent!.trim())).toEqual(['Ortho', 'Iso', 'Tile']);
+        click('Ortho mode'); click('Wall tool');
+        expect(menu.editorView.mode).toBe('ortho');
+        click('Tile mode');
+        expect(el.querySelector('[aria-label="Room tools"]')).toBeNull();
+        expect(el.querySelector('[aria-label="Tile editing tools"]')).not.toBeNull();
+        expect(h.state.value.currentTool).toBe('tool-tile');
+        click('Pick tiles'); expect(menu.toolSettings.tileMode).toBe('pick');
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: '1', cancelable: true })); fixture.detectChanges();
+        expect(menu.toolSettings.tileMode).toBe('rectangle');
+        click('Select and move tiles');
+        click('Iso mode'); expect(h.state.value.currentTool).toBe('tool-wall');
+        click('Tile mode'); expect(h.state.value.currentTool).toBe('tool-select-tiles');
+        click('Ortho mode'); expect(h.state.value.currentTool).toBe('tool-wall');
+        expect(el.querySelector('[aria-label="Ortho mode"]')!.getAttribute('aria-pressed')).toBe('true');
+        expect(h.state.value.past.length).toBe(0);
+    });
+
+    it('keeps file actions on the left and building transforms in the Building menu', () => {
+        const fixture = TestBed.createComponent(MenuComponent); fixture.detectChanges();
+        const el: HTMLElement = fixture.nativeElement;
+        expect(Array.from(el.querySelectorAll('.common-toolbar button')).map(button => button.getAttribute('aria-label')))
+            .toEqual(['New building / main menu', 'Open building', 'Save building', 'Save building as', 'Undo', 'Redo']);
+        expect(el.querySelector('.toolbar [aria-label="Rotate building right"]')).toBeNull();
+        expect(el.querySelector('.menu-bar [aria-label="Rotate building right"]')).not.toBeNull();
+        const download = spyOn(h.buildings, 'saveBuildingToXml').and.resolveTo(undefined);
+        el.querySelector<HTMLButtonElement>('[aria-label="Save building as"]')!.click();
+        expect(download).toHaveBeenCalled();
+    });
+
     it('rotates all floors from the toolbar with one history entry and reports unsafe border tiles', () => {
         const fixture = TestBed.createComponent(MenuComponent); fixture.detectChanges();
         const before = h.buildings.building;

@@ -13,9 +13,11 @@ import { RoofService } from '../services/roof.service';
 import { RoofOption } from '../services/roof-patterns';
 import { ROOF_TOOL_GROUPS, roofOptionIcon, roofToolGroup, RoofToolGroup } from '../utils/roof-toolbar';
 import { MAX_BUILDING_FLOORS } from '../utils/floor-edits';
-import { historyShortcut } from '../utils/editor-shortcuts';
+import { historyShortcut, isTextEditing } from '../utils/editor-shortcuts';
 import { Router } from '@angular/router';
 import { EditorSessionService } from '../services/editor-session.service';
+import { EditorMode, EditorViewService } from '../services/editor-view.service';
+import { ToolSettingsService, TileEditMode } from '../services/tool-settings.service';
 
 @Component({
   selector: 'app-menu',
@@ -23,6 +25,9 @@ import { EditorSessionService } from '../services/editor-session.service';
   styleUrls: ['./menu.component.scss']
 })
 export class MenuComponent {
+  readonly modes: { id: EditorMode; label: string }[] = [
+    { id: 'ortho', label: 'Ortho' }, { id: 'iso', label: 'Iso' }, { id: 'tile', label: 'Tile' }
+  ];
   @ViewChild('floorsDialog') floorsDialog: ElementRef<HTMLDialogElement>;
   @ViewChild('resizeDialog') resizeDialog: ElementRef<HTMLDialogElement>;
   readonly maxDimension = MAX_BUILDING_DIMENSION;
@@ -48,7 +53,10 @@ export class MenuComponent {
     private gridService: GridService,
     public roofs: RoofService,
     private router: Router,
-    public session: EditorSessionService
+    public session: EditorSessionService,
+    public editorView: EditorViewService,
+    public toolSettings: ToolSettingsService,
+    private element: ElementRef<HTMLElement>
   ) { }
 
   setTool(tool: string)
@@ -57,7 +65,30 @@ export class MenuComponent {
     this.store.dispatch(new SetCurrentTool(tool));
   }
 
-  @HostListener('document:click') closeRoofMenu(): void { this.openRoofMenu = undefined; }
+  setTileTool(mode: TileEditMode): void {
+    this.toolSettings.tileMode = mode;
+    this.setTool('tool-tile');
+  }
+
+  @HostListener('document:keydown', ['$event']) tileToolShortcut(event: KeyboardEvent): void {
+    if (this.editorView.mode !== 'tile' || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || isTextEditing(event)
+      || this.element.nativeElement.querySelector('dialog[open]') || !['1', '2', '3'].includes(event.key)) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    if (event.key === '2') this.setTool('tool-select-tiles');
+    else this.setTileTool(event.key === '3' ? 'pick' : 'rectangle');
+  }
+
+  saveAs(): void {
+    this.buildingService.saveBuildingToXml().catch(error => window.alert(error.message || String(error)));
+  }
+
+  @HostListener('document:click', ['$event']) closeRoofMenu(event?: MouseEvent): void {
+    this.openRoofMenu = undefined;
+    const target = event?.target as HTMLElement | undefined;
+    this.element.nativeElement.querySelectorAll<HTMLDetailsElement>('.menu-bar details[open]').forEach(menu => {
+      if (!target || !menu.contains(target) || target.closest('button')) menu.open = false;
+    });
+  }
   @HostListener('document:keydown.escape') escapeMenu(): void { this.closeRoofMenu(); }
   activateRoof(group: RoofToolGroup): void { this.chooseRoof(this.roofs.getGroupOption(group)); }
   chooseRoof(option: RoofOption): void { this.roofs.setSelectedRoofOptionId(option.id); this.setTool('tool-roof'); }
