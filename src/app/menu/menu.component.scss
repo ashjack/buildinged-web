@@ -32,9 +32,10 @@ button:disabled { opacity: .4; cursor: default; }
 .separator { display: inline-block; flex: 0 0 1px; align-self: stretch; background: #c4c4c4; margin: 3px 5px; }
 .roof-split, .unavailable-roof { position: relative; display: inline-flex; }
 .dropdown-arrow { width: 14px; font-size: 11px; border-left: 1px solid #ccc; padding: 0; }
-.roof-menu { position: absolute; z-index: 30; top: 100%; left: 0; min-width: 210px; padding: 3px; background: #f5f5f5; border: 1px solid #999; box-shadow: 2px 3px 7px #0003; }
+.roof-menu { position: absolute; z-index: 30; top: 100%; left: 0; min-width: 210px; max-height: min(480px, 70dvh); overflow-y: auto; overscroll-behavior: contain; padding: 3px; background: #f5f5f5; border: 1px solid #999; box-shadow: 2px 3px 7px #0003; }
 .roof-menu button { width: 100%; display: flex; align-items: center; text-align: left; gap: 8px; border: 1px solid transparent; background: transparent; padding: 3px 7px; white-space: nowrap; }
 .roof-menu .check { margin-left: auto; }
+.room-picker { position: relative; }
 .room-button { gap: 6px; padding: 3px 7px; min-width: 105px; border-color: #bbb; background: #fafafa; }
 .room-color { width: 16px; height: 16px; display: inline-block; margin-right: 5px; border: 1px solid #0003; vertical-align: middle; }
 .floor-button { padding: 3px 8px; min-width: 90px; }

@@ -6,6 +6,7 @@ import { emptyIndexGrid, writeIndexGrid } from '../utils/tbx-grid';
 import { nativeRoofHalfDepth, nativeRoofHandles, nativeRoofPreview, resizeNativeRoof } from '../utils/native-roof';
 import { RoofService } from '../services/roof.service';
 import ToolRoof from './tool-roof';
+import { compoundRoofContains } from '../services/compound-roof';
 
 function setup() {
     localStorage.clear();
@@ -28,6 +29,112 @@ function setup() {
 }
 
 describe('Native roof mouse interactions', () => {
+    for (const id of ['l-roof', 'l-roof30', 't-roof', 't-roof30']) {
+        it(`places the four entered ${id} dimensions on a click and keeps lengths attached when rotated`, () => {
+            const h = setup(); h.roofs.setSelectedRoofOptionId(id);
+            h.roofs.configureDimension('mainLength', 9); h.roofs.configureDimension('returnLength', 8);
+            h.roofs.configureDimension('mainWidth', 5); h.roofs.configureDimension('returnWidth', 3);
+            expect(h.roofs.compoundDimensions).toEqual({ mainLength: 9, mainWidth: 5, returnLength: 8, returnWidth: 3 });
+            h.point(1.2, 1.2); h.tool.beginDrag(1, 1); h.point(1.3, 1.3); h.tool.endDrag(1, 1);
+            const object = h.buildings.building.floors[0].objects[0];
+            expect(object).toEqual(jasmine.objectContaining({ width: 9, height: 8, RoofMainWidth: 5, RoofReturnWidth: 3 }));
+            h.roofs.configureDimension('mainLength', 10); h.roofs.configureDimension('returnLength', 9);
+            const beforeRotation = h.buildings.building;
+            h.roofs.configureCompound('RoofRotation', 1);
+            expect(h.buildings.building.floors[0].objects[0]).toEqual(jasmine.objectContaining({ uid: object.uid, width: 9, height: 10 }));
+            expect(h.roofs.compoundDimensions).toEqual({ mainLength: 10, mainWidth: 5, returnLength: 9, returnWidth: 3 });
+            const rotated = h.buildings.building;
+            h.roofs.configureDimension('mainLength', 2); expect(h.buildings.building).toBe(rotated); expect(h.roofs.message).toContain('Main length must be');
+            h.roofs.configureDimension('returnLength', 256); expect(h.buildings.building).toBe(rotated); expect(h.roofs.message).toContain('outside the building');
+            h.store.dispatch(new Undo()); expect(h.buildings.building).toBe(beforeRotation); h.store.dispatch(new Redo());
+            const saved = readBuildingFile(writeBuildingFile(h.buildings.building)).floors[0].objects[0];
+            expect([+saved.width, +saved.height, +saved.RoofMainWidth, +saved.RoofReturnWidth, +saved.RoofRotation]).toEqual([9, 10, 5, 3, 1]);
+            const next = new RoofService(h.buildings, h.grid, h.store as any).createObject(0, 0, object.RoofType);
+            expect([next.width, next.height]).toEqual([9, 10]);
+            h.destroy();
+        });
+    }
+    it('allows a drag to replace the preset lengths while preserving independent wing widths', () => {
+        const h = setup(); h.roofs.setSelectedRoofOptionId('l-roof30');
+        h.roofs.configureDimension('mainLength', 9); h.roofs.configureDimension('returnLength', 8);
+        h.roofs.configureDimension('mainWidth', 3); h.roofs.configureDimension('returnWidth', 2);
+        h.point(1.2, 1.2); h.tool.beginDrag(1, 1); h.point(6.2, 7.2); h.tool.endDrag(6, 7);
+        expect(h.roofs.compoundDimensions).toEqual({ mainLength: 6, mainWidth: 3, returnLength: 7, returnWidth: 2 }); h.destroy();
+    });
+    it('offers and remembers one-tile width increments without rounding odd widths on edit, undo or reload', () => {
+        const h = setup(); h.roofs.setSelectedRoofOptionId('l-roof30');
+        expect(h.roofs.compoundWingOptions.slice(0, 7)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+        h.add('LRoof30', 8, 8); h.click(7.2, 3.2);
+        const before = h.buildings.building;
+        h.roofs.configureCompound('RoofMainWidth', 5); h.roofs.configureCompound('RoofReturnWidth', 3);
+        expect(h.roofs.editingRoof).toEqual(jasmine.objectContaining({ RoofMainWidth: 5, RoofReturnWidth: 3 }));
+        const next = new RoofService(h.buildings, h.grid, h.store as any).createObject(0, 0, 'LRoof30');
+        expect(next).toEqual(jasmine.objectContaining({ RoofMainWidth: 5, RoofReturnWidth: 3, width: 4, height: 6 }));
+        h.store.dispatch(new Undo()); h.store.dispatch(new Undo()); expect(h.buildings.building).toBe(before);
+        h.store.dispatch(new Redo()); h.store.dispatch(new Redo());
+        const saved = readBuildingFile(writeBuildingFile(h.buildings.building)).floors[0].objects[0];
+        expect([+saved.RoofMainWidth, +saved.RoofReturnWidth]).toEqual([5, 3]); h.destroy();
+    });
+    it('edits and remembers independent L-wing widths, expands only the necessary dimensions, and rejects out-of-bounds sizes', () => {
+        const h = setup(); h.roofs.setSelectedRoofOptionId('l-roof');
+        const roof = h.add('LRoof', 8, 8); h.click(7.2, 3.2);
+        const before = h.buildings.building;
+        h.roofs.configureCompound('RoofMainWidth', 10);
+        expect(h.buildings.building.floors[0].objects[0]).toEqual(jasmine.objectContaining({ uid: roof.uid, RoofMainWidth: 10, RoofReturnWidth: 0, width: 8, height: 11 }));
+        h.roofs.configureCompound('RoofReturnWidth', 8);
+        const after = h.buildings.building;
+        expect(after.floors[0].objects[0]).toEqual(jasmine.objectContaining({ RoofMainWidth: 10, RoofReturnWidth: 8, width: 9, height: 11 }));
+        h.roofs.configureCompound('RoofMainWidth', 254);
+        expect(h.buildings.building).toBe(after); expect(h.roofs.message).toContain('outside the building');
+        const next = new RoofService(h.buildings, h.grid, h.store as any).createObject(0, 0, 'LRoof30');
+        expect(next).toEqual(jasmine.objectContaining({ RoofMainWidth: 10, RoofReturnWidth: 8, width: 9, height: 11 }));
+        h.store.dispatch(new Undo()); h.store.dispatch(new Undo()); expect(h.buildings.building).toBe(before);
+        h.store.dispatch(new Redo()); h.store.dispatch(new Redo()); expect(h.buildings.building).toBe(after);
+        h.destroy();
+    });
+    it('keeps a compound roof selected when leaving the grid and regenerating its tiles after a settings edit', () => {
+        const h = setup(); h.roofs.setSelectedRoofOptionId('l-roof');
+        const roof = h.add('LRoof', 8, 8);
+        // The viewport cancels pointer gestures when a document edit regenerates the projection.
+        const changes = h.state.subscribe(() => h.tool.cancel());
+        h.click(7.2, 3.2); h.tool.clearHover();
+        expect(h.roofs.editingRoofId).toBe(roof.uid);
+        expect(h.tool.overlays).toEqual([]);
+        h.roofs.configureCompound('RoofMainWidth', 6);
+        expect(h.roofs.editingRoofId).toBe(roof.uid);
+        h.roofs.configureCompound('RoofRotation', 1);
+        h.roofs.configureCompound('RoofMirror', true);
+        expect(h.buildings.building.floors[0].objects[0]).toEqual(jasmine.objectContaining({ RoofMainWidth: 6, RoofRotation: 1, RoofMirror: true }));
+        expect(h.buildings.building.floors[0].objects.length).toBe(1);
+        h.tool.cancel(); expect(h.roofs.editingRoofId).toBeUndefined();
+        changes.unsubscribe(); h.destroy();
+    });
+    for (const id of ['l-roof', 't-roof', 'l-roof30', 't-roof30']) {
+        it(`places, selects and resizes ${id} with one undo command per edit`, () => {
+            const h = setup(); h.roofs.setSelectedRoofOptionId(id);
+            h.point(1.2, 1.2); h.tool.beginDrag(1, 1); h.point(8.7, 10.7);
+            expect(h.tool.overlays[0].points.length).toBe(id.startsWith('l-') ? 6 : 8);
+            expect(h.buildings.building.floors[0].objects.length).toBe(0);
+            h.tool.endDrag(8, 10);
+            const object = h.buildings.building.floors[0].objects[0], before = h.buildings.building;
+            expect(object).toEqual(jasmine.objectContaining({ width: 8, height: 10, RoofRotation: 0, RoofMirror: false, RoofWingWidth: 0 }));
+            h.click(7.2, 2.2); // Header interior: select without adding a second roof.
+            expect(h.buildings.building.floors[0].objects.length).toBe(1);
+            expect(h.roofs.editingRoofId).toBe(object.uid);
+            h.point(11.2, 11.2); // Keep selection while moving to the settings panel.
+            expect(h.roofs.editingRoofId).toBe(object.uid);
+            h.roofs.configureCompound('RoofMirror', true);
+            expect(h.buildings.building.floors[0].objects[0].RoofMirror).toBeTrue();
+            h.store.dispatch(new Undo()); expect(h.buildings.building).toBe(before);
+            h.point(8.75, 10.75); h.tool.beginDrag(8, 10); h.point(9.75, 10.75); h.tool.endDrag(9, 10);
+            expect(h.buildings.building.floors[0].objects[0].width).toBe(9);
+            h.store.dispatch(new Undo()); expect(h.buildings.building).toBe(before); h.store.dispatch(new Redo());
+            const saved = readBuildingFile(writeBuildingFile(h.buildings.building)).floors[0].objects[0];
+            expect(saved.RoofType).toBe(object.RoofType); expect(Number(saved.width)).toBe(9);
+            expect(compoundRoofContains({ ...saved, x: +saved.x, y: +saved.y, width: +saved.width, height: +saved.height, roofType: saved.RoofType }, { x: 1.5, y: 9.5 })).toBeFalse();
+            h.destroy();
+        });
+    }
     for (const id of ['peak30-vertical', 'peak30-horizontal', 'peak30-quad', 'dormer30-w', 'dormer30-e', 'dormer30-n', 'dormer30-s']) {
         it(`keeps an even ${id} footprint during placement, preview and save/reopen`, () => {
             const h = setup(); h.roofs.setSelectedRoofOptionId(id);

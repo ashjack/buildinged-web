@@ -281,7 +281,7 @@ describe('Native square generation', () => {
         const drawTile = jasmine.createSpy('drawTile');
         ViewportCanvasComponent.prototype.drawTiles.call({ gridService: scene.grid, drawTile,
             getIndividualTile: (name: string) => name } as any);
-        expect(drawTile).toHaveBeenCalledWith(2, 1, b.user_tiles[0].tile + '.png', b.user_tiles[0].tile + '.png', 1);
+        expect(drawTile).toHaveBeenCalledWith(2, 1, b.user_tiles[0].tile + '.png', b.user_tiles[0].tile + '.png', 1, undefined);
         scene.destroy();
     });
 

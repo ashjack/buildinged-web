@@ -1,6 +1,7 @@
 import { Injectable, OnDestroy } from '@angular/core';
 import { Building } from '../models/app.models';
-import { BuildingCompositionTile, BuildingPreview, buildingPreviewBytes, BuildingSquares, PreviewTile } from '../utils/building-preview';
+import { BuildingCompositionTile, BuildingPreview, buildingPreviewBytes, BuildingSquares, PreviewTile, previewTileKey } from '../utils/building-preview';
+import { applyTileClip } from '../utils/tile-clip';
 import { readPngSize } from '../utils/sheet-atlas';
 import { readBuildingPreviewFile } from '../utils/tbx-format';
 import { TilezedTileset } from '../utils/tilezed-map';
@@ -392,7 +393,7 @@ export class BuildingPreviewService implements OnDestroy {
       }
       // TileZed needs the original square/layer of every tile to interleave lots
       // with map tiles. WorldEd keeps using the smaller whole-building thumbnail.
-      const atlasKeys = maxWidth === MAX_PREVIEW_SIDE ? [...new Set(prepared.tiles.map(tile => `${tile.sheet}:${tile.index}`))] : [];
+      const atlasKeys = maxWidth === MAX_PREVIEW_SIDE ? [...new Set(prepared.tiles.map(previewTileKey))] : [];
       if (atlasKeys.length * 64 * 128 * 4 > 64 * 1024 * 1024) throw new Error('Building tile atlas exceeds 64 MiB.');
       const atlasFrames = new Map(atlasKeys.map((key, index) => [key, index]));
       const atlasPages = Array.from({ length: Math.ceil(atlasKeys.length / 256) }, (_, page) => {
@@ -417,18 +418,24 @@ export class BuildingPreviewService implements OnDestroy {
           this.decoded.set(key, sheet);
           const tw = 64, th = 128;
           if ((Math.floor(tile.index / 8) + 1) * th <= sheet.bitmap.height) {
+            context.save(); applyTileClip(context, tile.clip, tile.x, tile.y, tw, th);
             context.drawImage(sheet.bitmap, tile.index % 8 * tw, Math.floor(tile.index / 8) * th,
               tw, th, tile.x, tile.y, 64, 128);
-            const frame = atlasFrames.get(`${tile.sheet}:${tile.index}`);
+            context.restore();
+            const frame = atlasFrames.get(previewTileKey(tile));
             if (frame !== undefined) {
               if (!copied.has(frame)) {
-                atlasPages[Math.floor(frame / 256)].getContext('2d')!.drawImage(sheet.bitmap,
+                const atlas = atlasPages[Math.floor(frame / 256)].getContext('2d')!;
+                atlas.save(); applyTileClip(atlas, tile.clip, frame % 16 * tw, Math.floor(frame % 256 / 16) * th, tw, th);
+                atlas.drawImage(sheet.bitmap,
                   tile.index % 8 * tw, Math.floor(tile.index / 8) * th, tw, th,
                   frame % 16 * tw, Math.floor(frame % 256 / 16) * th, tw, th);
+                atlas.restore();
                 copied.add(frame);
               }
               compositionTiles.push({ squareX: tile.squareX, squareY: tile.squareY, level: tile.level,
-                layer: tile.layer, sheet: tile.sheet, index: tile.index, frame, sourceKey: keyOf(tile.sheet) });
+                layer: tile.layer, sheet: tile.sheet, index: tile.index, frame,
+                sourceKey: keyOf(tile.sheet) + (tile.clip ? ':' + JSON.stringify(tile.clip) : '') });
             }
           } else warnings.push(`${tile.sheet} does not contain tile ${tile.index}.`);
         }

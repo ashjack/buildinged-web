@@ -9,6 +9,7 @@ import { ToolSettingsService } from '../services/tool-settings.service';
 import { contains, objectBounds, SelectionEdit, validObject } from '../utils/selection-edits';
 import { tileAreaBetween } from '../utils/tool-placement';
 import ToolDraw from './tool-draw';
+import { compoundRoofContains, compoundRoofIntersects, isCompoundRoof } from '../services/compound-roof';
 
 export default class ToolSelect extends ToolDraw {
     area: TileArea | undefined;
@@ -31,7 +32,8 @@ export default class ToolSelect extends ToolDraw {
     private hitAt(x: number, y: number): string | undefined {
         if (this.hoveredObject?.level === this.level) return this.hoveredObject.uid;
         const b = this.buildings.building;
-        return [...(b?.floors[this.level]?.objects || [])].reverse().find(o => contains(objectBounds(b, o), x, y))?.uid;
+        return [...(b?.floors[this.level]?.objects || [])].reverse().find(o => o.type === 'roof' && isCompoundRoof(o.RoofType)
+            ? compoundRoofContains({ ...o, ...objectBounds(b, o), roofType: o.RoofType }, { x, y }) : contains(objectBounds(b, o), x, y))?.uid;
     }
     override beginDrag(x: number, y: number): void {
         this.sync(); this.startGesture(x, y, this.level);
@@ -84,6 +86,7 @@ export default class ToolSelect extends ToolDraw {
             const b = this.buildings.building, area = tileAreaBetween(start.x, start.y, x, y);
             const ids = x === start.x && y === start.y ? hit ? [hit] : [] : b.floors[start.level].objects.filter(o => {
                 const r = objectBounds(b, o);
+                if (o.type === 'roof' && isCompoundRoof(o.RoofType)) return compoundRoofIntersects({ ...o, ...r, roofType: o.RoofType }, area);
                 return r.x < area.x + area.width && r.x + r.width > area.x && r.y < area.y + area.height && r.y + r.height > area.y;
             }).map(o => o.uid);
             this.uids = this.modifiers.shift ? [...new Set([...this.uids, ...ids])]

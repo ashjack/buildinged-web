@@ -4,6 +4,7 @@ import { RoofService } from '../services/roof.service';
 import { insideRectangle, rectanglePoints } from '../utils/native-pointer';
 import { nativeRoofHalfDepth, nativeRoofHandles, nativeRoofPreview, resizeNativeRoof, roofRect, RoofHandle } from '../utils/native-roof';
 import { validObject } from '../utils/selection-edits';
+import { compoundRoofContains, isCompoundRoof } from '../services/compound-roof';
 import ToolDraw from './tool-draw';
 
 export default class ToolRoof extends ToolDraw {
@@ -14,12 +15,20 @@ export default class ToolRoof extends ToolDraw {
     private handle: RoofHandle | undefined;
     private lastCell: Point | undefined;
     private lastPointer: Point | undefined;
+    private compoundDragStarted = false;
     get resizingUid(): string | undefined { return this.original?.uid; }
     constructor(private roofService: RoofService, private grid: GridService) { super(); }
     override cancel(): void {
         super.cancel(); this.candidate = this.original = this.handleRoof = undefined;
         this.handle = undefined; this.lastCell = this.lastPointer = undefined; this.cursor = 'default';
+        this.compoundDragStarted = false;
         this.roofService.message = '';
+        this.roofService.editingRoofId = undefined; this.roofService.drawing = false;
+    }
+    clearHover(): void {
+        const selected = this.roofService.editingRoofId;
+        this.cancel();
+        this.roofService.editingRoofId = selected;
     }
     private point(x: number, y: number): Point { return this.pointerPosition || { x: x + 0.5, y: y + 0.5 }; }
     private addRect(bounds: { x: number; y: number; width: number; height: number }, fill: string): void {
@@ -37,6 +46,12 @@ export default class ToolRoof extends ToolDraw {
         const b = this.roofService.building; if (!b) return;
         this.hoverTile(x, y);
         const o = this.handleRoof, h = this.handle;
+        if (o && !h && isCompoundRoof(o.RoofType)) {
+            this.roofService.editingRoofId = o.uid;
+            this.overlays = nativeRoofPreview(o, true); this.handles(o, this.point(x, y));
+            this.statusText = 'Edit this roof using its wing lengths and widths, or drag its resize handle.';
+            return;
+        }
         if (o && h && h.kind !== 'resize') {
             this.cancel();
             if (h.kind.startsWith('capped')) {
@@ -63,7 +78,8 @@ export default class ToolRoof extends ToolDraw {
         const p = this.point(x, y), level = this.grid.getSelectedLevel();
         if (!this.isDragging) {
             this.previewTiles = undefined;
-            this.handleRoof = [...b.floors[level].objects].reverse().find(o => o.type === 'roof' && insideRectangle(roofRect(o), p));
+            this.handleRoof = [...b.floors[level].objects].reverse().find(o => o.type === 'roof' && insideRectangle(roofRect(o), p) &&
+                (!isCompoundRoof(o.RoofType) || compoundRoofContains({ ...o, ...roofRect(o), roofType: o.RoofType }, p) || nativeRoofHandles(o).some(h => insideRectangle(h.bounds, p))));
             this.handle = undefined;
             if (this.handleRoof) this.handle = this.handles(this.handleRoof, p);
             if (!this.handle && x >= 0 && y >= 0 && x < b.width && y < b.height) this.addRect({ x, y, width: 1, height: 1 }, '#00ff0080');
@@ -89,6 +105,10 @@ export default class ToolRoof extends ToolDraw {
             }
         } else if (x >= 0 && y >= 0 && x < b.width && y < b.height) {
             const dx = x - this.beginDragCoords[0], dy = y - this.beginDragCoords[1];
+            if (dx || dy) this.compoundDragStarted = true;
+            if (isCompoundRoof(this.candidate.RoofType) && !this.compoundDragStarted) {
+                this.lastCell = { x, y }; this.lastPointer = { ...p }; this.drawCandidate(); return;
+            }
             const half = nativeRoofHalfDepth(this.candidate, Math.abs(dx) + 1, Math.abs(dy) + 1, p, true, dx, dy);
             this.candidate = resizeNativeRoof(this.candidate, Math.abs(dx) + 1, Math.abs(dy) + 1, half);
             this.candidate.x = this.beginDragCoords[0] - (dx < 0 ? this.candidate.width - 1 : 0);
@@ -98,6 +118,7 @@ export default class ToolRoof extends ToolDraw {
         this.drawCandidate();
     }
     private drawCandidate(): void {
+        this.roofService.drawing = true;
         this.overlays = []; this.tileGhosts = []; this.dragTiles = [];
         const b = this.roofService.building, valid = validObject(b, this.candidate);
         this.overlays = nativeRoofPreview(this.candidate, valid);
@@ -112,7 +133,10 @@ export default class ToolRoof extends ToolDraw {
         if (this.lastCell?.x !== x || this.lastCell?.y !== y || this.lastPointer?.x !== p.x || this.lastPointer?.y !== p.y) this.hoverTile(x, y);
         const candidate = this.candidate, resizing = !!this.original;
         const start = this.finishGesture(this.grid.getSelectedLevel());
-        if (start && candidate) this.roofService.commit(candidate, start.level, resizing);
+        if (start && candidate) {
+            this.roofService.commit(candidate, start.level, resizing);
+            if (isCompoundRoof(candidate.RoofType)) this.roofService.editingRoofId = candidate.uid;
+        }
     }
     override clickTile(x: number, y: number): void { this.beginDrag(x, y); this.endDrag(x, y); }
     override getTileFill(): string { return '#00000000'; }

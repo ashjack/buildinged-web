@@ -2,6 +2,7 @@ import { Point, TileArea } from '../models/app.models';
 import { normalizeRoofSize, resolveRoofDepth } from '../services/roof-patterns';
 import { rectanglePoints } from './native-pointer';
 import { isRoof30, roof30SlopeMatrix } from '../services/roof-30';
+import { compoundRoofOutline, compoundRoofRotation, isCompoundRoof, normalizeCompoundRoofSize } from '../services/compound-roof';
 
 export type RoofHandleKind = 'resize' | 'depthUp' | 'depthDown' | 'cappedW' | 'cappedN' | 'cappedE' | 'cappedS';
 export interface RoofHandle { kind: RoofHandleKind; bounds: TileArea; crossed: boolean; }
@@ -10,6 +11,8 @@ export const roofRect = (o: any): TileArea => ({ x: Number(o.x), y: Number(o.y),
 /** BuildingRenderer::drawObject roof faces, with GraphicsObjectItem's iso opacity.
  * Partition the faces so transparency is applied once, as it is to the Qt item. */
 export function nativeRoofPreview(o: any, valid: boolean) {
+    if (isCompoundRoof(o.RoofType)) return [{ points: compoundRoofOutline({ ...o, ...roofRect(o), roofType: o.RoofType }),
+        fill: valid ? '#a0a0a440' : '#ff000020', stroke: valid ? '#0000ff40' : '#ff000040' }];
     if (isRoof30(o.RoofType)) {
         const r = roofRect(o), matrix = roof30SlopeMatrix({ ...r, roofType: o.RoofType, level: 0, tileset: { capTiles: [], slopeTiles: [], topTiles: [] } });
         const overlays = matrix.enums.flatMap((name, i) => name ? [{ points: rectanglePoints({ x: r.x + i % r.width, y: r.y + Math.floor(i / r.width), width: 1, height: 1 }),
@@ -51,7 +54,9 @@ export function nativeRoofPreview(o: any, valid: boolean) {
     return overlays;
 }
 export function resizeNativeRoof(o: any, width: number, height: number, half: boolean): any {
-    const size = normalizeRoofSize(width, height, o.RoofType);
+    const size = isCompoundRoof(o.RoofType)
+        ? normalizeCompoundRoofSize(width, height, o.RoofType, compoundRoofRotation(o), Number(o.RoofWingWidth) || 0, o.RoofMainWidth, o.RoofReturnWidth)
+        : normalizeRoofSize(width, height, o.RoofType);
     const saved = o.RoofType === 'FlatTop' ? o.Depth : half ? 'Point5' : undefined;
     return { ...o, ...size, Depth: resolveRoofDepth(size.width, size.height, o.RoofType, saved) };
 }
@@ -59,6 +64,7 @@ export function resizeNativeRoof(o: any, width: number, height: number, half: bo
 export function nativeRoofHandles(o: any): RoofHandle[] {
     const r = roofRect(o), t = String(o.RoofType).replace('CornerSlope30', 'Corner').replace('30', ''), right = r.x + r.width, bottom = r.y + r.height;
     const handles: RoofHandle[] = [{ kind: 'resize', bounds: { x: right - 0.5, y: bottom - 0.5, width: 0.5, height: 0.5 }, crossed: false }];
+    if (isCompoundRoof(o.RoofType)) return handles;
     if (t === 'FlatTop') {
         const x = r.x + r.width / 2 - 7 / 30, y = r.y + r.height / 2;
         handles.push({ kind: 'depthUp', bounds: { x, y: y - 14 / 30, width: 14 / 30, height: 14 / 30 }, crossed: o.Depth === 'Three' },
@@ -86,7 +92,7 @@ export function nativeRoofHandles(o: any): RoofHandle[] {
 export function nativeRoofHalfDepth(o: any, width: number, height: number, p: Point, creating: boolean, dx = 0, dy = 0): boolean {
     const x = Math.floor(p.x), y = Math.floor(p.y), fx = p.x - x, fy = p.y - y;
     const t = o.RoofType;
-    if (isRoof30(t)) return false;
+    if (isRoof30(t) || isCompoundRoof(t)) return false;
     let w = width, h = height;
     if (t.startsWith('Corner') || t === 'SlopeW' || t === 'SlopeE') w = Math.min(3, w);
     if (t.startsWith('Corner') || t === 'SlopeN' || t === 'SlopeS') h = Math.min(3, h);

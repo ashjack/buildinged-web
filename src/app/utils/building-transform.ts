@@ -1,6 +1,7 @@
 import { Building } from '../models/app.models';
 import { resolveFurniture } from '../services/native-squares';
 import { emptyIndexGrid, gridContains, readIndexGrid, writeIndexGrid } from './tbx-grid';
+import { compoundRoofMirrored, compoundRoofRotation, isCompoundRoof } from '../services/compound-roof';
 
 export type BuildingTransform = 'rotate-left' | 'rotate-right' | 'flip-horizontal' | 'flip-vertical';
 export const BUILDING_TRANSFORM_LABELS: Record<BuildingTransform, string> = {
@@ -52,6 +53,11 @@ export function transformBuilding(building: Building, operation: BuildingTransfo
                 : horizontal ? [w - x - ow, y] : [x, h - y - oh];
             if (rotation) { o.width = oh; o.height = ow; }
             const type = String(o.RoofType);
+            if (isCompoundRoof(type)) {
+                const angle = compoundRoofRotation(o), mirror = compoundRoofMirrored(o);
+                o.RoofRotation = rotation ? (angle + (right ? 1 : 3)) % 4 : ((horizontal ? 0 : 2) - angle + 4) % 4;
+                o.RoofMirror = rotation ? mirror : !mirror;
+            }
             const match = /^(Slope|Dormer|ShallowSlope|Slope30|Dormer30|CornerInner|CornerOuter|CornerSlope30Inner|CornerSlope30Outer)(SW|NW|NE|SE|W|N|E|S)$/.exec(type);
             // Native flip() leaves CornerSlope30 types unchanged (unlike rotate()).
             if (match && (rotation || !match[1].startsWith('CornerSlope30'))) o.RoofType = match[1] + directions[match[2]];

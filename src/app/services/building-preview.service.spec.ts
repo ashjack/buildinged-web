@@ -3,6 +3,7 @@ import { TilezedAssetsService } from './tilezed-assets.service';
 import { BuildingPreviewService } from './building-preview.service';
 import { BuildingLots } from './building-lots';
 import { TilezedStorageService } from './tilezed-storage.service';
+import { buildingTilesCategory } from '../utils/building-tiles';
 
 const xml = `<building version="3" width="1" height="1">
   <tile_entry category="floors"><tile enum="Floor" tile="floor_01_000"/></tile_entry>
@@ -55,6 +56,27 @@ describe('Background building previews', () => {
       expect(lots.sprites[0].composition!.frames!.get(0)).toBe(lots.sprites[1].composition!.frames!.get(0));
       expect(lots.revision).toBe(3);
     } finally { lots.dispose(); }
+  });
+
+  it('bakes half-join masks into distinct TileZed atlas frames without reusing an unclipped tile', async () => {
+    const sheet = document.createElement('canvas'); sheet.width = 512; sheet.height = 128;
+    const context = sheet.getContext('2d')!; context.fillStyle = '#00ff00'; context.fillRect(0, 0, 64, 128);
+    const blob = await new Promise<Blob>(resolve => sheet.toBlob(value => resolve(value!), 'image/png'));
+    assets.load.and.resolveTo({ sheets: new Map([[1, blob]]), warnings: [], errors: new Map() });
+    const slots = buildingTilesCategory('roof_slopes')!.enums.map(name => `<tile enum="${name}" tile="roof_01_000"/>`).join('');
+    const file = new File([`<building version="3" width="24" height="24"><tile_entry category="roof_slopes">${slots}</tile_entry><floor><rooms/><object type="roof" RoofType="LRoof30" x="4" y="4" width="12" height="14" RoofMainWidth="5" RoofReturnWidth="3" SlopeTiles="1"/></floor></building>`], 'odd-roof.tbx');
+    const preview = await service.preview(file), tiles = preview.composition!.tiles;
+    expect(new Set(tiles.map(t => t.frame)).size).toBeGreaterThan(1);
+    expect(new Set(tiles.map(t => t.sourceKey)).size).toBeGreaterThan(1);
+    const atlas = await createImageBitmap(preview.composition!.pages[0].blob);
+    const output = document.createElement('canvas'); output.width = atlas.width; output.height = atlas.height;
+    const pixels = output.getContext('2d')!; pixels.drawImage(atlas, 0, 0);
+    const counts = [...new Set(tiles.map(t => t.frame))].map(frame => {
+      const data = pixels.getImageData(frame % 16 * 64, Math.floor(frame / 16) * 128, 64, 128).data;
+      let count = 0; for (let i = 3; i < data.length; i += 4) if (data[i]) count++; return count;
+    });
+    expect(counts).toContain(64 * 128);
+    expect(counts.some(count => count > 0 && count < 64 * 128)).toBeTrue(); atlas.close();
   });
 
   it('loads a street of distinct buildings without retaining a full-sized preview for each lot', async () => {

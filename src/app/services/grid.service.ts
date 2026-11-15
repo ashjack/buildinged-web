@@ -128,7 +128,9 @@ export class GridService {
       const tiles = new Map<string, SvgTile>();
       // Object tiles override automatic room tiles; manual tiles override both.
       for (const source of [...generated.filter(tile => tile.auto), ...generated.filter(tile => !tile.auto), ...this.userTiles]) {
-        if (source.hidden || source.excluded || source.level > level) continue;
+        // A compound roof's flat centre belongs to the roof below its surface level.
+        const ownRoofTop = source.tag === 'compound-roof-top' && source.level === level + 1;
+        if (source.hidden || source.excluded || source.level > level && !ownRoofTop) continue;
         const difference = level - source.level;
         const tile = {
           ...source,

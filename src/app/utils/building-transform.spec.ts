@@ -92,7 +92,8 @@ describe('Native whole-building transformations', () => {
     });
 
     it('restores every supported roof after four turns or two flips', () => {
-        const b = scene(); b.floors[0].objects = ROOF_OPTIONS.map(option => ({ type: 'roof', x: 2, y: 3, width: 4, height: 2, RoofType: option.roofType }));
+        const b = scene(); b.floors[0].objects = ROOF_OPTIONS.map(option => ({ type: 'roof', x: 2, y: 3, width: 4, height: 2, RoofType: option.roofType,
+            ...(/^(L|T)Roof/.test(option.roofType) ? { RoofRotation: 0, RoofMirror: false } : {}) }));
         for (const operation of ['rotate-left', 'rotate-right', 'flip-horizontal', 'flip-vertical'] as BuildingTransform[]) {
             let after = b;
             for (let i = 0; i < (operation.startsWith('rotate') ? 4 : 2); i++) after = transformBuilding(after, operation);

@@ -3,6 +3,7 @@ import { generateBuildingSquares, readBuildingManualTiles, SQUARE_LAYERS } from 
 import { parseTileName } from './sheet-atlas';
 import { TilezedBounds, TilezedCamera, TilezedViewport } from './tilezed-renderer';
 import { WorldedLot } from './worlded-world';
+import type { TileClip } from './tile-clip';
 
 /** Inclusive square bounds of the tiles a building actually draws. */
 export interface BuildingSquares { minX: number; minY: number; maxX: number; maxY: number; }
@@ -42,7 +43,10 @@ export interface PreviewTile {
   x: number;
   y: number;
   squareX: number; squareY: number; level: number; layer: string;
+  clip?: TileClip;
 }
+
+export const previewTileKey = (tile: PreviewTile) => `${tile.sheet}:${tile.index}${tile.clip ? ':' + JSON.stringify(tile.clip) : ''}`;
 
 /** Manual TBX layers replace generated tiles at the same level, square and layer. */
 export function buildingPreviewTiles(building: Building): SvgTile[] {
@@ -123,6 +127,7 @@ export function prepareBuildingTiles(tiles: readonly SvgTile[], firstLevel = 0):
       return {
         sheet: parsed.sheet.toLowerCase(), index: parsed.index,
         squareX: tile.x, squareY: tile.y, level: tile.level, layer: tile.layer,
+        ...(tile.clip ? { clip: tile.clip } : {}),
         x: (tile.x - tile.y) * 32 - 32,
         y: (tile.x + tile.y) * 16 - tile.level * 96 - 96,
       };

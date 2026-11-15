@@ -73,7 +73,7 @@
       <span class="separator"></span>
       <div class="room-picker" dropdown>
         <button dropdownToggle type="button" class="room-button" aria-label="Current room" aria-controls="room-menu"><span class="room-color" [style.background]="'rgb(' + getSelectedRoom()?.Color + ')'"></span>{{getSelectedRoom()?.Name || 'Room'}} ▾</button>
-        <ul id="room-menu" *dropdownMenu class="dropdown-menu" role="menu">
+        <ul id="room-menu" *dropdownMenu class="dropdown-menu dropdown-menu-end" role="menu">
           <li *ngFor="let room of getRooms()" role="none"><button class="dropdown-item" role="menuitem" (click)="setRoom(room)"><span class="room-color" [style.background]="'rgb(' + room.Color + ')'"></span>{{room.Name}}</button></li>
         </ul>
       </div>

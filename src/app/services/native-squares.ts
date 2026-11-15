@@ -1,8 +1,10 @@
 import { Building, FurnitureTileEntry, SvgObject, SvgTile, Tile } from '../models/app.models';
 import { readIndexGrid } from '../utils/tbx-grid';
 import { buildRoofPlacements } from './roof-patterns';
+import { compoundRoofOutline, isCompoundRoof } from './compound-roof';
 import { FurnishingEdge } from '../models/auto-furnishing.models';
 import { windowWallEnum } from '../utils/building-tiles';
+import type { TileClip } from '../utils/tile-clip';
 
 /** The shape number of a window-frame wall slot ("WestWindow12"). */
 const FRAME_NUMBER = /(?<=Window)\d+$/;
@@ -16,7 +18,7 @@ export const SQUARE_LAYERS = ['Floor', 'FloorGrime', 'FloorGrime2', 'FloorFurnit
     'Furniture4', 'Curtains2', 'WallFurniture3', 'WallFurniture4', 'WallOverlay3',
     'WallOverlay4', 'Roof', 'Roof2', 'RoofTop'];
 
-interface Piece { entry: number; enum: string; uid?: string; raw?: string; tag?: string; }
+interface Piece { entry: number; enum: string; uid?: string; raw?: string; tag?: string; clip?: TileClip; }
 interface Wall { entry: number; trim: number; uid?: string; furniture?: FurnitureTileEntry; raw?: string; }
 interface Square {
     x: number; y: number; exterior: boolean; room: number; n: Wall; w: Wall;
@@ -57,6 +59,17 @@ export function resolveFurniture(building: Building, object: any): ResolvedFurni
 export function generateBuildingSquares(building: Building, includeStructure = false): GeneratedBuilding {
     const result: GeneratedBuilding = { tiles: [], objects: [], ...(includeStructure ? { edges: [] } : {}) };
     const { width, height } = building;
+    const roofTiles = (o: any, roofLevel: number) => buildRoofPlacements({
+        x: Number(o.x), y: Number(o.y), width: Number(o.width), height: Number(o.height),
+        level: roofLevel, roofType: o.RoofType, depth: o.Depth,
+        RoofRotation: o.RoofRotation, RoofMirror: o.RoofMirror, RoofWingWidth: o.RoofWingWidth,
+        RoofMainWidth: o.RoofMainWidth, RoofReturnWidth: o.RoofReturnWidth,
+        cappedW: o.cappedW !== false && o.cappedW !== 'false', cappedN: o.cappedN !== false && o.cappedN !== 'false',
+        cappedE: o.cappedE !== false && o.cappedE !== 'false', cappedS: o.cappedS !== false && o.cappedS !== 'false',
+        tileset: { capTiles: building.entries[Number(o.CapTiles) - 1]?.tiles || [],
+            slopeTiles: building.entries[Number(o.SlopeTiles) - 1]?.tiles || [],
+            topTiles: building.entries[Number(o.TopTiles) - 1]?.tiles || [] },
+    });
     const validEntry = (entry: number) => !!building.entries[entry - 1];
     // Native import interns matching definitions, so duplicate table rows must
     // also form a single NW wall/trim here rather than two stacked faces.
@@ -162,21 +175,12 @@ export function generateBuildingSquares(building: Building, includeStructure = f
             }
         });
 
-        const roofTiles = (o: any, roofLevel: number) => buildRoofPlacements({
-            x: Number(o.x), y: Number(o.y), width: Number(o.width), height: Number(o.height),
-            level: roofLevel, roofType: o.RoofType, depth: o.Depth,
-            cappedW: o.cappedW !== false && o.cappedW !== 'false', cappedN: o.cappedN !== false && o.cappedN !== 'false',
-            cappedE: o.cappedE !== false && o.cappedE !== 'false', cappedS: o.cappedS !== false && o.cappedS !== 'false',
-            tileset: { capTiles: building.entries[Number(o.CapTiles) - 1]?.tiles || [],
-                slopeTiles: building.entries[Number(o.SlopeTiles) - 1]?.tiles || [],
-                topTiles: building.entries[Number(o.TopTiles) - 1]?.tiles || [] },
-        });
         const applyRoofTile = (tile: SvgTile, uid: string) => {
             const s = at(tile.x, tile.y);
             if (!s) return;
             let layer = tile.layer;
             if (['Roof', 'RoofCap'].includes(layer) && occupied(s.sections[layer])) layer += '2';
-            s.sections[layer] = { ...raw(tile.name?.replace(/\.png$/, ''), uid), tag: tile.tag };
+            s.sections[layer] = { ...raw(tile.name?.replace(/\.png$/, ''), uid), tag: tile.tag, clip: tile.clip };
         };
         const opening = (s: Square, o: any) => {
             if (includeStructure) openings.set(`${s.x}:${s.y}:${o.dir === 'W' ? 'W' : 'N'}`, { kind: o.type, uid: o.uid });
@@ -335,6 +339,7 @@ export function generateBuildingSquares(building: Building, includeStructure = f
             const name = source.tile + '.png';
             floorTiles.push({ name, url: name, x: s.x, y: s.y, layer, level, object: p.uid,
                 auto: !p.uid, tag: p.tag,
+                ...(p.clip ? { clip: p.clip } : {}),
                 ...(['Walls', 'Walls2'].includes(layer) && (p.raw === undefined || p.uid) ? { orient: s.orient } : {}) });
         }));
         result.tiles.push(...floorTiles);
@@ -348,11 +353,19 @@ export function generateBuildingSquares(building: Building, includeStructure = f
                 y: Number(o.y) + (edgeFurniture && o.orient === 'S' ? 1 : 0), level,
                 tiles: floorTiles.filter(tile => tile.object === o.uid), width: height - 1, length: width - 1,
                 orient: o.type === 'wall' ? vertical ? 'W' : 'N' : facing || o.dir || o.RoofType,
+                ...(o.type === 'roof' && isCompoundRoof(o.RoofType) ? { overlayCorners: compoundRoofOutline({ ...o, x: Number(o.x), y: Number(o.y), width, height, roofType: o.RoofType }) } : {}),
                 type: f?.layer === 'Walls' ? 'Wall' : f?.layer === 'WallFurniture' ? 'WallFurniture'
                     : o.type === 'roof' ? 'roof' : o.type.charAt(0).toUpperCase() + o.type.slice(1),
                 cappedW: o.cappedW !== false && o.cappedW !== 'false', cappedN: o.cappedN !== false && o.cappedN !== 'false',
                 cappedE: o.cappedE !== false && o.cappedE !== 'false', cappedS: o.cappedS !== false && o.cappedS !== 'false' });
         });
     });
+    // A wide compound roof still has its top surface when there is no editable floor above it.
+    const roofTops = new Map<string, SvgTile>(), lastLevel = building.floors.length - 1;
+    building.floors[lastLevel]?.objects.filter(o => o.type === 'roof' && isCompoundRoof(o.RoofType)).forEach(o => {
+        roofTiles(o, lastLevel).filter(t => t.level === lastLevel + 1 && t.x >= 0 && t.y >= 0 && t.x <= width && t.y <= height)
+            .forEach(t => roofTops.set(`${t.x},${t.y}`, { ...t, object: o.uid, auto: false }));
+    });
+    result.tiles.push(...roofTops.values());
     return result;
 }

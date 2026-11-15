@@ -1,5 +1,6 @@
 import { SafeResourceUrl } from "@angular/platform-browser";
 import type { TileSprite } from "../utils/sheet-atlas";
+import type { TileClip } from '../utils/tile-clip';
 
 //Web App Only
 export interface SvgTile {
@@ -19,6 +20,7 @@ export interface SvgTile {
     auto?: boolean;
     object?: boolean | string;
     tag?: string;
+    clip?: TileClip;
 }
 
 export interface SvgObject {

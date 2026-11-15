@@ -1,11 +1,14 @@
 import { SvgTile } from "../models/app.models";
 import { isRoof30, normalizeRoof30, roof30CapMatrices, roof30SlopeMatrix } from './roof-30';
+import { compoundRoofCells, compoundRoofRotation, isCompoundRoof, normalizeCompoundRoofSize } from './compound-roof';
 
 export interface RoofTileSource { enum?: string; tile: string; offset?: string; }
 export interface RoofTileSet { capTiles: RoofTileSource[]; slopeTiles: RoofTileSource[]; topTiles: RoofTileSource[]; }
 export interface RoofPlacementOptions {
     x: number; y: number; level: number; width: number; height: number; roofType: string; tileset: RoofTileSet;
     depth?: string;
+    RoofRotation?: number | string; RoofMirror?: boolean | string; RoofWingWidth?: number | string;
+    RoofMainWidth?: number | string; RoofReturnWidth?: number | string;
     hasRoofTile?: (x: number, y: number, level: number) => boolean;
     isManualRoofTile?: (x: number, y: number, level: number) => boolean;
     hasRoofCapTile?: (x: number, y: number, level: number) => boolean;
@@ -49,6 +52,10 @@ export const ROOF_OPTIONS: RoofOption[] = [
     ...['W', 'N', 'E', 'S'].map(side => ({ id: `dormer30-${side.toLowerCase()}`, label: `30° Dormer (${side})`, roofType: `Dormer30${side}`, group: '30 degree' })),
     ...['Inner', 'Outer'].flatMap(kind => ['NW', 'NE', 'SE', 'SW'].map(side => ({ id: `corner30-${kind.toLowerCase()}-${side.toLowerCase()}`,
         label: `30° Corner ${kind} (${side})`, roofType: `CornerSlope30${kind}${side}`, group: '30 degree corners' }))),
+    { id: 'l-roof', label: 'L-Roof', roofType: 'LRoof', group: 'Compound' },
+    { id: 't-roof', label: 'T-Roof', roofType: 'TRoof', group: 'Compound' },
+    { id: 'l-roof30', label: 'L-Roof (30°)', roofType: 'LRoof30', group: 'Compound' },
+    { id: 't-roof30', label: 'T-Roof (30°)', roofType: 'TRoof30', group: 'Compound' },
 ];
 
 export type Depth = "Zero" | "Point5" | "One" | "OnePoint5" | "Two" | "TwoPoint5" | "Three";
@@ -59,6 +66,7 @@ export function getDefaultRoofOption(): RoofOption { return ROOF_OPTIONS.find(o 
 export function getRoofOptionById(id: string): RoofOption { return ROOF_OPTIONS.find(o => o.id === id) || getDefaultRoofOption(); }
 
 export function defaultRoofCaps(type: string) {
+    if (isCompoundRoof(type)) return { cappedW: false, cappedN: false, cappedE: false, cappedS: false };
     if (isRoof30(type)) {
         if (type === 'Peak30Quad') return { cappedW: false, cappedN: false, cappedE: false, cappedS: false };
         if (type === 'Peak30WE') return { cappedW: true, cappedN: false, cappedE: true, cappedS: false };
@@ -73,6 +81,7 @@ export function defaultRoofCaps(type: string) {
 }
 
 export function normalizeRoofSize(width: number, height: number, type: string): { width: number; height: number } {
+    if (isCompoundRoof(type)) return normalizeCompoundRoofSize(width, height, type);
     if (isRoof30(type)) return normalizeRoof30(width, height, type);
     if (["SlopeW", "SlopeE"].includes(type)) width = clamp(width, 1, 3);
     if (["SlopeN", "SlopeS"].includes(type)) height = clamp(height, 1, 3);
@@ -99,6 +108,7 @@ export function resolveRoofDepth(width: number, height: number, type: string, sa
 }
 
 export function calculateRoofDepth(width: number, height: number, type: string): Depth {
+    if (isCompoundRoof(type)) return 'Zero';
     if (isRoof30(type)) return type.startsWith('Corner')
         ? (['Point5', 'One', 'OnePoint5', 'Two', 'TwoPoint5', 'Three'] as Depth[])[Math.min(6, Math.max(1, width, height)) - 1] : 'Zero';
     if (type === "FlatTop" || type.startsWith("Shallow")) return "Zero";
@@ -110,7 +120,10 @@ export function calculateRoofDepth(width: number, height: number, type: string):
 }
 
 export function buildRoofPlacements(input: RoofPlacementOptions): SvgTile[] {
-    const options = { ...input, ...normalizeRoofSize(input.width, input.height, input.roofType) };
+    const size = isCompoundRoof(input.roofType)
+        ? normalizeCompoundRoofSize(input.width, input.height, input.roofType, compoundRoofRotation(input), Number(input.RoofWingWidth) || 0, input.RoofMainWidth, input.RoofReturnWidth)
+        : normalizeRoofSize(input.width, input.height, input.roofType);
+    const options = { ...input, ...size };
     const output: SvgTile[] = [];
     const depth = resolveRoofDepth(options.width, options.height, options.roofType, options.depth);
     const add = (source: RoofTileSource | undefined, x: number, y: number, layer: string, floor = false, tag?: string, level = options.level) => {
@@ -135,6 +148,25 @@ export function buildRoofPlacements(input: RoofPlacementOptions): SvgTile[] {
         });
     };
 
+    if (isCompoundRoof(options.roofType)) {
+        for (const cell of compoundRoofCells(options)) if (cell.tile) {
+            if (cell.parts) {
+                for (const part of cell.parts) {
+                    const source = find(options.tileset.slopeTiles, part.tile), previous = output.length;
+                    add(source, cell.x, cell.y, 'Roof');
+                    if (output.length > previous) {
+                        const [dx, dy] = parseOffset(source?.offset);
+                        output[output.length - 1].clip = part.clip.map(polygon => polygon.map(p => ({ x: p.x - (dx - dy) / 2, y: p.y - (dx + dy) / 8 })));
+                    }
+                }
+                continue;
+            }
+            const top = cell.face === 'Top';
+            add(find(top ? options.tileset.topTiles : options.tileset.slopeTiles, cell.tile), cell.x, cell.y,
+                top ? 'Floor' : 'Roof', top, top ? 'compound-roof-top' : undefined, options.level + (top ? 1 : 0));
+        }
+        return output;
+    }
     if (isRoof30(options.roofType)) {
         place(roof30SlopeMatrix(options), options.tileset.slopeTiles, 'Roof');
         for (const cap of roof30CapMatrices(options)) place(cap, options.tileset.capTiles, 'RoofCap');

@@ -221,6 +221,8 @@ describe('Tiles and Furniture material sidebar', () => {
     expect(sidebar.categories.slice(-3).map(category => category.label)).toEqual(['Roof Caps', 'Roof Slopes', 'Roof Tops']);
     h.store.dispatch(new AddObject({ uid: 'roof', type: 'roof', x: 1, y: 1, width: 2, height: 2,
       RoofType: 'Flat', Depth: 'One', CapTiles: 0, SlopeTiles: 0, TopTiles: 0 }, 0));
+    for (const type of ['LRoof', 'LRoof30']) h.store.dispatch(new AddObject({ uid: type, type: 'roof', x: 1, y: 1, width: 3, height: 3,
+      RoofType: type, Depth: 'Zero', CapTiles: 0, SlopeTiles: 0, TopTiles: 0 }, 0));
     const before = h.buildings.building;
     entries.forEach(entry => {
       sidebar.selectCategory(entry.category); fixture.detectChanges();
@@ -231,6 +233,7 @@ describe('Tiles and Furniture material sidebar', () => {
     const building = h.buildings.building, roof = building.floors[0].objects[0];
     expect(roof.CapTiles).toBe(building.RoofCap); expect(roof.SlopeTiles).toBe(building.RoofSlope);
     expect(roof.TopTiles).toBe(0);
+    expect(building.floors[0].objects.slice(1).every(o => o.TopTiles === building.RoofTop)).toBeTrue();
     const service = new RoofService(h.buildings, h.grid, h.store as any), next = service.createObject(3, 3, 'Flat');
     expect([next.CapTiles, next.SlopeTiles, next.TopTiles]).toEqual([building.RoofCap, building.RoofSlope, building.RoofTop]);
     h.store.dispatch(new Undo()); h.store.dispatch(new Undo()); h.store.dispatch(new Undo());

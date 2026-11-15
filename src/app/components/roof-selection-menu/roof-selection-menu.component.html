@@ -1,6 +1,29 @@
-﻿<div class="roof-selection-panel">
-  <div class="roof-selection-title">{{ roofService.getSelectedRoofOption().label }}</div>
-  <p>Choose a roof type from the roof dropdowns in the toolbar.</p>
-  <p>Drag to create. Hover a roof to show resize and cap controls. Flat roofs also have depth +/− controls. Right-click cancels a drag or deletes an object.</p>
+<div class="roof-selection-panel">
+  <div class="roof-selection-title">{{ roofService.panelTitle }}</div>
+  <section *ngIf="roofService.compoundSettingsVisible" class="compound-settings" aria-label="L and T roof settings">
+    <fieldset *ngFor="let wing of wings">
+      <legend>{{wing.label}}</legend>
+      <label *ngFor="let field of wing.fields">
+        <span>{{field.label}}</span>
+        <span class="number-stepper">
+          <button type="button" [attr.aria-label]="'Decrease ' + field.name.toLowerCase()" (click)="stepDimension(field.key, -1)" [disabled]="roofService.drawing || roofService.compoundDimensions[field.key] <= 1">&#8722;</button>
+          <input type="number" min="1" [max]="dimensionMax(field.key)" step="1" [attr.aria-label]="field.name" [value]="roofService.compoundDimensions[field.key]" (change)="enterDimension(field.key, $event)" [disabled]="roofService.drawing">
+          <button type="button" [attr.aria-label]="'Increase ' + field.name.toLowerCase()" (click)="stepDimension(field.key, 1)" [disabled]="roofService.drawing || roofService.compoundDimensions[field.key] >= dimensionMax(field.key)">+</button>
+        </span>
+      </label>
+    </fieldset>
+    <label>Orientation
+      <span class="number-stepper">
+        <button type="button" aria-label="Decrease roof orientation" (click)="stepRotation(-1)" [disabled]="roofService.drawing || roofService.compoundRotation === 0">&#8722;</button>
+        <input type="number" min="0" max="270" step="90" aria-label="Roof orientation" [value]="roofService.compoundRotation * 90" (change)="enterRotation($event)" [disabled]="roofService.drawing">
+        <button type="button" aria-label="Increase roof orientation" (click)="stepRotation(1)" [disabled]="roofService.drawing || roofService.compoundRotation === 3">+</button>
+      </span>
+    </label>
+    <label><input type="checkbox" aria-label="Mirror roof" [ngModel]="roofService.compoundMirror" (ngModelChange)="roofService.configureCompound('RoofMirror', $event)" [disabled]="roofService.drawing"> Mirror</label>
+    <p>Sizes are in tiles. Orientation is in degrees. Lengths include the overlap where the wings meet.</p>
+    <p>{{roofService.editingRoof ? 'Settings change this roof. Undo restores the previous shape.' : 'Click to place these dimensions, or drag to size the roof.'}}</p>
+    <p>Wings wider than {{roofService.compoundSlopeSpan}} tiles use the Roof Top material for their flat centre.</p>
+  </section>
+  <p>Choose a roof type from the roof dropdowns in the toolbar. Click an L/T roof to edit it, or drag its corner to resize. Right-click cancels a drag or deletes an object.</p>
   <p role="status">{{roofService.message}}</p>
 </div>

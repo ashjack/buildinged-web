@@ -1,5 +1,6 @@
 import { Building, TileEntry } from '../models/app.models';
 import { cloneRoomEntry, roomEntryKey } from './room-tile-entries';
+import { isCompoundRoof } from '../services/compound-roof';
 
 export type BuildingMaterialField = 'ExteriorWall' | 'Door' | 'DoorFrame' | 'Window' | 'Curtains' | 'Shutters' | 'Stairs' | 'RoofCap' | 'RoofSlope' | 'RoofTop';
 export const BUILDING_MATERIAL_CATEGORIES: Record<BuildingMaterialField, string> = {
@@ -24,13 +25,14 @@ export function setBuildingMaterial(building: Building, field: BuildingMaterialF
     if (!(field in BUILDING_MATERIAL_CATEGORIES) || (entry && entry.category !== BUILDING_MATERIAL_CATEGORIES[field])) return building;
     const resolved = resolveObjectMaterials(building, building, { [field]: entry });
     const id = resolved.object[field];
-    const objectField = field === 'RoofCap' ? 'CapTiles' : field === 'RoofSlope' ? 'SlopeTiles' : undefined;
-    // CategoryDock changes caps and slopes on every roof. Tops remain per object.
+    const objectField = field === 'RoofCap' ? 'CapTiles' : field === 'RoofSlope' ? 'SlopeTiles' : field === 'RoofTop' ? 'TopTiles' : undefined;
+    // Native tops remain per object. L-roof centres follow the sidebar material, like their slopes.
+    const affects = (object: any) => object.type === 'roof' && (field !== 'RoofTop' || isCompoundRoof(object.RoofType) && object.RoofType.startsWith('L'));
     let changed = false;
     const floors = objectField ? building.floors.map(floor => {
-        if (!floor.objects.some(object => object.type === 'roof' && object[objectField] !== id)) return floor;
+        if (!floor.objects.some(object => affects(object) && object[objectField] !== id)) return floor;
         changed = true;
-        return { ...floor, objects: floor.objects.map(object => object.type === 'roof' ? { ...object, [objectField]: id } : object) };
+        return { ...floor, objects: floor.objects.map(object => affects(object) ? { ...object, [objectField]: id } : object) };
     }) : building.floors;
     if (!changed && building[field] === id && resolved.building === building) return building;
     return { ...resolved.building, [field]: id, floors };

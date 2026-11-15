@@ -8,25 +8,117 @@ import { canPlaceObject, eraseProjectedObjects } from '../utils/tool-placement';
 import { BuildingService } from "./building.service";
 import { GridService } from "./grid.service";
 import { GUID } from "../utils/guid";
-import { ROOF_OPTIONS, buildRoofPlacements, calculateRoofDepth, defaultRoofCaps, getRoofOptionById, normalizeRoofSize } from "./roof-patterns";
+import { ROOF_OPTIONS, buildRoofPlacements, calculateRoofDepth, defaultRoofCaps, getRoofOptionById } from "./roof-patterns";
 import { generateBuildingSquares } from './native-squares';
 import { resizeNativeRoof } from '../utils/native-roof';
 import { validObject } from '../utils/selection-edits';
 import { RoofToolGroup, ROOF_TOOL_GROUPS, roofToolGroup } from '../utils/roof-toolbar';
+import { compoundRoofMaxWing, compoundRoofRotation, compoundRoofSlopeSpan, compoundRoofWings, isCompoundRoof } from './compound-roof';
+
+export type RoofDimension = 'mainLength' | 'mainWidth' | 'returnLength' | 'returnWidth';
+export interface RoofDimensions { mainLength: number; mainWidth: number; returnLength: number; returnWidth: number; }
 
 @Injectable({
     providedIn: 'root',
 })
 export class RoofService {
-    constructor(private buildingService: BuildingService, private gridService: GridService, private store: Store<fromRoot.State>) { }
+    private shapeSettings = { RoofRotation: 0, RoofMirror: false, RoofWingWidth: 0, RoofMainWidth: 0, RoofReturnWidth: 0,
+        RoofMainLength: 0, RoofReturnLength: 0 };
+    constructor(private buildingService: BuildingService, private gridService: GridService, private store: Store<fromRoot.State>) {
+        try { const saved = JSON.parse(localStorage.getItem('compoundRoofSettings') || '{}');
+            const width = (value: unknown) => Number.isFinite(Number(value)) ? Math.max(0, Math.min(255, Math.floor(Number(value)))) : 0;
+            this.shapeSettings = { RoofRotation: compoundRoofRotation(saved), RoofMirror: saved.RoofMirror === true,
+                RoofWingWidth: width(saved.RoofWingWidth), RoofMainWidth: width(saved.RoofMainWidth ?? saved.RoofWingWidth),
+                RoofReturnWidth: width(saved.RoofReturnWidth ?? saved.RoofWingWidth),
+                RoofMainLength: Number.isFinite(Number(saved.RoofMainLength)) ? Math.max(0, Math.min(256, Math.floor(Number(saved.RoofMainLength)))) : 0,
+                RoofReturnLength: Number.isFinite(Number(saved.RoofReturnLength)) ? Math.max(0, Math.min(256, Math.floor(Number(saved.RoofReturnLength)))) : 0 };
+        } catch { /* Use default shape settings. */ }
+    }
 
     roofOptions = ROOF_OPTIONS;
     message = '';
+    editingRoofId?: string;
+    drawing = false;
+    get editingRoof(): any { return this.editingRoofId ? this.building?.floors[this.gridService.getSelectedLevel()]?.objects.find(o => o.uid === this.editingRoofId && isCompoundRoof(o.RoofType)) : undefined; }
+    get compoundType(): string { return this.editingRoof?.RoofType || this.getSelectedRoofType(); }
+    get compoundSettingsVisible(): boolean { return isCompoundRoof(this.compoundType); }
+    get compoundUnequalWings(): boolean { return this.compoundType.startsWith('L'); }
+    get compoundSlopeSpan(): number { return compoundRoofSlopeSpan(this.compoundType); }
+    get compoundMaxWidth(): number { return compoundRoofMaxWing(this.compoundType); }
+    get compoundDimensions(): RoofDimensions {
+        const r = this.compoundRotation;
+        const roof = this.editingRoof || resizeNativeRoof({ RoofType: this.compoundType, ...this.compoundSettings(this.compoundType) },
+            (r % 2 ? this.shapeSettings.RoofReturnLength : this.shapeSettings.RoofMainLength) || 1,
+            (r % 2 ? this.shapeSettings.RoofMainLength : this.shapeSettings.RoofReturnLength) || 1, false);
+        const wings = compoundRoofWings({ ...roof, roofType: roof.RoofType });
+        return { mainLength: Number(r % 2 ? roof.height : roof.width), returnLength: Number(r % 2 ? roof.width : roof.height),
+            mainWidth: wings.main, returnWidth: wings.return };
+    }
+    configureDimension(key: RoofDimension, value: number): void {
+        if (this.drawing || !Number.isFinite(value)) return;
+        const dimensions = { ...this.compoundDimensions, [key]: Math.max(1, Math.min(key.endsWith('Width') ? this.compoundMaxWidth : 256, Math.floor(value))) };
+        const minimumMain = dimensions.returnWidth + (this.compoundType.startsWith('T') ? 2 : 1);
+        const minimumReturn = dimensions.mainWidth + 1;
+        if (key.endsWith('Length') && (dimensions.mainLength < minimumMain || dimensions.returnLength < minimumReturn)) {
+            this.message = `Main length must be at least ${minimumMain} tiles and return length at least ${minimumReturn} tiles to keep the wings joined with an open notch.`; return;
+        }
+        dimensions.mainLength = Math.max(dimensions.mainLength, minimumMain);
+        dimensions.returnLength = Math.max(dimensions.returnLength, minimumReturn);
+        const r = this.compoundRotation, roof = this.editingRoof;
+        const width = r % 2 ? dimensions.returnLength : dimensions.mainLength;
+        const height = r % 2 ? dimensions.mainLength : dimensions.returnLength;
+        const changes = { RoofMainWidth: dimensions.mainWidth, RoofReturnWidth: dimensions.returnWidth, width, height, Depth: 'Zero' };
+        if (roof) {
+            if (!validObject(this.building, { ...roof, ...changes })) { this.message = 'These dimensions would extend outside the building. Move the roof or enlarge the building area first.'; return; }
+            this.update(roof.uid, changes); this.editingRoofId = roof.uid;
+        }
+        this.shapeSettings = { ...this.shapeSettings, RoofMainWidth: dimensions.mainWidth, RoofReturnWidth: dimensions.returnWidth,
+            RoofMainLength: dimensions.mainLength, RoofReturnLength: dimensions.returnLength };
+        localStorage.setItem('compoundRoofSettings', JSON.stringify(this.shapeSettings)); this.message = '';
+    }
+    get compoundWingOptions(): number[] { return Array.from({ length: compoundRoofMaxWing(this.compoundType) }, (_, i) => i + 1); }
+    get compoundWingWidth(): number { return Math.min(compoundRoofMaxWing(this.compoundType), Number(this.editingRoof?.RoofWingWidth ?? this.shapeSettings.RoofWingWidth) || 0); }
+    compoundWidth(key: 'RoofMainWidth' | 'RoofReturnWidth'): number {
+        const roof = this.editingRoof;
+        return Math.min(compoundRoofMaxWing(this.compoundType), Number(roof ? roof[key] ?? roof.RoofWingWidth ?? 0 : this.shapeSettings[key]) || 0);
+    }
+    get compoundRotation(): number { return compoundRoofRotation(this.editingRoof || this.shapeSettings); }
+    get compoundMirror(): boolean { const value = this.editingRoof?.RoofMirror ?? this.shapeSettings.RoofMirror; return value === true || value === 'true'; }
+    get panelTitle(): string { return this.editingRoof ? `Edit ${this.roofOptions.find(o => o.roofType === this.editingRoof.RoofType)?.label || 'roof'}` : this.getSelectedRoofOption().label; }
+    configureCompound(key: 'RoofRotation' | 'RoofMirror' | 'RoofWingWidth' | 'RoofMainWidth' | 'RoofReturnWidth', value: number | boolean): void {
+        if (this.drawing) return;
+        if (key === 'RoofRotation') value = compoundRoofRotation({ RoofRotation: Number(value) });
+        if (['RoofWingWidth', 'RoofMainWidth', 'RoofReturnWidth'].includes(key)) {
+            if (!Number.isFinite(Number(value))) return;
+            value = Math.max(0, Math.min(compoundRoofMaxWing(this.compoundType), Math.floor(Number(value))));
+        }
+        const roof = this.editingRoof;
+        if (roof) {
+            const swap = key === 'RoofRotation' && Number(value) % 2 !== compoundRoofRotation(roof) % 2;
+            const next = resizeNativeRoof({ ...roof, [key]: value }, Number(swap ? roof.height : roof.width), Number(swap ? roof.width : roof.height), false);
+            if (!validObject(this.building, next)) { this.message = 'This shape would extend outside the building. Resize or move the roof first.'; return; }
+            this.update(roof.uid, { [key]: value, width: next.width, height: next.height, Depth: next.Depth });
+            // Document edits cancel pointer gestures; keep this roof selected for the next settings change.
+            this.editingRoofId = roof.uid;
+        }
+        this.shapeSettings = { ...this.shapeSettings, [key]: value };
+        localStorage.setItem('compoundRoofSettings', JSON.stringify(this.shapeSettings));
+        this.message = '';
+    }
     get building() { return this.buildingService.building; }
+    private compoundSettings(type: string) {
+        const { RoofMainWidth, RoofReturnWidth, RoofMainLength, RoofReturnLength, ...shared } = this.shapeSettings;
+        return { ...shared, RoofWingWidth: Math.min(compoundRoofMaxWing(type), shared.RoofWingWidth),
+            RoofMainWidth: Math.min(compoundRoofMaxWing(type), RoofMainWidth), RoofReturnWidth: Math.min(compoundRoofMaxWing(type), RoofReturnWidth) };
+    }
     createObject(x: number, y: number, type: string): any {
         const tiles = this.getRoofTileEntries(this.building);
+        const r = compoundRoofRotation(this.shapeSettings), compound = isCompoundRoof(type);
         return resizeNativeRoof({ uid: GUID.generateGUID(), type: 'roof', x, y, RoofType: type, Depth: 'Zero',
-            ...defaultRoofCaps(type), CapTiles: tiles.cap, SlopeTiles: tiles.slope, TopTiles: tiles.top }, 1, 1, false);
+            ...(isCompoundRoof(type) ? this.compoundSettings(type) : {}),
+            ...defaultRoofCaps(type), CapTiles: tiles.cap, SlopeTiles: tiles.slope, TopTiles: tiles.top },
+            compound ? (r % 2 ? this.shapeSettings.RoofReturnLength : this.shapeSettings.RoofMainLength) || 1 : 1,
+            compound ? (r % 2 ? this.shapeSettings.RoofMainLength : this.shapeSettings.RoofReturnLength) || 1 : 1, false);
     }
     commit(object: any, level: number, resizing: boolean): void {
         if (!this.building?.floors[level] || !validObject(this.building, object)) return;
@@ -47,6 +139,7 @@ export class RoofService {
     setSelectedRoofOptionId(optionId: string): void {
         const option = ROOF_OPTIONS.find(o => o.id === optionId);
         if (!option) return;
+        this.editingRoofId = undefined;
         localStorage.setItem('selectedRoofOptionId', optionId);
         localStorage.setItem('roofTool-' + roofToolGroup(option), optionId);
     }
@@ -73,7 +166,9 @@ export class RoofService {
                 return;
             }
 
-            const { width: roofWidth, height: roofHeight } = normalizeRoofSize(width + 1, height + 1, RoofType);
+            const shape = isCompoundRoof(RoofType) ? this.compoundSettings(RoofType) : {};
+            const resized = resizeNativeRoof({ RoofType, ...shape }, width + 1, height + 1, false);
+            const { width: roofWidth, height: roofHeight } = resized;
             if (!ROOF_OPTIONS.some(option => option.roofType === RoofType) || !canPlaceObject(b, x, y, level, roofWidth, roofHeight)) return;
             const depth = this.calculateDepth(roofWidth, roofHeight, RoofType);
             const tileEntries = this.getRoofTileEntries(b);
@@ -84,6 +179,7 @@ export class RoofService {
                 width: roofWidth,
                 height: roofHeight,
                 RoofType: RoofType,
+                ...shape,
                 Depth: depth,
                 ...defaultRoofCaps(RoofType),
                 CapTiles: tileEntries.cap,
@@ -123,6 +219,7 @@ export class RoofService {
             width,
             height,
             roofType: RoofType,
+            ...(isCompoundRoof(RoofType) ? this.shapeSettings : {}),
             ...defaultRoofCaps(RoofType),
             tileset: {
                 capTiles,

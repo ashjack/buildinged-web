@@ -5,6 +5,7 @@ import { Store } from "@ngrx/store";
 import { Observable, Subject, from, take, takeUntil } from "rxjs";
 import { PngTile, DbService } from "../services/db.service";
 import { parseTileName } from "../utils/sheet-atlas";
+import { applyTileClip, TileClip } from '../utils/tile-clip';
 import { FurnitureService } from "../services/furniture.service";
 import { GridService } from "../services/grid.service";
 import { RoomService } from "../services/room.service";
@@ -587,14 +588,14 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
 
         const tileImage = this.getIndividualTile(tile.name!);
         this.drawTile(tile.x + (tile.offsetX ?? 0), tile.y + (tile.offsetY ?? 0), tile.name!, tileImage as string,
-          this.gridService.layerView(tile.layer, tile.level).opacity);
+          this.gridService.layerView(tile.layer, tile.level).opacity, tile.clip);
       }
     });
 
     
   }
 
-  drawTile(x: number, y: number, tileName: string, tile: string, opacity = 1) {
+  drawTile(x: number, y: number, tileName: string, tile: string, opacity = 1, clip?: TileClip) {
     if(!this.ctx) {
       throw new Error('Canvas context is not defined')
     };
@@ -623,6 +624,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     {
       ctx.save();
       ctx.globalAlpha = opacity;
+      applyTileClip(ctx, clip, x, y, size * this.zoom, size * 2 * this.zoom);
       ctx.drawImage(tileImage,x, y, size * this.zoom, size * 2 * this.zoom);
       ctx.restore();
     }
@@ -668,7 +670,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
       if(obj.level === this.gridService.getSelectedLevel() && !(this.selectedTool instanceof ToolRoof && this.selectedTool.resizingUid === obj.uid))
       {
         const isRoof = obj.type === 'roof';
-        const isHoveredRoof = isRoof && obj.uid === this.currentHoverObject?.uid;
+        const isHoveredRoof = isRoof && (obj.uid === this.currentHoverObject?.uid || obj.uid === this.roofService.editingRoofId);
         this.drawOverlayBlock(obj.x, obj.y, obj.length ?? 0, obj.width ?? 0,
           '#1d1aeb60', isHoveredRoof ? '#ffffff60' : '#ffffff30', obj.orient, obj.type, obj);
       }
@@ -768,6 +770,15 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   drawOverlayBlock(x: number, y: number, length: number, width: number, lineColor: string, fillColor: string, orient?: string, type?: string, obj?: SvgObject) {
+    if (obj?.overlayCorners?.length && this.ctx) {
+      const points = obj.overlayCorners.map(p => this.projectPoint(p));
+      this.ctx.beginPath(); this.ctx.setLineDash([]);
+      points.forEach((p, i) => i ? this.ctx!.lineTo(p.x, p.y) : this.ctx!.moveTo(p.x, p.y));
+      this.ctx.closePath(); this.ctx.fillStyle = fillColor; this.ctx.fill();
+      this.ctx.strokeStyle = lineColor; this.ctx.lineWidth = 1; this.ctx.stroke();
+      this.gridService.objectOverlays.push({ points, object: obj });
+      return;
+    }
     if (this.isOrtho) {
       let w = length + 1, h = width + 1;
       if (['Wall', 'Door', 'Window', 'WallFurniture'].includes(type || '')) {
@@ -1366,7 +1377,10 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     if(nearestEdgeIndex == -1)
     {
       this.selectedTool.pointerPosition = undefined;
-      if (!this.selectedTool.isDragging && (this.selectedTool instanceof ToolWall || this.selectedTool instanceof ToolStairs || this.selectedTool instanceof ToolRoof || this.selectedTool instanceof ToolFurniture)) this.selectedTool.cancel();
+      if (!this.selectedTool.isDragging) {
+        if (this.selectedTool instanceof ToolRoof) this.selectedTool.clearHover();
+        else if (this.selectedTool instanceof ToolWall || this.selectedTool instanceof ToolStairs || this.selectedTool instanceof ToolFurniture) this.selectedTool.cancel();
+      }
       canvas.style.cursor = 'default';
       this.currentHoverObject = undefined;
       this.currentHoverOverlay = undefined;

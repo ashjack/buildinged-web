@@ -3,8 +3,8 @@
   pointer-events: auto;
   right: 8px;
   bottom: 8px;
-  width: 240px;
-  max-height: 40%;
+  width: 260px;
+  max-height: min(620px, 70%);
   overflow-y: auto;
   background: #eee;
   border: 1px solid #aaa;
@@ -21,3 +21,13 @@
   pointer-events: none;
 }
 p { margin: 8px 0 0; }
+.compound-settings { margin-top: 8px; padding-bottom: 8px; border-bottom: 1px solid #bbb; }
+.compound-settings label { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+.compound-settings fieldset { min-width: 0; margin: 0 0 8px; padding: 4px 8px; border: 1px solid #bbb; }
+.compound-settings legend { float: none; width: auto; margin: 0; padding: 0 4px; font-size: 13px; font-weight: 600; }
+.number-stepper { display: inline-flex; margin-left: auto; align-items: stretch; }
+.number-stepper button { width: 25px; min-height: 27px; border: 1px solid #aaa; background: #fafafa; color: #222; font: inherit; cursor: pointer; }
+.number-stepper button:disabled { opacity: .4; cursor: default; }
+.number-stepper input { width: 57px; min-width: 0; border: solid #aaa; border-width: 1px 0; padding: 2px 4px; text-align: center; font: inherit; appearance: textfield; -moz-appearance: textfield; }
+.number-stepper input::-webkit-inner-spin-button, .number-stepper input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.number-stepper :focus-visible { outline: 2px solid #2677c8; outline-offset: -2px; }
