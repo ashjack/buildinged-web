@@ -63,7 +63,7 @@ export function generateBuildingSquares(building: Building, includeStructure = f
     const interned = new Map<string, number>();
     const canonical = building.entries.map((entry, index) => {
         const key = JSON.stringify([entry.category, entry.tiles.map(t => [t.enum, t.tile,
-            (t.offset || '0 0').trim().split(/[\s,]+/).map(Number)]).sort((a, b) => String(a[0]).localeCompare(String(b[0])))]);
+            (t.offset || '0 0').trim().split(/[\s,]+/).map(Number), ...(t.windowShape !== undefined ? [t.windowShape] : [])]).sort((a, b) => String(a[0]).localeCompare(String(b[0])))]);
         if (!interned.has(key)) interned.set(key, index + 1);
         return interned.get(key)!;
     });
@@ -187,8 +187,8 @@ export function generateBuildingSquares(building: Building, includeStructure = f
             if (door) s.sections['Frames'] = piece(o.FrameTile, side, o.uid);
             const suffix = door ? 'Door' : 'Window';
             // Large windows cut the wall frame matching their WindowShape (window-frame fork); empty frames fall back when drawn.
-            const cut = door ? side + suffix : windowWallEnum(side,
-                building.entries[Number(o.Tile) - 1]?.tiles.find(t => t.enum === side)?.tile);
+            const windowTile = building.entries[Number(o.Tile) - 1]?.tiles.find(t => t.enum === side);
+            const cut = door ? side + suffix : windowWallEnum(side, windowTile?.tile, windowTile?.windowShape);
             if (s.orient === 'NW' && !occupied(s.sections['Walls2'])) {
                 const original = s.sections['Walls'];
                 s.sections['Walls'] = original && { ...original, enum: side === 'West' ? 'North' : 'West' };

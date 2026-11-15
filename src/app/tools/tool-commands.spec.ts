@@ -16,6 +16,7 @@ import ToolRoof from './tool-roof';
 import ToolDoor from './tool-door';
 import ToolWindow from './tool-window';
 import ToolDraw from './tool-draw';
+import ToolSelect from './tool-select';
 import { isolatePanelKey } from '../utils/editor-shortcuts';
 import { EditorViewService } from '../services/editor-view.service';
 import { fractionalCellPosition } from '../utils/native-pointer';
@@ -55,6 +56,71 @@ function targetedKey(target: HTMLElement, key: string, modifiers: KeyboardEventI
 }
 
 describe('Tool edit commands', () => {
+    it('hides roof and furniture object overlays in Tile mode and restores them in object views', () => {
+        const scene = setup(), view = scene.view, modes = new EditorViewService(scene.store as any);
+        view.editorView = modes; view.selectedTool = scene.tools[0];
+        scene.store.dispatch(new AddObject(scene.roofs.createObject(0, 0, 'Peak30NS'), 0));
+        scene.store.dispatch(new AddObject({ type: 'furniture', x: 1, y: 1, FurnitureTiles: 0, orient: 'W' }, 0));
+        (view as any).ctx = view.canvasElement.nativeElement.getContext('2d');
+        spyOn(view, 'drawTiles').and.stub();
+        const objects = spyOn(view, 'drawOverlayBlock').and.callThrough();
+        const cells = spyOn(view, 'drawOverlaySquare').and.callThrough();
+        view.drawCanvas();
+        expect(scene.grid.objectOverlays.some(o => o.object?.type === 'roof')).toBeTrue();
+        expect(scene.grid.objectOverlays.some(o => o.object?.type === 'Furniture')).toBeTrue();
+        view.currentHoverObject = scene.grid.objects[0];
+        view.currentHoverOverlay = scene.grid.objectOverlays[0];
+        view.currentHoverSubOverlay = scene.grid.objectOverlays[0];
+        modes.setMode('tile'); view.selectedTool = scene.tools[1]; view.selectedTool.hoverTile(0, 0);
+        objects.calls.reset(); cells.calls.reset(); view.drawCanvas();
+        expect(objects).not.toHaveBeenCalled(); expect(cells).toHaveBeenCalled();
+        expect(scene.grid.objectOverlays).toEqual([]);
+        expect(view.currentHoverObject).toBeUndefined(); expect(view.currentHoverOverlay).toBeUndefined(); expect(view.currentHoverSubOverlay).toBeUndefined();
+        modes.setMode('iso'); view.selectedTool = scene.tools[0]; view.drawCanvas();
+        expect(scene.grid.objectOverlays.some(o => o.object?.type === 'roof')).toBeTrue();
+        expect(scene.grid.objectOverlays.some(o => o.object?.type === 'Furniture')).toBeTrue();
+        modes.setMode('ortho'); view.drawCanvas();
+        expect(scene.grid.objectOverlays.some(o => o.object?.type === 'roof')).toBeTrue();
+        modes.ngOnDestroy(); scene.destroy();
+    });
+
+    it('keeps tile selection highlighting while object overlays are hidden', () => {
+        const scene = setup(), view = scene.view, modes = new EditorViewService(scene.store as any);
+        view.editorView = modes; modes.setMode('tile');
+        view.selectedTool = new ToolSelect('tiles', scene.grid, scene.buildings, scene.store as any);
+        view.selectedTool.beginDrag(0, 0); view.selectedTool.hoverTile(1, 1);
+        (view as any).ctx = view.canvasElement.nativeElement.getContext('2d');
+        spyOn(view, 'drawTiles').and.stub();
+        const cells = spyOn(view, 'drawOverlaySquare').and.callThrough();
+        view.drawCanvas();
+        expect(cells.calls.count()).toBe(4); expect(scene.grid.objectOverlays).toEqual([]);
+        modes.ngOnDestroy(); scene.destroy();
+    });
+    it('reports live room and tile rectangle sizes in either drag direction, then clears cancelled measurements', () => {
+        const scene = setup(), view = scene.view;
+        for (const tool of scene.tools.slice(0, 2)) {
+            view.selectedTool = tool;
+            tool.beginDrag(5, 6); tool.hoverTile(2, 2);
+            expect(view.statusText).toContain('Width,Height = 4,5');
+            tool.cancel(); expect(tool.statusText).toBe('');
+        }
+        scene.destroy();
+    });
+
+    it('reserves the status bar and resize notice height below the canvas', () => {
+        const scene = setup(), view = scene.view, canvas = view.canvasElement.nativeElement as HTMLCanvasElement;
+        const menu = document.createElement('app-menu'), parent = document.createElement('div');
+        const status = document.createElement('footer'), notice = document.createElement('p');
+        status.setAttribute('data-editor-status', ''); notice.className = 'resize-status';
+        parent.appendChild(canvas); menu.append(parent, notice, status);
+        Object.defineProperty(parent, 'clientWidth', { value: 400 });
+        spyOn(canvas, 'getBoundingClientRect').and.returnValue(new DOMRect(0, window.innerHeight - 200, 300, 150));
+        spyOn(status, 'getBoundingClientRect').and.returnValue(new DOMRect(0, 0, 400, 26));
+        spyOn(notice, 'getBoundingClientRect').and.returnValue(new DOMRect(0, 0, 400, 20));
+        view.onViewportResize();
+        expect(canvas.width).toBe(400); expect(canvas.height).toBe(154);
+        scene.destroy();
+    });
     it('renders Ortho room colours on square cells and maps pointer positions to the same editable cells', () => {
         const scene = setup(), view = scene.view;
         const modes = new EditorViewService(scene.store as any);
@@ -76,6 +142,7 @@ describe('Tool edit commands', () => {
         expect(fractionalCellPosition(pointer, cell.point)).toEqual({ x: 0.7, y: 0.3 });
         view.getMousePos(new MouseEvent('mousemove', { clientX: pointer.x, clientY: pointer.y }));
         expect(view.currentHoverCoords).toEqual({ x: 0, y: 0 });
+        expect(view.cursorCoordinates).toEqual({ x: 0, y: 0 });
         expect(view.selectedTool.pointerPosition).toEqual({ x: 0.7, y: 0.3 });
         modes.ngOnDestroy(); scene.destroy();
     });

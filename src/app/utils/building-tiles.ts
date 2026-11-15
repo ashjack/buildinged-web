@@ -5,6 +5,7 @@ import { WINDOW_SHAPE_RUNS } from './window-shapes.data';
 export interface BuildingTilesEntry {
   tiles: Readonly<Record<string, string>>;
   offsets?: Readonly<Record<string, readonly [number, number]>>;
+  windowShapes?: Readonly<Record<string, number>>;
 }
 export interface BuildingTilesCategory { name: string; entries: BuildingTilesEntry[]; }
 export interface BuildingTilesDocument { revision: number; sourceRevision?: number | null; categories: BuildingTilesCategory[]; }
@@ -27,6 +28,7 @@ const WALL = ['West', 'North', 'NorthWest', 'SouthEast', 'WestWindow', 'NorthWin
 const WALL_SINGLE = [0, 1, 2, 3, 8, 9, 10, 11];
 /** Window frames for WindowShape 1-19 (BTC_Walls in the window-frame fork, file version 3+). */
 export const WINDOW_FRAMES = 19;
+export const validWindowShape = (shape: unknown): shape is number => Number.isInteger(shape) && Number(shape) >= 0 && Number(shape) <= WINDOW_FRAMES;
 /** BuildingTiles.txt version written: 3 added frames 1-16 and 30-degree roofs, 4 added frames 17-19. */
 export const BUILDING_TILES_VERSION = 4;
 const FRAMES = Array.from({ length: WINDOW_FRAMES }, (_, i) => [`WestWindow${i + 1}`, `NorthWindow${i + 1}`]).flat();
@@ -145,7 +147,8 @@ const TEMPLATES: Readonly<Record<string, { image: string; columns: number; map: 
 };
 
 /** The game's WindowShape tile property (1-19) for a tile name like "fixtures_windows_church_004", or 0 when it has none. */
-export function windowShape(tile: string | undefined): number {
+export function windowShape(tile: string | undefined, override?: number): number {
+  if (validWindowShape(override)) return override;
   const match = /^(.+)_(\d+)(?:\.png)?$/i.exec(tile ?? '');
   const runs = match ? WINDOW_SHAPE_RUNS[match[1]] : undefined;
   const index = match ? Number(match[2]) : -1;
@@ -154,14 +157,14 @@ export function windowShape(tile: string | undefined): number {
 }
 
 /** The walls slot a window tile cuts (BTC_Windows::wallEnum): the frame for its WindowShape, or the plain window wall. */
-export function windowWallEnum(side: 'West' | 'North', windowTile: string | undefined): string {
-  const shape = windowShape(windowTile);
+export function windowWallEnum(side: 'West' | 'North', windowTile: string | undefined, override?: number): string {
+  const shape = windowShape(windowTile, override);
   return `${side}Window${shape || ''}`;
 }
 
 /** BTC_Windows::shadowHack: which cells of shadow_windows.png to show behind a window entry's slot, added to its normal cell. */
-export function windowTemplateOffset(key: string, windowTile: string | undefined): [number, number] {
-  const shape = windowShape(windowTile);
+export function windowTemplateOffset(key: string, windowTile: string | undefined, override?: number): [number, number] {
+  const shape = windowShape(windowTile, override);
   if (!shape || (key !== 'West' && key !== 'North')) return [0, 0];
   const north = key === 'North';
   if (shape === 17) return [north ? 3 : 2, 0];
@@ -200,7 +203,9 @@ export function parseBuildingTilesDocument(text: string): BuildingTilesDocument 
   let pending = '';
   for (const raw of text.split(/\r?\n/)) {
     let line = raw.trim();
-    if (!line || line.startsWith('#')) continue;
+    // Native SimpleFile ignores comments; web-only overrides do not add unsupported desktop slots.
+    if (line.startsWith('// window_shape = ')) line = line.slice(3);
+    else if (!line || line.startsWith('#') || line.startsWith('//')) continue;
     if (line.endsWith('{')) {
       // Accept both "name {" and "name" followed by "{" on the next line.
       const name = line.slice(0, -1).trim() || pending;
@@ -236,8 +241,16 @@ export function parseBuildingTilesDocument(text: string): BuildingTilesDocument 
     entries.set(definition.name, list);
     for (const entry of block.blocks) {
       if (entry.name !== 'entry') throw new Error(`Unknown block "${entry.name}" in BuildingTiles.txt.`);
-      const tiles: Record<string, string> = {}, offsets: Record<string, [number, number]> = {};
+      const tiles: Record<string, string> = {}, offsets: Record<string, [number, number]> = {}, windowShapes: Record<string, number> = {};
       for (const [key, text] of entry.values) {
+        if (key === 'window_shape') {
+          const [name, shape, ...rest] = text.split(/\s+/);
+          if (definition.name !== 'windows' || !definition.enums.includes(name) || rest.length || !/^\d+$/.test(shape ?? '') || !validWindowShape(Number(shape))) {
+            throw new Error(`Expected a window_shape for West or North from 0 to ${WINDOW_FRAMES}, got "${text}".`);
+          }
+          windowShapes[name] = Number(shape);
+          continue;
+        }
         if (key === 'offset') {
           const [name, x, y, ...rest] = text.split(/\s+/);
           if (!definition.enums.includes(name) || rest.length || !/^-?\d+$/.test(x ?? '') || !/^-?\d+$/.test(y ?? '')) {
@@ -249,7 +262,8 @@ export function parseBuildingTilesDocument(text: string): BuildingTilesDocument 
         if (!definition.enums.includes(key)) throw new Error(`Unknown ${definition.name} slot "${key}".`);
         if (text) tiles[key] = text;
       }
-      list.push(Object.keys(offsets).length ? { tiles, offsets } : { tiles });
+      if (Object.keys(windowShapes).some(key => !tiles[key])) throw new Error('A window opening must have a window tile.');
+      list.push({ tiles, ...(Object.keys(offsets).length ? { offsets } : {}), ...(Object.keys(windowShapes).length ? { windowShapes } : {}) });
     }
   }
   const sourceRevision = value(root, 'source_revision');
@@ -273,6 +287,7 @@ export function serializeBuildingTiles(document: BuildingTilesDocument): string 
       for (const key of definition.enums) {
         const offset = entry.offsets?.[key];
         if (offset && (offset[0] || offset[1])) lines.push(`        offset = ${key} ${offset[0]} ${offset[1]}`);
+        if (entry.windowShapes?.[key] !== undefined) lines.push(`        // window_shape = ${key} ${entry.windowShapes[key]}`);
       }
       lines.push('    }');
     }
@@ -289,9 +304,9 @@ export function toTileEntries(document: BuildingTilesDocument): TileEntry[] {
       category: category.name,
       tiles: definition.enums.map(key => {
         const offset = entry.offsets?.[key];
-        return offset && (offset[0] || offset[1])
-          ? { enum: key, tile: entry.tiles[key] ?? '', offset: `${offset[0]} ${offset[1]}` }
-          : { enum: key, tile: entry.tiles[key] ?? '' };
+        return { enum: key, tile: entry.tiles[key] ?? '',
+          ...(offset && (offset[0] || offset[1]) ? { offset: `${offset[0]} ${offset[1]}` } : {}),
+          ...(entry.windowShapes?.[key] !== undefined ? { windowShape: entry.windowShapes[key] } : {}) };
       }),
     })) : [];
   });
@@ -304,7 +319,8 @@ export function entryDisplayTile(category: string, entry: BuildingTilesEntry): s
 /** Order-independent identity, used to skip duplicates like the desktop dialog. */
 export function buildingTilesEntryKey(entry: BuildingTilesEntry): string {
   const keys = new Set([...Object.keys(entry.tiles), ...Object.keys(entry.offsets ?? {})]);
-  return JSON.stringify([...keys].sort().map(key => [key, entry.tiles[key] ?? '', ...(entry.offsets?.[key] ?? [0, 0])])
+  return JSON.stringify([...keys].sort().map(key => [key, entry.tiles[key] ?? '', ...(entry.offsets?.[key] ?? [0, 0]),
+    ...(entry.windowShapes?.[key] !== undefined ? [entry.windowShapes[key]] : [])])
     .filter(([, tile, x, y]) => tile || x || y));
 }
 
@@ -329,7 +345,9 @@ export function setEntryTile(entry: BuildingTilesEntry, key: string, tile: strin
   if ((entry.tiles[key] ?? '') === name) return entry;
   const tiles = { ...entry.tiles };
   if (name) tiles[key] = name; else delete tiles[key];
-  return { ...entry, tiles };
+  const { windowShapes: previous, ...rest } = entry;
+  const windowShapes = { ...previous }; delete windowShapes[key];
+  return { ...rest, tiles, ...(Object.keys(windowShapes).length ? { windowShapes } : {}) };
 }
 
 export function setEntryOffset(entry: BuildingTilesEntry, key: string, x: number, y: number): BuildingTilesEntry {
@@ -337,7 +355,17 @@ export function setEntryOffset(entry: BuildingTilesEntry, key: string, x: number
   if (current[0] === x && current[1] === y) return entry;
   const offsets = { ...entry.offsets };
   if (x || y) offsets[key] = [x, y]; else delete offsets[key];
-  return Object.keys(offsets).length ? { ...entry, offsets } : { tiles: entry.tiles };
+  const { offsets: previous, ...rest } = entry;
+  return Object.keys(offsets).length ? { ...rest, offsets } : rest;
+}
+
+export function setEntryWindowShape(entry: BuildingTilesEntry, key: string, shape: number | undefined): BuildingTilesEntry {
+  if (!['West', 'North'].includes(key) || (shape !== undefined && (!validWindowShape(shape) || !entry.tiles[key]))
+    || entry.windowShapes?.[key] === shape) return entry;
+  const { windowShapes: previous, ...rest } = entry;
+  const windowShapes = { ...previous };
+  if (shape === undefined) delete windowShapes[key]; else windowShapes[key] = shape;
+  return Object.keys(windowShapes).length ? { ...rest, windowShapes } : rest;
 }
 
 export function updateCategoryEntries(document: BuildingTilesDocument, name: string,

@@ -28,12 +28,43 @@ function setup() {
 }
 
 describe('Native roof mouse interactions', () => {
+    for (const id of ['peak30-vertical', 'peak30-horizontal', 'peak30-quad', 'dormer30-w', 'dormer30-e', 'dormer30-n', 'dormer30-s']) {
+        it(`keeps an even ${id} footprint during placement, preview and save/reopen`, () => {
+            const h = setup(); h.roofs.setSelectedRoofOptionId(id);
+            h.point(2.2, 2.2); h.tool.beginDrag(2, 2); h.point(5.2, 5.2);
+            expect(h.tool.statusText).toContain('Width,Height = 4,4');
+            expect(h.buildings.building.floors[0].objects.length).toBe(0);
+            h.tool.endDrag(5, 5);
+            const o = h.buildings.building.floors[0].objects[0];
+            expect(o).toEqual(jasmine.objectContaining({ x: 2, y: 2, width: 4, height: 4 }));
+            const reopened = readBuildingFile(writeBuildingFile(h.buildings.building)).floors[0].objects[0];
+            expect(Number(reopened.width)).toBe(4); expect(Number(reopened.height)).toBe(4);
+            h.destroy();
+        });
+    }
+    it('creates and resizes a 30-degree peak, preserves its type through undo and save/reopen', () => {
+        const h = setup(); h.roofs.setSelectedRoofOptionId('peak30-vertical');
+        h.point(2.2, 2.2); h.tool.beginDrag(2, 2); h.point(5.2, 4.2); h.tool.endDrag(5, 4);
+        const before = h.buildings.building;
+        expect(before.floors[0].objects[0]).toEqual(jasmine.objectContaining({ RoofType: 'Peak30NS', width: 4, height: 3, Depth: 'Zero' }));
+        h.point(5.75, 4.75); h.tool.beginDrag(5, 4); h.point(7.75, 6.75); h.tool.endDrag(7, 6);
+        expect(h.buildings.building.floors[0].objects[0]).toEqual(jasmine.objectContaining({ width: 6, height: 5, Depth: 'Zero' }));
+        expect(h.tool.statusText).toBe('');
+        h.store.dispatch(new Undo()); expect(h.buildings.building).toBe(before); h.store.dispatch(new Redo());
+        const saved = readBuildingFile(writeBuildingFile(h.buildings.building));
+        expect(saved.floors[0].objects[0]).toEqual(jasmine.objectContaining({ RoofType: 'Peak30NS', Depth: 'Zero', cappedN: 'true', cappedW: 'false' }));
+        expect(Number(saved.floors[0].objects[0].width)).toBe(6);
+        const reopened = saved.floors[0].objects[0];
+        expect(resizeNativeRoof(reopened, Number(reopened.width), Number(reopened.height), false).width).toBe(6);
+        h.destroy();
+    });
     it('shows green only for the idle cursor and shaded gray faces while creating a roof', () => {
         const h = setup(); h.roofs.setSelectedRoofOptionId('slope-w'); h.point(3.2, 4.2);
         expect(h.tool.dragTiles).toEqual([]);
         expect(h.tool.overlays[0].points).toEqual([{ x: 3, y: 4 }, { x: 4, y: 4 }, { x: 4, y: 5 }, { x: 3, y: 5 }]);
         const before = h.buildings.building;
         h.tool.beginDrag(3, 4); h.point(4.2, 6.2);
+        expect(h.tool.statusText).toContain('Width,Height = 2,3');
         expect(h.tool.overlays.some(o => o.fill === '#00ff0080')).toBeFalse();
         expect(h.tool.overlays[0].fill).toBe('#80808040');
         expect(h.tool.overlays[h.tool.overlays.length - 1].stroke).toBe('#0000ff40');

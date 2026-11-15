@@ -228,8 +228,8 @@ describe('Native toolbar controls', () => {
     it('has the native roof menu groupings and independent remembered selections', () => {
         const fixture = TestBed.createComponent(MenuComponent); fixture.detectChanges();
         const menu = fixture.componentInstance, el: HTMLElement = fixture.nativeElement;
-        expect(el.querySelectorAll('.roof-split').length).toBe(3);
-        expect(ROOF_TOOL_GROUPS.map(g => g.options.length)).toEqual([11, 6, 8]);
+        expect(el.querySelectorAll('.roof-split').length).toBe(5);
+        expect(ROOF_TOOL_GROUPS.map(g => g.options.length)).toEqual([11, 6, 11, 8, 8]);
         (el.querySelector('[aria-label="Shallow roofs types"]') as HTMLButtonElement).click(); fixture.detectChanges();
         const options = el.querySelectorAll('.roof-menu button'); expect(options.length).toBe(6);
         (options[1] as HTMLButtonElement).click(); fixture.detectChanges();
@@ -237,6 +237,10 @@ describe('Native toolbar controls', () => {
         menu.activateRoof('standard'); expect(menu.roofs.getSelectedRoofType()).toBe('PeakNS');
         menu.activateRoof('corners'); expect(menu.roofs.getSelectedRoofType()).toBe('CornerInnerNW');
         menu.activateRoof('shallow'); expect(menu.roofs.getSelectedRoofType()).toBe('ShallowSlopeE');
+        menu.activateRoof('roof30'); expect(menu.roofs.getSelectedRoofType()).toBe('Peak30NS');
+        menu.roofs.setSelectedRoofOptionId('peak30-quad');
+        menu.activateRoof('corners30'); expect(menu.roofs.getSelectedRoofType()).toBe('CornerSlope30InnerNW');
+        menu.activateRoof('roof30'); expect(menu.roofs.getSelectedRoofType()).toBe('Peak30Quad');
         expect(el.querySelector('.roof-menu')).toBeNull();
         expect(ROOF_TOOL_GROUPS.flatMap(g => g.options).every(o => roofOptionIcon(o).startsWith('assets/icons/icon_'))).toBeTrue();
     });

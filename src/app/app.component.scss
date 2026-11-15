@@ -6,6 +6,10 @@
 app-viewport-canvas { flex: 1; min-width: 0; }
 app-tile-selection-menu { flex: 0 0 clamp(340px, 38vw, 620px); align-self: stretch; }
 app-tiles-furniture-sidebar { flex: 0 0 clamp(260px, 23vw, 400px); align-self: stretch; }
+.editor-status { display: flex; align-items: center; gap: 10px; height: 26px; box-sizing: border-box; padding: 2px 8px; border-top: 1px solid #aaa; background: #eee; color: #222; font: 13px Arial, sans-serif; }
+.status-coordinates { flex: 0 0 76px; text-align: center; font-variant-numeric: tabular-nums; }
+.status-message { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status-zoom { flex-shrink: 0; font-variant-numeric: tabular-nums; }
 
 .app-tile-download-window {
     position: absolute;

@@ -89,6 +89,13 @@ app-furniture-cell.selected { border-color: $accent; }
 .display-tile { cursor: pointer; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .03); }
 .display-tile:hover { box-shadow: inset 0 0 0 1px $line-strong; }
 .display-tile.active { box-shadow: inset 0 0 0 2px $accent; background-color: rgba($accent, .18); }
+.window-openings { position: sticky; top: 0; z-index: 2; background: $surface; border: 1px solid $line-strong; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+.window-openings h3 { font-size: 14px; margin: 0 0 6px; }
+.window-openings p { color: $muted; font-size: 12px; margin: 6px 0; }
+.window-facings { display: flex; flex-wrap: wrap; gap: 16px; }
+.window-facings label { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.window-facings select { width: 100%; }
+.opening-preview { display: block; width: 64px; height: 128px; background-repeat: no-repeat; image-rendering: pixelated; }
 
 .browser { gap: 0; }
 .search { margin: 12px 12px 8px; }

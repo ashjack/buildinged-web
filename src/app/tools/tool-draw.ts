@@ -14,6 +14,7 @@ export default abstract class ToolDraw extends Tool {
     overlays: { points: Point[]; fill: string; stroke: string; crossed?: boolean; label?: string }[] = [];
     previewTiles: SvgTile[] | undefined;
     cursor = 'default';
+    statusText = '';
     reset(): void { this.cancel(); }
     deleteSelection(): boolean { return false; }
     keyDown(key: string): boolean { return false; }
@@ -23,6 +24,7 @@ export default abstract class ToolDraw extends Tool {
     }
 
     cancel(): void {
+        this.statusText = '';
         this.isDragging = false;
         this.beginDragCoords = [];
         this.dragTiles = [];

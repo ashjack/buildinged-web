@@ -99,6 +99,8 @@ export class EditorComponent implements OnInit, OnDestroy {
         } catch (error) {
           if (!this.destroyed && generation === this.loadGeneration) this.error = error instanceof Error ? error.message : String(error);
         } finally { if (generation === this.loadGeneration) this.setupBusy = false; }
+        if (!this.destroyed && generation === this.loadGeneration && !this.error &&
+          this.route.snapshot.queryParamMap?.get('openEditor') === 'true') await this.startNewBuilding();
         return;
       }
       try {

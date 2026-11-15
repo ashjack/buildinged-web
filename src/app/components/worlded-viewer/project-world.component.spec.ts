@@ -18,6 +18,7 @@ class WorldViewerStub {
   @Input() worldRevision?: number;
   @Input() hosted = false;
   @Input() minimal = false;
+  @Input() canEditBuildings = false;
   @Input() projectId?: string;
   zoomPercent = 100;
   warnings: string[] = [];

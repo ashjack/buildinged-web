@@ -119,6 +119,8 @@ export interface Tile {
     enum?: string;
     tile: string;
     offset?: string;
+    /** Manual WindowShape: 0 is the standard opening, 1-19 a native frame; absent uses the tile definition. */
+    windowShape?: number;
 }
 
 export interface Furniture {

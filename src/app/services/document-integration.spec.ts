@@ -2,10 +2,11 @@ import { fakeAsync, TestBed, tick } from '@angular/core/testing';
 import { HttpClient } from '@angular/common/http';
 import { Action, Store, StoreModule } from '@ngrx/store';
 import { EffectsModule } from '@ngrx/effects';
+import { BehaviorSubject } from 'rxjs';
 import { RootEffects } from '../app.effects';
 import { reducer, State } from '../app.reducers';
 import { ActionsUnion, ActionTypes, AddObject, AddTile, EditRooms, Redo, RemoveObject, RemoveTile, SetBuilding, SetCurrentTool, Undo, UpdateObject } from '../app.actions';
-import { Building } from '../models/app.models';
+import { Building, TileEntry } from '../models/app.models';
 import { documentHarness } from '../testing/document-harness';
 import { nativeBuildingXml } from '../testing/native-building.fixture';
 import { readBuildingFile, writeBuildingFile } from '../utils/tbx-format';
@@ -21,6 +22,7 @@ import { GridService } from './grid.service';
 import { DbService } from './db.service';
 import { CacheService } from './cache.service';
 import { TileService } from './tile.service';
+import { BuildingTilesLibraryService } from './building-tiles-library.service';
 
 function sceneBuilding(): Building {
     const building = readBuildingFile(new DOMParser().parseFromString(nativeBuildingXml, 'text/xml'));
@@ -189,10 +191,12 @@ describe('Authoritative document and scene integration', () => {
     });
 
     it('runs through registered NgRx effects with immutable state checks enabled', fakeAsync(() => {
+        const catalog = new BehaviorSubject<TileEntry[]>([]);
         TestBed.configureTestingModule({
             imports: [StoreModule.forRoot({ root: (state: State | undefined, action: Action) => reducer(state, action as ActionsUnion) }), EffectsModule.forRoot([RootEffects])],
             providers: [{ provide: HttpClient, useValue: {} }, { provide: DbService, useValue: {} },
-                { provide: CacheService, useValue: {} }, { provide: TileService, useValue: {} }],
+                { provide: CacheService, useValue: {} }, { provide: TileService, useValue: {} },
+                { provide: BuildingTilesLibraryService, useValue: { entries$: catalog, load: async () => ({}) } }],
         });
         const store = TestBed.inject(Store);
         const grid = TestBed.inject(GridService);
@@ -200,6 +204,11 @@ describe('Authoritative document and scene integration', () => {
         spyOn(grid, 'getIndividualTile').and.callFake(name => name);
         spyOn(Storage.prototype, 'setItem');
         store.dispatch(new SetBuilding(sceneBuilding()));
+        const wall = service.building.entries[2];
+        const published = { ...wall, tiles: [...wall.tiles, { enum: 'WestWindow13', tile: 'updated_frames_013' }] };
+        catalog.next([published]);
+        expect(service.building.entries[2]).toEqual(published);
+        expect(service.building.ExteriorWall).toBe(3);
         const add = new AddObject({ type: 'door', x: 0, y: 0, dir: 'W', Tile: 1, FrameTile: 0 }, 0);
         store.dispatch(add);
         expect(grid.objects.some(object => object.uid === add.obj.uid)).toBeTrue();
@@ -212,6 +221,7 @@ describe('Authoritative document and scene integration', () => {
         store.dispatch(new Redo());
         expect(grid.objects.length).toBe(0);
         tick(201);
+        catalog.complete();
     }));
 
     it('rebuilds for document changes, keeps the view on edits and resets it on document replacement', () => {

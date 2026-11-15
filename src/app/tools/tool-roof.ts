@@ -70,6 +70,7 @@ export default class ToolRoof extends ToolDraw {
             if (this.handle) this.cursor = this.handle.kind === 'resize' ? 'move' : 'pointer';
             this.roofService.message = this.handle ? this.handle.kind === 'resize' ? 'Drag to resize the roof. Right-click to cancel.'
                 : this.handle.kind.startsWith('capped') ? 'Click to toggle the roof cap.' : 'Click to change flat-roof depth.' : '';
+            this.statusText = this.roofService.message || 'Left-click-drag to place a roof. Right-click removes an object.';
             return;
         }
         if (!this.candidate) return;
@@ -103,6 +104,7 @@ export default class ToolRoof extends ToolDraw {
         if (this.original) this.handles(this.candidate, this.lastPointer || { x: -1, y: -1 });
         this.previewTiles = valid ? this.roofService.preview(this.candidate, this.grid.getSelectedLevel()) : undefined;
         this.roofService.message = `Width, height: ${this.candidate.width}, ${this.candidate.height}. Right-click to cancel.`;
+        this.statusText = `Width,Height = ${this.candidate.width},${this.candidate.height}. Right-click to cancel.`;
     }
     override endDrag(x: number, y: number): void {
         if (!this.isDragging) return;

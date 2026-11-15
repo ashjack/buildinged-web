@@ -10,6 +10,7 @@ import { nativeBuildingXml } from '../testing/native-building.fixture';
 import { readBuildingFile, writeBuildingFile } from '../utils/tbx-format';
 import { Contribution, VariantDocument } from '../models/project.models';
 import { Building } from '../models/app.models';
+import { WorldBuildingUpdatesService } from './world-building-updates.service';
 
 const item: Contribution = {
   id: 'variant', projectId: 'project', taskId: 'task', originalBuildId: 'original', sourceRevisionId: 'source',
@@ -20,6 +21,7 @@ describe('Project editor session', () => {
   let session: EditorSessionService;
   let store: Store<State>;
   let api: jasmine.SpyObj<ProjectApiService>;
+  let published: jasmine.Spy;
   const canonical = () => new XMLSerializer().serializeToString(writeBuildingFile(
     readBuildingFile(new DOMParser().parseFromString(nativeBuildingXml, 'text/xml'))));
   const snapshot = (): Building => {
@@ -43,6 +45,7 @@ describe('Project editor session', () => {
     });
     store = TestBed.inject(Store);
     session = TestBed.inject(EditorSessionService);
+    published = spyOn(TestBed.inject(WorldBuildingUpdatesService), 'publish');
   });
   afterEach(() => {
     localStorage.removeItem('buildinged:draft:user:project:variant');
@@ -83,6 +86,7 @@ describe('Project editor session', () => {
     expect(session.dirty).toBeFalse();
     expect(localStorage.getItem(draftKey)).toBeNull();
     expect(created).toHaveBeenCalledOnceWith(session.worldBuilding);
+    expect(published).toHaveBeenCalledOnceWith({ projectId: 'project', path: worldBuilding.path, revision: 8 }, 5);
     api.saveWorldBuilding.and.resolveTo({ projectId: 'project', path: worldBuilding.path, revision: 9 });
     expect(await session.save()).toBeTrue();
     expect(api.saveWorldBuilding).toHaveBeenCalledOnceWith('project', worldBuilding.path, session.serialize(), 8);
@@ -121,6 +125,7 @@ describe('Project editor session', () => {
     expect(api.save).not.toHaveBeenCalled();
     expect(session.dirty).toBeFalse();
     expect(session.worldBuilding!.revision).toBe(6);
+    expect(published).toHaveBeenCalledOnceWith({ projectId: 'project', path: worldBuilding.path, revision: 6 }, 5);
     expect(JSON.parse(localStorage.getItem(session.cacheTarget.key)!).revision).toBe(6);
     await session.submit();
     expect(api.submit).not.toHaveBeenCalled();
@@ -133,6 +138,7 @@ describe('Project editor session', () => {
     const localXml = session.serialize();
     api.saveWorldBuilding.and.rejectWith(new Error('The world changed in another session.'));
     expect(await session.save()).toBeFalse();
+    expect(published).not.toHaveBeenCalled();
     expect(session.dirty).toBeTrue();
     const recovered = session.beginWorldBuilding({ ...worldBuilding, revision: 6 });
     expect(recovered).toBe(localXml);

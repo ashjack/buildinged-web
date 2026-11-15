@@ -65,9 +65,6 @@
               <button *ngFor="let option of group.options" role="menuitemradio" [attr.aria-checked]="roofs.getGroupOption(group.id).id === option.id" (click)="chooseRoof(option)"><img [src]="roofIcon(option)" alt=""><span>{{option.label}}</span><span class="check" *ngIf="roofs.getGroupOption(group.id).id === option.id">✓</span></button>
             </div>
           </div>
-          <div *ngIf="group.id !== 'standard'" class="unavailable-roof" [title]="'30-degree roofs are not supported by the web editor'">
-            <button class="toolbar-button" [attr.aria-label]="group.id === 'shallow' ? 'Place roof (30 degree)' : 'Place roof corner (30 degree)'" disabled><img [src]="group.id === 'shallow' ? 'assets/icons/icon_roof_peakNS.png' : 'assets/icons/icon_corner_innerNW.png'" alt=""></button><button class="dropdown-arrow" aria-label="30-degree roof types" disabled>▾</button>
-          </div>
         </ng-container>
         <button class="toolbar-button" title="Place furniture" aria-label="Place furniture" (click)="setTool('tool-furniture')" [class.active]="(currentTool$ | async) === 'tool-furniture'"><img src="assets/icons/icon_furniture.png" alt=""></button>
         <button class="toolbar-button" title="Select and move objects" aria-label="Select and move objects" (click)="setTool('tool-select-objects')" [class.active]="(currentTool$ | async) === 'tool-select-objects'"><img src="assets/icons/tool-select-objects.png" alt=""></button>
@@ -102,6 +99,7 @@
   <div class="canvas-workspace"><ng-content></ng-content></div>
 </div>
 <p class="resize-status" role="status" *ngIf="resizeMessage">{{resizeMessage}}</p>
+<ng-content select="[data-editor-status]"></ng-content>
 <dialog #resizeDialog class="resize-dialog" aria-labelledby="resize-title" (keydown)="$event.stopPropagation()" (keyup)="$event.stopPropagation()" (close)="endResizeDrag()">
   <form (ngSubmit)="applyResize()">
     <h2 id="resize-title">Resize building area</h2>

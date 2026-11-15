@@ -1,4 +1,5 @@
 import { SvgTile } from "../models/app.models";
+import { isRoof30, normalizeRoof30, roof30CapMatrices, roof30SlopeMatrix } from './roof-30';
 
 export interface RoofTileSource { enum?: string; tile: string; offset?: string; }
 export interface RoofTileSet { capTiles: RoofTileSource[]; slopeTiles: RoofTileSource[]; topTiles: RoofTileSource[]; }
@@ -41,6 +42,13 @@ export const ROOF_OPTIONS: RoofOption[] = [
     { id: "corner-outer-nw", label: "Corner Outer (NW)", roofType: "CornerOuterNW", group: "Corners" },
     { id: "corner-outer-ne", label: "Corner Outer (NE)", roofType: "CornerOuterNE", group: "Corners" },
     { id: "corner-outer-se", label: "Corner Outer (SE)", roofType: "CornerOuterSE", group: "Corners" },
+    ...['W', 'N', 'E', 'S'].map(side => ({ id: `slope30-${side.toLowerCase()}`, label: `30° Slope (${side})`, roofType: `Slope30${side}`, group: '30 degree' })),
+    { id: 'peak30-horizontal', label: '30° Peak (Horizontal)', roofType: 'Peak30WE', group: '30 degree' },
+    { id: 'peak30-vertical', label: '30° Peak (Vertical)', roofType: 'Peak30NS', group: '30 degree' },
+    { id: 'peak30-quad', label: '30° Peak (Quad)', roofType: 'Peak30Quad', group: '30 degree' },
+    ...['W', 'N', 'E', 'S'].map(side => ({ id: `dormer30-${side.toLowerCase()}`, label: `30° Dormer (${side})`, roofType: `Dormer30${side}`, group: '30 degree' })),
+    ...['Inner', 'Outer'].flatMap(kind => ['NW', 'NE', 'SE', 'SW'].map(side => ({ id: `corner30-${kind.toLowerCase()}-${side.toLowerCase()}`,
+        label: `30° Corner ${kind} (${side})`, roofType: `CornerSlope30${kind}${side}`, group: '30 degree corners' }))),
 ];
 
 export type Depth = "Zero" | "Point5" | "One" | "OnePoint5" | "Two" | "TwoPoint5" | "Three";
@@ -51,6 +59,12 @@ export function getDefaultRoofOption(): RoofOption { return ROOF_OPTIONS.find(o 
 export function getRoofOptionById(id: string): RoofOption { return ROOF_OPTIONS.find(o => o.id === id) || getDefaultRoofOption(); }
 
 export function defaultRoofCaps(type: string) {
+    if (isRoof30(type)) {
+        if (type === 'Peak30Quad') return { cappedW: false, cappedN: false, cappedE: false, cappedS: false };
+        if (type === 'Peak30WE') return { cappedW: true, cappedN: false, cappedE: true, cappedS: false };
+        if (type === 'Peak30NS') return { cappedW: false, cappedN: true, cappedE: false, cappedS: true };
+        type = type.replace('30', '');
+    }
     const corner = type.startsWith('Corner');
     return { cappedW: !corner && !['SlopeE', 'ShallowSlopeE'].includes(type),
         cappedN: !corner && !['SlopeS', 'ShallowSlopeS'].includes(type),
@@ -59,6 +73,7 @@ export function defaultRoofCaps(type: string) {
 }
 
 export function normalizeRoofSize(width: number, height: number, type: string): { width: number; height: number } {
+    if (isRoof30(type)) return normalizeRoof30(width, height, type);
     if (["SlopeW", "SlopeE"].includes(type)) width = clamp(width, 1, 3);
     if (["SlopeN", "SlopeS"].includes(type)) height = clamp(height, 1, 3);
     if (["ShallowSlopeW", "ShallowSlopeE"].includes(type)) width = clamp(width, 1, 2);
@@ -74,6 +89,7 @@ export function normalizeRoofSize(width: number, height: number, type: string): 
 // Native loading calls resize(): peaks derive depth from size; slopes and corners
 // retain the saved half-depth flag; a flat roof retains its explicit height.
 export function resolveRoofDepth(width: number, height: number, type: string, saved?: string): Depth {
+    if (isRoof30(type)) return calculateRoofDepth(width, height, type);
     if (type === 'FlatTop' && ['Zero', 'One', 'Two', 'Three'].includes(saved || '')) return saved as Depth;
     const depth = calculateRoofDepth(width, height, type);
     if ((type.startsWith('Corner') || /^Slope[WNES]$/.test(type)) && ['Point5', 'OnePoint5', 'TwoPoint5'].includes(saved || '')) {
@@ -83,6 +99,8 @@ export function resolveRoofDepth(width: number, height: number, type: string, sa
 }
 
 export function calculateRoofDepth(width: number, height: number, type: string): Depth {
+    if (isRoof30(type)) return type.startsWith('Corner')
+        ? (['Point5', 'One', 'OnePoint5', 'Two', 'TwoPoint5', 'Three'] as Depth[])[Math.min(6, Math.max(1, width, height)) - 1] : 'Zero';
     if (type === "FlatTop" || type.startsWith("Shallow")) return "Zero";
     if (type.startsWith("Corner")) return integerDepth(Math.max(width, height));
     if (["SlopeW", "SlopeE"].includes(type)) return integerDepth(width);
@@ -117,6 +135,11 @@ export function buildRoofPlacements(input: RoofPlacementOptions): SvgTile[] {
         });
     };
 
+    if (isRoof30(options.roofType)) {
+        place(roof30SlopeMatrix(options), options.tileset.slopeTiles, 'Roof');
+        for (const cap of roof30CapMatrices(options)) place(cap, options.tileset.capTiles, 'RoofCap');
+        return output;
+    }
     place(slopeMatrix(options, depth), options.tileset.slopeTiles, "Roof");
     for (const cap of capMatrices(options, depth)) place(cap, options.tileset.capTiles, "RoofCap");
     place(cornerMatrix(options, depth), options.tileset.slopeTiles, "Roof");

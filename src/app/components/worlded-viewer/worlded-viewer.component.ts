@@ -10,6 +10,7 @@ import { resolveWorldedProject, worldedFileFor, worldedVegetationPath } from '..
 import { loadWorldedPreviews, WorldedTerrainImage } from '../../utils/worlded-preview';
 import { drawWorldedOverview, worldedBounds, worldedCellAt, worldedProject, WorldedPoint } from '../../utils/worlded-renderer';
 import { readWorldedWorld, WorldedCell, worldedCellKey } from '../../utils/worlded-world';
+import { openBuildingEditor } from '../../utils/open-building-editor';
 import {
   constrainTilezedCamera, fitTilezedCamera, TilezedCamera, TilezedViewport, zoomTilezedCamera,
 } from '../../utils/tilezed-renderer';
@@ -132,10 +133,7 @@ export class WorldedViewerComponent implements AfterViewInit, OnDestroy {
     const menu = this.contextMenu; this.closeBuildingMenu(true);
     if (!menu || !this.canEditBuildings || !this.hosted || menu.projectId !== this.projectId) return;
     try {
-      const opened = copy
-        ? await this.router.navigate(['/projects', menu.projectId, 'world-buildings', 'new'], { queryParams: { copyFrom: menu.path } })
-        : await this.router.navigate(['/projects', menu.projectId, 'world-buildings', menu.path, 'edit']);
-      if (!opened) this.error = 'Could not open the building editor. Try again.';
+      openBuildingEditor(this.router, menu.projectId, menu.path, copy);
     } catch (error) { this.error = error instanceof Error ? error.message : String(error); }
   }
 

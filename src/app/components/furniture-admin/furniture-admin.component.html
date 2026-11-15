@@ -109,6 +109,23 @@
     </div>
     <div class="furniture-scroll" #furnitureScroll>
       <p *ngIf="loading" class="empty">Loading…</p>
+      <section *ngIf="mode === 'tiles' && tileCategory === 'windows' && currentTileEntry as entry" class="window-openings" aria-label="Window wall openings">
+        <h3>Window wall openings · #{{tileEntry + 1}}</h3>
+        <p>Match each facing to its wall opening. Auto uses the tile’s original size.</p>
+        <div class="window-facings">
+          <label *ngFor="let facing of windowFacings">
+            <span>{{facing}} opening</span>
+            <select [ngModel]="windowOpening(entry, facing)" (ngModelChange)="setWindowOpening(facing, $event)"
+              [disabled]="!entry.tiles[facing] || saving" [attr.aria-label]="facing + ' window opening'">
+              <option value="auto">Auto · {{automaticWindowOpening(entry, facing)}}</option>
+              <option value="0">Standard opening</option>
+              <option *ngFor="let shape of windowShapes" [value]="shape">{{windowShapeLabel(shape)}}</option>
+            </select>
+            <span *ngIf="entry.tiles[facing]" class="opening-preview" [ngStyle]="windowOpeningPreview(entry, facing)" role="img" [attr.aria-label]="facing + ' wall opening preview'"></span>
+          </label>
+        </div>
+        <p>Publish to use these openings when placing this window. The selected wall material must include the matching opening.</p>
+      </section>
       <ng-container *ngIf="mode === 'tiles' && !loading && expertMode">
         <!-- Only rows near the viewport are rendered; the padding stands in for the rest. -->
         <div class="tile-rows" #tileRows [style.padding-top.px]="tileWindow.start * tileRowStride"

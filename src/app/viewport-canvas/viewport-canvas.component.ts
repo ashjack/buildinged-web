@@ -65,6 +65,23 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
   private readonly mouseMove = (event: MouseEvent) => this.getMousePos(event);
 
   currentHoverCoords: Point = {x: 0, y: 0};
+  cursorCoordinates: Point = { x: 0, y: 0 };
+  get statusText(): string {
+    if (this.selectedTool.statusText) return this.selectedTool.statusText;
+    if (this.toolSettings.message) return this.toolSettings.message;
+    if (this.selectedTool instanceof ToolDoor) return 'Left-click to place a door. Alt picks its materials. Right-click removes an object.';
+    if (this.selectedTool instanceof ToolWindow) return 'Left-click to place a window. Alt picks its materials. Right-click removes an object.';
+    if (this.selectedTool instanceof ToolStairs) return 'Left-click to place stairs. Right-click removes an object.';
+    if (this.selectedTool instanceof ToolFurniture) return 'Left-click to place furniture. Drag to change orientation. Right-click removes an object.';
+    if (this.selectedTool instanceof ToolDrawRoom) return 'Left-click-drag to draw a room. Ctrl erases. Right-click picks the room under the pointer.';
+    if (this.selectedTool instanceof ToolRoof) return 'Left-click-drag to place a roof. Right-click removes an object.';
+    if (this.selectedTool instanceof ToolWall) return 'Left-click-drag to place a wall. Right-click removes an object.';
+    if (this.selectedTool instanceof ToolSelect) return 'Left-click-drag to select. Drag inside the selection to move.';
+    if (this.selectedTool instanceof ToolTile) return this.toolSettings.tileMode === 'capture' ? 'Right-click-drag to capture tiles.'
+      : this.toolSettings.tileMode === 'pick' ? 'Left-click to pick a tile.'
+      : this.toolSettings.tileMode === 'eraser' ? 'Left-click-drag to erase tiles.' : 'Left-click-drag to draw tiles. Ctrl erases.';
+    return '';
+  }
   currentHoverCoordSegments = {edge: '', corner: ''}
   currentHoverObject: SvgObject | undefined = undefined;
   currentHoverOverlay: SvgObjectOverlay | undefined = undefined;
@@ -82,6 +99,10 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
   private cameraLevel = 0;
   private resizeObserver?: ResizeObserver;
   get isOrtho(): boolean { return this.editorView?.mode === 'ortho'; }
+  get isTileMode(): boolean {
+    return this.editorView ? this.editorView.mode === 'tile'
+      : this.selectedTool instanceof ToolTile || this.selectedTool instanceof ToolSelect && this.selectedTool.mode === 'tiles';
+  }
 
   constructor(
     private http: HttpClient, 
@@ -128,6 +149,7 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
       takeUntil(this.unsubscribe)
     ).subscribe((x) => {
       this.selectedTool.cancel();
+      this.toolSettings.message = '';
       switch(x)
       {
         case 'tool-tile':
@@ -221,6 +243,8 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
       this.resizeObserver.observe(canvas.parentElement);
       const toolbar = document.querySelector('app-menu');
       if (toolbar) this.resizeObserver.observe(toolbar);
+      const editor = canvas.closest('app-editor');
+      if (editor) this.resizeObserver.observe(editor);
     }
 
     if(this.ctx)
@@ -442,7 +466,10 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     if (!canvas) return false;
     const rect = canvas.getBoundingClientRect();
     const width = Math.max(1, Math.floor(canvas.parentElement?.clientWidth || window.innerWidth));
-    const height = Math.max(1, Math.floor(window.innerHeight - rect.top));
+    const menu = canvas.closest('app-menu');
+    const footerHeight = Array.from(menu?.querySelectorAll('[data-editor-status], .resize-status') || [])
+      .reduce((height, element) => height + element.getBoundingClientRect().height, 0);
+    const height = Math.max(1, Math.floor(window.innerHeight - rect.top - footerHeight));
     if (canvas.width === width && canvas.height === height) return false;
     if (this.cameraInitialized) {
       this.xOffset += (canvas.width - width) / (2 * safeZoom(this.zoom));
@@ -631,6 +658,12 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
 
   drawTileOverlays() {
     this.gridService.objectOverlays = [];
+    if (this.isTileMode) {
+      this.currentHoverObject = undefined;
+      this.currentHoverOverlay = undefined;
+      this.currentHoverSubOverlay = undefined;
+      return;
+    }
     this.gridService.objects.forEach((obj: SvgObject) => {   
       if(obj.level === this.gridService.getSelectedLevel() && !(this.selectedTool instanceof ToolRoof && this.selectedTool.resizingUid === obj.uid))
       {
@@ -1255,6 +1288,10 @@ export class ViewportCanvasComponent implements OnInit, AfterViewInit, OnDestroy
     const y: number = (Math.round(event.clientY - rect.top) / (rect.bottom - rect.top) * canvas.height);
 
     const reference = this.newPositions[0];
+    if (reference) {
+      const fraction = fractionalCellPosition({ x, y }, reference.point);
+      this.cursorCoordinates = { x: Math.floor(reference.localPoint.x + fraction.x), y: Math.floor(reference.localPoint.y + fraction.y) };
+    }
     if (reference && this.selectedTool instanceof ToolFurniture && this.selectedTool.isDragging && this.selectedTool.key !== 'Control') {
       // Extrapolate the rendered isometric basis: facing does not require a cell under the pointer.
       const fraction = fractionalCellPosition({ x, y }, reference.point);

@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { Component, NO_ERRORS_SCHEMA } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, Router } from '@angular/router';
@@ -22,7 +22,25 @@ import { THAMES_VALLEY_PROJECT_ID } from '../../utils/default-project';
 const contribution: Contribution = { id: 'a', projectId: 'project', taskId: 'task', originalBuildId: 'original',
   sourceRevisionId: 'source', createdBy: 'user', name: 'Option A', status: 'draft', revision: 1, deliverableUrl: '', reviewNote: '' };
 
+@Component({ selector: 'app-viewport-canvas', template: '' })
+class ViewportStub {
+  cursorCoordinates = { x: 0, y: 0 };
+  statusText = '';
+  zoom = 1;
+}
+
 describe('Routed variant editor', () => {
+  it('renders the viewport coordinates, live tool measurement and zoom in the bottom status bar', async () => {
+    const fixture = TestBed.createComponent(EditorComponent); fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    const viewport = fixture.debugElement.query(e => e.componentInstance instanceof ViewportStub).componentInstance as ViewportStub;
+    viewport.cursorCoordinates = { x: 7, y: 12 }; viewport.statusText = 'Width,Height = 4,6. Right-click to cancel.'; viewport.zoom = .5;
+    fixture.detectChanges();
+    const status: HTMLElement = fixture.nativeElement.querySelector('[data-editor-status]');
+    expect(status.querySelector('[aria-label="Grid position"]')!.textContent).toBe('7,12');
+    expect(status.querySelector('[aria-label="Tool status"]')!.textContent).toContain('Width,Height = 4,6');
+    expect(status.querySelector('[aria-label="Viewport zoom"]')!.textContent).toBe('50%');
+    fixture.destroy();
+  });
   let store: Store<State>;
   let api: jasmine.SpyObj<ProjectApiService>;
   let buildings: jasmine.SpyObj<BuildingService>;
@@ -39,7 +57,7 @@ describe('Routed variant editor', () => {
     buildings.getTemplateNames.and.resolveTo(['Residential']);
     buildings.newBuilding.and.resolveTo(readBuildingFile(new DOMParser().parseFromString(nativeBuildingXml, 'text/xml')));
     TestBed.configureTestingModule({
-      declarations: [EditorComponent], schemas: [NO_ERRORS_SCHEMA],
+      declarations: [EditorComponent, ViewportStub], schemas: [NO_ERRORS_SCHEMA],
       imports: [CommonModule, FormsModule, RouterTestingModule, StoreModule.forRoot({}), StoreModule.forFeature('root', reducer)],
       providers: [
         { provide: AuthService, useValue: { get user() { return user.value; }, user$: user.asObservable(), isAdmin: true, apiBaseUrl: 'http://localhost/api' } },
@@ -195,6 +213,20 @@ describe('Routed variant editor', () => {
     expect(await session.save()).toBeTrue();
     expect(api.createWorldBuilding).toHaveBeenCalledOnceWith('project', 'Buildings/new-house.tbx', session.savedXml);
     fixture.destroy();
+  });
+
+  it('opens a named copy directly in the editor without publishing it first', async () => {
+    route.snapshot.data = { newWorldBuilding: true };
+    route.snapshot.queryParamMap = convertToParamMap({ copyFrom: 'Buildings/source.tbx', openEditor: 'true' });
+    api.worldBuilding.and.resolveTo({ projectId: 'project', path: 'Buildings/source.tbx', revision: 3, xml: nativeBuildingXml });
+    api.request.and.resolveTo({ projectId: 'project', revision: 4, files: [{ path: 'Buildings/source.tbx' }, { path: 'Buildings/source_copy.tbx' }] });
+    const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    const fixture = TestBed.createComponent(EditorComponent);
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    expect(navigate).toHaveBeenCalledOnceWith(['/projects', 'project', 'world-buildings', 'Buildings/source_copy2.tbx', 'edit'], {
+      queryParams: { create: 'true', copyFrom: 'Buildings/source.tbx' },
+    });
+    expect(api.createWorldBuilding).not.toHaveBeenCalled(); fixture.destroy();
   });
 
   it('rejects an existing copy destination before opening or saving the source', async () => {

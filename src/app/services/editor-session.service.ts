@@ -9,6 +9,7 @@ import { ProjectApiService } from './project-api.service';
 import { readBuildingFile, writeBuildingFile } from '../utils/tbx-format';
 import { SetDocumentLocked } from '../app.actions';
 import { GuestVariant, GuestVariantsService } from './guest-variants.service';
+import { WorldBuildingUpdatesService } from './world-building-updates.service';
 
 export interface DocumentCacheTarget {
   key: string;
@@ -35,7 +36,8 @@ export class EditorSessionService {
   private checkedDirty = false;
   private epoch = 0;
 
-  constructor(private store: Store<fromRoot.State>, private auth: AuthService, private api: ProjectApiService, private guests: GuestVariantsService) {
+  constructor(private store: Store<fromRoot.State>, private auth: AuthService, private api: ProjectApiService, private guests: GuestVariantsService,
+    private buildingUpdates: WorldBuildingUpdatesService) {
     this.store.select(fromRoot.getBuilding).subscribe(building => this.building = building);
   }
 
@@ -148,6 +150,7 @@ export class EditorSessionService {
     const worldBuilding = this.worldBuilding;
     const creating = this.newWorldBuilding;
     const draftKey = this.cacheTarget.key;
+    const savedBy = this.auth.user?.uid, apiBaseUrl = this.auth.apiBaseUrl;
     const epoch = this.epoch;
     try {
       const xml = this.serialize();
@@ -155,6 +158,9 @@ export class EditorSessionService {
         ? creating ? await this.api.createWorldBuilding(worldBuilding.projectId, worldBuilding.path, xml)
           : await this.api.saveWorldBuilding(worldBuilding.projectId, worldBuilding.path, xml, worldBuilding.revision)
         : await this.api.save(item!.id, xml, item!.revision);
+      if (worldBuilding && savedBy === this.auth.user?.uid && apiBaseUrl === this.auth.apiBaseUrl) {
+        this.buildingUpdates.publish(updated as Omit<WorldBuildingDocument, 'xml'>, worldBuilding.revision);
+      }
       if (epoch !== this.epoch) return false;
       if (worldBuilding) this.worldBuilding = updated as Omit<WorldBuildingDocument, 'xml'>;
       else this.contribution = updated as Contribution;

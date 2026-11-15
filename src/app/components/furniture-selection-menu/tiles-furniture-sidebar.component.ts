@@ -17,6 +17,7 @@ import { isolatePanelKey } from '../../utils/editor-shortcuts';
 import { roomEntryKey, cloneRoomEntry } from '../../utils/room-tile-entries';
 import { BuildingMaterialField } from '../../utils/object-materials';
 import { TileThumbnails } from '../../utils/tile-thumbnails';
+import { materialMenuEntries, materialResolver } from '../../utils/material-catalog';
 
 interface MaterialCategory {
   category: string; label: string; wall?: string;
@@ -74,7 +75,13 @@ export class TilesFurnitureSidebarComponent implements OnInit, OnChanges, OnDest
     this.subscriptions.add(this.store.select(fromRoot.getBuilding).subscribe(building => { this.building = building; this.rebuild(); }));
     this.subscriptions.add(this.furniture.groups$.subscribe(groups => this.furnitureGroups = groups));
     // Admin edits to the published materials arrive here while the editor is open.
-    this.subscriptions.add(this.tileLibrary.entries$.subscribe(entries => { this.materials = entries; this.rebuild(); }));
+    this.subscriptions.add(this.tileLibrary.entries$.subscribe(entries => {
+      this.materials = entries;
+      const resolve = materialResolver(entries);
+      this.settings.wallMaterials = Object.fromEntries(Object.entries(this.settings.wallMaterials)
+        .map(([field, entry]) => [field, entry ? cloneRoomEntry(resolve(entry)) : null]));
+      this.rebuild();
+    }));
     this.tileLibrary.load().catch(() => { this.error = 'Could not load default tiles.'; });
     this.library.load().then(custom => {
       if (this.destroyed) return;
@@ -93,12 +100,11 @@ export class TilesFurnitureSidebarComponent implements OnInit, OnChanges, OnDest
     return entry?.tiles.find(tile => tile.enum === (slot[entry.category] || 'West'))?.tile || 'None';
   }
   private rebuild(): void {
-    const entries = new Map<string, TileEntry>();
-    [...this.materials, ...this.custom, ...(this.building?.entries || [])].filter(entry => entry.category === this.category)
-      .forEach(entry => entries.set(this.key(entry), entry));
+    const entries = materialMenuEntries(this.materials, [...this.custom, ...(this.building?.entries || [])])
+      .filter(entry => entry.category === this.category);
     const groups = new Map<string, (TileEntry | null)[]>();
     if (!['roof_caps', 'roof_slopes'].includes(this.category)) groups.set('', [null]);
-    [...entries.values()].sort((a, b) => this.display(a).localeCompare(this.display(b))).forEach(entry => {
+    entries.sort((a, b) => this.display(a).localeCompare(this.display(b))).forEach(entry => {
       const name = this.display(entry).replace(/_[0-9]+$/, '');
       if (!groups.has(name)) groups.set(name, []);
       groups.get(name)!.push(entry);

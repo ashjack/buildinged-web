@@ -30,6 +30,9 @@ import { generateTilezedScene, TilezedScene } from '../../utils/tilezed-terrain'
 import { drawTilezedOverlays, summarizeZones, tilezedLotAtPixel, TilezedZoneSummary } from '../../utils/tilezed-overlays';
 import { WorldedLot, WorldedZone } from '../../utils/worlded-world';
 import { isTextEditing } from '../../utils/editor-shortcuts';
+import { openBuildingEditor } from '../../utils/open-building-editor';
+import { WorldBuildingSaved, WorldBuildingUpdatesService } from '../../services/world-building-updates.service';
+import { readBuildingPreviewFile } from '../../utils/tbx-format';
 
 const SHOW_ZONES_KEY = 'tilezed:showZones';
 const SHOW_LOTS_KEY = 'tilezed:showLotOutlines';
@@ -126,6 +129,9 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   private resizeObserver?: ResizeObserver;
   private readonly sheetsChanged: Subscription;
   private readonly assetChanges: Subscription;
+  private readonly buildingChanges: Subscription;
+  private readonly buildingRefreshes = new Map<string, number>();
+  private readonly buildingRevisions = new WeakMap<TilezedBuildingContext, Map<number, number>>();
   private frame?: number;
   // Building loads redraw often; terrain is reused while the camera, size, scene and sheets are unchanged.
   private terrain?: {
@@ -153,7 +159,9 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     private readonly router: Router,
     private readonly api: ProjectApiService,
     private readonly sessions: TilezedSessionService,
+    private readonly buildingUpdates: WorldBuildingUpdatesService,
   ) {
+    this.buildingChanges = this.buildingUpdates.changes$.subscribe(event => { void this.refreshSavedBuilding(event); });
     this.assetChanges = this.assets.changes$?.subscribe(names => {
       if (!this.scene) return;
       void this.reloadSheets();
@@ -226,6 +234,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     this.sheetGeneration++;
     this.sheetsChanged.unsubscribe();
     this.assetChanges.unsubscribe();
+    this.buildingChanges.unsubscribe();
     this.buildings?.dispose();
     this.clearBuildingBrush();
     this.resizeObserver?.disconnect();
@@ -418,6 +427,41 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
         this.changeDetector.markForCheck();
       }
     });
+  }
+
+  async refreshSavedBuilding(event: WorldBuildingSaved): Promise<void> {
+    const context = this.buildingContext, uid = this.auth.user?.uid, apiBaseUrl = this.auth.apiBaseUrl;
+    if (this.destroyed || !this.scene || !context?.projectId || context.projectId !== event.projectId ||
+      !uid || event.userId !== uid || event.apiBaseUrl !== apiBaseUrl) return;
+    const revisions = this.buildingRevisions.get(context) ?? new Map<number, number>();
+    this.buildingRevisions.set(context, revisions);
+    if (event.revision === event.previousRevision + 1) revisions.set(event.previousRevision, event.revision);
+    const generation = (this.buildingRefreshes.get(event.path) ?? 0) + 1;
+    this.buildingRefreshes.set(event.path, generation);
+    const mapGeneration = this.mapGeneration;
+    const current = () => !this.destroyed && this.buildingContext === context && this.mapGeneration === mapGeneration &&
+      this.auth.user?.uid === uid && this.auth.apiBaseUrl === apiBaseUrl && this.buildingRefreshes.get(event.path) === generation;
+    try {
+      const document = await this.api.worldBuilding(event.projectId, event.path);
+      if (!current()) return;
+      if (document.projectId !== event.projectId || document.path !== event.path || document.revision < event.revision)
+        throw new Error('The saved building is not available yet.');
+      const building = readBuildingPreviewFile(new DOMParser().parseFromString(document.xml, 'application/xml'));
+      const file = new File([document.xml], document.path.split('/').pop()!, { type: 'application/xml' });
+      context.files = new Map(context.files).set(document.path, file);
+      // Advance only a known, contiguous building-only revision; other world changes must still conflict safely.
+      while (context.worldRevision !== undefined && revisions.has(context.worldRevision)) {
+        const previous = context.worldRevision;
+        context.worldRevision = revisions.get(previous)!; revisions.delete(previous);
+      }
+      this.loadBuildings();
+      const selected = this.selectedBuilding;
+      if (this.tool === 'building' && selected?.path === document.path && this.canPlaceBuildings)
+        await this.chooseBuilding({ ...selected, file, width: building.width, height: building.height });
+      if (current()) { this.requestDraw(); this.changeDetector.markForCheck(); }
+    } catch (error) {
+      if (current()) { this.error = `Could not refresh saved building: ${error instanceof Error ? error.message : String(error)}`; this.changeDetector.markForCheck(); }
+    }
   }
 
   private syncBuildingPlacements(): void {
@@ -1159,9 +1203,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     if (!menu || !this.auth.isAdmin || menu.projectId !== this.buildingContext?.projectId) return;
     try {
       if (!menu.projectId) return;
-      if (!await this.router.navigate(['/projects', menu.projectId, 'world-buildings', menu.path, 'edit'])) {
-        this.error = 'Could not open the building editor. Try again.';
-      }
+      openBuildingEditor(this.router, menu.projectId, menu.path);
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
     }
@@ -1183,9 +1225,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     this.closeContextMenu(true);
     if (!menu?.projectId || !this.auth.isAdmin || menu.projectId !== this.buildingContext?.projectId) return;
     try {
-      if (!await this.router.navigate(['/projects', menu.projectId, 'world-buildings', 'new'], { queryParams: { copyFrom: menu.path } })) {
-        this.error = 'Could not open the building copy. Try again.';
-      }
+      openBuildingEditor(this.router, menu.projectId, menu.path, true);
     } catch (error) { this.error = error instanceof Error ? error.message : String(error); }
   }
 

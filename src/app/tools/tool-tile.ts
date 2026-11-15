@@ -52,6 +52,11 @@ export default class ToolTile extends ToolDraw {
         this.dragTiles = []; this.tileGhosts = [];
         const mode = this.isDragging ? this.mode : this.settings.tileMode;
         const erase = this.isDragging ? this.erasing : mode === 'eraser' || this.key === 'Control';
+        const area = this.isDragging ? tileAreaBetween(this.beginDragCoords[0], this.beginDragCoords[1], x, y) : undefined;
+        this.statusText = area && ['rectangle', 'capture'].includes(mode)
+            ? `Width,Height = ${area.width},${area.height}. Right-click to cancel.`
+            : mode === 'capture' ? 'Right-click-drag to capture tiles.' : mode === 'pick' ? 'Left-click to pick a tile.'
+                : erase ? 'Left-click-drag to erase tiles.' : 'Left-click-drag to draw tiles. Ctrl erases.';
         const add = (cell: TileCellEdit) => {
             const t: SvgTile = { x: cell.x, y: cell.y, name: cell.tile || '', url: cell.tile ? this.gridService.getIndividualTile(cell.tile) : '',
                 level: this.selectedLevel, layer: this.selectedLayer };

@@ -14,7 +14,7 @@ import { FURNITURE_TILE_MIME, FurnitureCellDrop, FurnitureCellPoint, furnitureTi
 import { BuildingTilesLibraryService } from '../../services/building-tiles-library.service';
 import {
   BUILDING_TILE_CATEGORIES, BuildingTilesDocument, BuildingTilesEntry, BuildingTilesLayout, buildingTilesCategory, buildingTilesEntryKey,
-  buildingTilesLayout, entryFromSingleTile, parseBuildingTilesDocument, setEntryOffset, setEntryTile, updateCategoryEntries, windowTemplateOffset,
+  buildingTilesLayout, entryFromSingleTile, parseBuildingTilesDocument, setEntryOffset, setEntryTile, setEntryWindowShape, updateCategoryEntries, validWindowShape, windowShape, windowTemplateOffset, WINDOW_FRAMES,
 } from '../../utils/building-tiles';
 
 type AdminMode = 'furniture' | 'tiles';
@@ -38,6 +38,12 @@ export class FurnitureAdminComponent implements OnInit, AfterViewInit, OnDestroy
   readonly entryOf = entryOf;
   readonly shiftSteps = SHIFT_STEPS;
   readonly tileCategories = BUILDING_TILE_CATEGORIES;
+  readonly windowFacings = ['West', 'North'];
+  readonly windowShapes = Array.from({ length: WINDOW_FRAMES }, (_, index) => index + 1);
+  windowShapeLabel(shape: number): string {
+    return shape === 0 ? 'Standard opening' : shape === 17 ? '17 – Trailer left' : shape === 18 ? '18 – Trailer right'
+      : shape === 19 ? '19 – Tall narrow arch' : `Opening ${shape}`;
+  }
 
   mode: AdminMode = localStorage.getItem('furnitureAdminMode') === 'tiles' ? 'tiles' : 'furniture';
   groups: BFurnitureGroup[] = [];
@@ -161,7 +167,7 @@ export class FurnitureAdminComponent implements OnInit, AfterViewInit, OnDestroy
   cellStyle(entry: BuildingTilesEntry, c: number): Record<string, string> | null {
     const { layout, styles } = this.tileLayout, cell = layout.cells[c];
     if (this.tileCategory !== 'windows' || !cell.template || !cell.key) return styles[c];
-    const [dx, dy] = windowTemplateOffset(cell.key, entry.tiles[cell.key]);
+    const [dx, dy] = windowTemplateOffset(cell.key, entry.tiles[cell.key], entry.windowShapes?.[cell.key]);
     if (!dx && !dy) return styles[c];
     const id = `${cell.column + dx}:${cell.row + dy}`;
     let style = this.windowStyles.get(id);
@@ -589,6 +595,20 @@ export class FurnitureAdminComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   slotTile(entry: BuildingTilesEntry, key: string): string { return entry.tiles[key] ?? ''; }
+  windowOpening(entry: BuildingTilesEntry, key: string): string { return entry.windowShapes?.[key]?.toString() ?? 'auto'; }
+  automaticWindowOpening(entry: BuildingTilesEntry, key: string): string { return this.windowShapeLabel(windowShape(entry.tiles[key])); }
+  windowOpeningPreview(entry: BuildingTilesEntry, key: string): Record<string, string> {
+    const [dx, row] = windowTemplateOffset(key, entry.tiles[key], entry.windowShapes?.[key]);
+    const column = (key === 'North' ? 1 : 0) + dx;
+    return { 'background-image': 'url(assets/building-tile-templates/shadow_windows.png)',
+      'background-size': '512px 640px', 'background-position': `${-column * 64}px ${-row * 128}px` };
+  }
+  setWindowOpening(key: string, value: string): void {
+    if (this.tileCategory !== 'windows' || !this.currentTileEntry) return;
+    const shape = value === 'auto' ? undefined : Number(value);
+    if (shape !== undefined && (!/^\d+$/.test(value) || !validWindowShape(shape))) return;
+    this.editTileEntry(this.tileEntry, entry => setEntryWindowShape(entry, key, shape));
+  }
   slotOffset(entry: BuildingTilesEntry, key: string, axis: 0 | 1): number { return entry.offsets?.[key]?.[axis] ?? 0; }
   hasOffset(entry: BuildingTilesEntry, key: string): boolean { return !!entry.offsets?.[key]; }
   /** The selected slot, or the category's display slot if none was picked yet. */

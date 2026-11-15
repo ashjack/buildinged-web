@@ -59,6 +59,7 @@ describe('WorldEd read-only viewer', () => {
   afterEach(() => fixture.destroy());
 
   it('offers a copy for a right-clicked hosted building, navigates the menu, and rechecks permissions', async () => {
+    const opened = spyOn(window, 'open').and.returnValue(null);
     await component.openWorld(new File([worldXml], 'world.pzw'));
     component.workspace!.files.set('house.tbx', new File(['<building/>'], 'house.tbx'));
     component.hosted = true; component.projectId = 'shared'; component.canEditBuildings = true;
@@ -80,10 +81,11 @@ describe('WorldEd read-only viewer', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
     expect(document.activeElement).toBe(buttons[1]);
     buttons[1].click(); await fixture.whenStable();
-    expect(navigate).toHaveBeenCalledOnceWith(['/projects', 'shared', 'world-buildings', 'new'], { queryParams: { copyFrom: 'house.tbx' } });
+    expect(opened).toHaveBeenCalledOnceWith('/projects/shared/world-buildings/new?copyFrom=house.tbx&openEditor=true', '_blank', 'noopener');
+    expect(navigate).not.toHaveBeenCalled();
     expect(component.contextMenu).toBeUndefined();
     click(); component.canEditBuildings = false;
-    await component.buildingMenuAction(true); expect(navigate).toHaveBeenCalledTimes(1);
+    await component.buildingMenuAction(true); expect(opened).toHaveBeenCalledTimes(1);
     click(); expect(component.contextMenu).toBeUndefined();
     component.canEditBuildings = true; component.hosted = false;
     click(); expect(component.contextMenu).toBeUndefined();

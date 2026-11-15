@@ -16,6 +16,7 @@ export enum ActionTypes {
     CropBuildingToMinimum = '[Building] Crop to Minimum',
     ApplyFurnishing = '[Building] Auto furnish rooms',
     SetBuilding = '[Building] Set Building',
+    SyncBuildingMaterials = '[Building] Sync Published Materials',
     ClearBuilding = '[Building] Clear Building',
     SetDocumentLocked = '[Building] Set Document Locked',
     AddObject = '[Building] Add Object',
@@ -52,6 +53,12 @@ export class ClearBuilding implements Action {
 export class SetDocumentLocked implements Action {
     readonly type = ActionTypes.SetDocumentLocked;
     constructor(public locked: boolean) { }
+}
+
+/** Catalog refreshes update definitions without adding an edit or changing the document's identity. */
+export class SyncBuildingMaterials implements Action {
+    readonly type = ActionTypes.SyncBuildingMaterials;
+    constructor(public expectedBuilding: Building, public building: Building) { }
 }
 
 export class SetBuilding implements Action {
@@ -224,6 +231,7 @@ export type ActionsUnion =
     SetSelectedFurniture |
     ScheduleRedraw |
     SetBuilding |
+    SyncBuildingMaterials |
     ClearBuilding |
     SetDocumentLocked |
     AddObject |

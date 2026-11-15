@@ -39,13 +39,14 @@ describe('Tiles and Furniture material sidebar', () => {
     saved = JSON.stringify(localStorage); localStorage.clear();
     const b = readBuildingFile(new DOMParser().parseFromString(nativeBuildingXml, 'text/xml'));
     b.width = b.height = 8; b.floors = [{ rooms: writeIndexGrid(emptyIndexGrid(8, 8)), objects: [] }];
-    h = documentHarness(b); settings = new ToolSettingsService();
     materials = new BehaviorSubject<TileEntry[]>(defaults);
+    const tileLibrary = { entries$: materials, load: async () => ({}) };
+    h = documentHarness(b, '', tileLibrary as any); settings = new ToolSettingsService();
     TestBed.configureTestingModule({ declarations: [TilesFurnitureSidebarComponent], imports: [CommonModule, FormsModule], schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [
       { provide: Store, useValue: h.store }, { provide: BuildingService, useValue: h.buildings },
       { provide: GridService, useValue: h.grid }, { provide: ToolSettingsService, useValue: settings },
       { provide: RoomTileLibraryService, useValue: { load: async () => [] } },
-      { provide: BuildingTilesLibraryService, useValue: { entries$: materials, load: async () => ({}) } },
+      { provide: BuildingTilesLibraryService, useValue: tileLibrary },
       { provide: DbService, useValue: { getTile: async () => undefined } },
       { provide: FurnitureLibraryService, useValue: { groups$: of([{ label: 'Seating', furniture: [] }]), load: async () => ({}) } }
     ] });
@@ -56,6 +57,28 @@ describe('Tiles and Furniture material sidebar', () => {
     fixture.componentRef.setInput('tool', 'tool-wall'); fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
     return { fixture, sidebar: fixture.componentInstance, element: fixture.nativeElement as HTMLElement };
   }
+  it('replaces matching building/template rows with the server material and its window shapes', async () => {
+    const building = h.buildings.building;
+    const oldWall = defaults[0], oldWindow = defaults.find(entry => entry.category === 'windows')!;
+    const entries = [...building.entries, oldWall, oldWindow];
+    h.store.dispatch(new SetBuilding({ ...building, entries, ExteriorWall: entries.length - 1, Window: entries.length }));
+    settings.wallMaterials = { Tile: oldWall };
+    const { fixture, sidebar } = await setup();
+    const wall = { ...oldWall, tiles: [...oldWall.tiles, { enum: 'WestWindow13', tile: 'frame_013' }] };
+    const window = { ...oldWindow, tiles: oldWindow.tiles.map(tile => ({ ...tile, windowShape: 15 })) };
+    materials.next(defaults.map(entry => entry === oldWall ? wall : entry === oldWindow ? window : entry));
+    fixture.componentRef.setInput('tool', 'tool-draw-room'); fixture.detectChanges();
+    sidebar.selectCategory('exterior_walls');
+    const exterior = sidebar.groups.flatMap(group => group.entries).filter(entry => entry && sidebar.display(entry) === sidebar.display(wall));
+    expect(exterior).toEqual([wall]); expect(sidebar.selected(wall)).toBeTrue();
+    expect(settings.wallMaterials['Tile']).toEqual(wall);
+    expect(h.buildings.building.entries[h.buildings.building.ExteriorWall - 1]).toEqual(wall);
+    sidebar.selectCategory('windows');
+    const windows = sidebar.groups.flatMap(group => group.entries).filter(entry => entry && sidebar.display(entry) === sidebar.display(window));
+    expect(windows).toEqual([window]);
+    expect(h.buildings.building.entries[h.buildings.building.Window - 1]).toEqual(window);
+    fixture.destroy();
+  });
   it('shows full-catalog category thumbnails and preserves the sidebar selection across placement tools', async () => {
     const { fixture, sidebar, element } = await setup();
     expect(element.querySelector('[aria-label="Tile and furniture categories"]')?.textContent).toContain('Exterior Wall Trim');

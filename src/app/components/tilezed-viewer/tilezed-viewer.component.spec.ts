@@ -18,6 +18,7 @@ import { TilezedBuildingPaletteComponent } from './tilezed-building-palette.comp
 import { ProjectApiService } from '../../services/project-api.service';
 import { readTilezedMap } from '../../utils/tilezed-map';
 import { nativeBuildingXml } from '../../testing/native-building.fixture';
+import { WorldBuildingSaved, WorldBuildingUpdatesService } from '../../services/world-building-updates.service';
 
 const mapXml = `<map version="1.0" orientation="levelisometric" width="1" height="1" tilewidth="64" tileheight="32">
   <tileset firstgid="1" name="sheet_01" tilewidth="64" tileheight="128"><image source="sheet_01.png" width="64" height="128"/></tileset>
@@ -30,6 +31,7 @@ describe('TileZed read-only viewer', () => {
   let assets: jasmine.SpyObj<TilezedAssetsService>;
   let storage: jasmine.SpyObj<TilezedStorageService>;
   let changes: Subject<string[]>;
+  let buildingChanges: Subject<WorldBuildingSaved>;
 
   beforeEach(async () => {
     localStorage.removeItem('tilezed:highlightCurrentLevel');
@@ -47,13 +49,15 @@ describe('TileZed read-only viewer', () => {
     storage.rememberMap.and.resolveTo();
     storage.lastBuildings.and.resolveTo(undefined);
     changes = new Subject<string[]>();
+    buildingChanges = new Subject<WorldBuildingSaved>();
     TestBed.configureTestingModule({
       declarations: [TilezedViewerComponent],
       imports: [CommonModule, RouterTestingModule, TilezedTilePaletteComponent, TilezedBuildingPaletteComponent],
       providers: [
         { provide: BuildingPreviewService, useValue: previews },
         { provide: AuthService, useValue: { isAdmin: false } },
-        { provide: ProjectApiService, useValue: jasmine.createSpyObj('ProjectApiService', ['saveWorldMap']) },
+        { provide: ProjectApiService, useValue: jasmine.createSpyObj('ProjectApiService', ['saveWorldMap', 'worldBuilding']) },
+        { provide: WorldBuildingUpdatesService, useValue: { changes$: buildingChanges.asObservable() } },
         { provide: DbService, useValue: { sheetsChanged: changes } },
         { provide: TilezedAssetsService, useValue: assets },
         { provide: TilezedStorageService, useValue: storage },
@@ -67,7 +71,61 @@ describe('TileZed read-only viewer', () => {
     await new Promise(resolve => setTimeout(resolve, 0));
   });
 
-  afterEach(() => { fixture.destroy(); changes.complete(); localStorage.removeItem('tilezed:warningsExpanded'); localStorage.removeItem('tilezed:highlightCurrentLevel'); });
+  afterEach(() => { fixture.destroy(); changes.complete(); buildingChanges.complete(); localStorage.removeItem('tilezed:warningsExpanded'); localStorage.removeItem('tilezed:highlightCurrentLevel'); });
+
+  const savedBuilding = (changes: Partial<WorldBuildingSaved> = {}): WorldBuildingSaved => ({ id: crypto.randomUUID(), userId: 'admin',
+    apiBaseUrl: 'https://example.test/api', projectId: 'project', path: 'Buildings/house.tbx', previousRevision: 7, revision: 8, ...changes });
+  const prepareBuildingUpdates = async () => {
+    Object.assign(TestBed.inject(AuthService), { user: { uid: 'admin' }, apiBaseUrl: 'https://example.test/api' });
+    await openEditableMap(true);
+    return TestBed.inject(ProjectApiService) as jasmine.SpyObj<ProjectApiService>;
+  };
+  it('refreshes a saved building and palette without replacing the edited map, undo history or camera', async () => {
+    const api = await prepareBuildingUpdates();
+    const context = (component as any).buildingContext as TilezedBuildingContext;
+    const unchanged = new File(['unchanged'], 'other.tbx'); context.files.set('Buildings/other.tbx', unchanged);
+    const files = context.files, previousLots = component.buildings;
+    component.editor!.paintCells('0_Floor', [{ point: { x: 0, y: 0 }, gid: 1 }]);
+    component.scene = component.editor!.scene;
+    const editor = component.editor, scene = component.scene, camera = { ...(component as any).camera };
+    api.worldBuilding.and.resolveTo({ projectId: 'project', path: 'Buildings/house.tbx', revision: 8, xml: nativeBuildingXml });
+    buildingChanges.next(savedBuilding()); await fixture.whenStable();
+    expect(api.worldBuilding).toHaveBeenCalledOnceWith('project', 'Buildings/house.tbx');
+    expect(await component.buildingFiles.get('Buildings/house.tbx')!.text()).toBe(nativeBuildingXml);
+    expect(context.files).not.toBe(files); expect(context.files.get('Buildings/other.tbx')).toBe(unchanged);
+    expect(context.worldRevision).toBe(8); expect(component.buildings).not.toBe(previousLots);
+    expect(component.editor).toBe(editor); expect(component.scene).toBe(scene); expect((component as any).camera).toEqual(camera);
+    expect(component.dirty).toBeTrue(); expect(component.editor!.canUndo).toBeTrue();
+    component.editor!.undo(); expect(component.editor!.scene.layers[0].gids[0]).toBe(0);
+  });
+  it('adds newly saved copies to the palette without advancing over unknown world edits', async () => {
+    const api = await prepareBuildingUpdates(), path = 'Buildings/house_copy.tbx';
+    api.worldBuilding.and.resolveTo({ projectId: 'project', path, revision: 10, xml: nativeBuildingXml });
+    await component.refreshSavedBuilding(savedBuilding({ path, revision: 10 }));
+    expect(component.buildingFiles.has(path)).toBeTrue();
+    expect((component as any).buildingContext.worldRevision).toBe(7);
+  });
+  it('keeps current building resources when refresh fails and ignores other projects and accounts', async () => {
+    const api = await prepareBuildingUpdates(), files = component.buildingFiles, lots = component.buildings;
+    await component.refreshSavedBuilding(savedBuilding({ projectId: 'other' }));
+    await component.refreshSavedBuilding(savedBuilding({ userId: 'other' }));
+    expect(api.worldBuilding).not.toHaveBeenCalled();
+    api.worldBuilding.and.rejectWith(new Error('Offline'));
+    await component.refreshSavedBuilding(savedBuilding());
+    expect(component.buildingFiles).toBe(files); expect(component.buildings).toBe(lots); expect(component.error).toContain('Offline');
+  });
+  it('uses the latest response for overlapping saves and retains their revision chain', async () => {
+    const api = await prepareBuildingUpdates();
+    let first!: (value: any) => void, second!: (value: any) => void;
+    api.worldBuilding.and.returnValues(new Promise(resolve => first = resolve), new Promise(resolve => second = resolve));
+    const older = component.refreshSavedBuilding(savedBuilding());
+    const newer = component.refreshSavedBuilding(savedBuilding({ previousRevision: 8, revision: 9 }));
+    const xml = nativeBuildingXml.replace('Office', 'Updated office');
+    second({ projectId: 'project', path: 'Buildings/house.tbx', revision: 9, xml }); await newer;
+    first({ projectId: 'project', path: 'Buildings/house.tbx', revision: 8, xml: nativeBuildingXml }); await older;
+    expect(await component.buildingFiles.get('Buildings/house.tbx')!.text()).toBe(xml);
+    expect((component as any).buildingContext.worldRevision).toBe(9);
+  });
 
   it('toggles Highlight Current Level once per H press without switching tools, changing the document or adding a button', async () => {
     await openEditableMap(); component.setTool('stamp');
@@ -187,6 +245,7 @@ describe('TileZed read-only viewer', () => {
   it('right-clicks the grey overlay without a rendered sprite and opens the direct shared building editor', async () => {
     await openBuilding();
     const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    const opened = spyOn(window, 'open').and.returnValue(null);
     const event = rightClickBuilding();
     expect(event.defaultPrevented).toBeTrue();
     const menu = fixture.nativeElement.querySelector('[role="menu"]') as HTMLElement;
@@ -197,7 +256,9 @@ describe('TileZed read-only viewer', () => {
     expect(document.activeElement).toBe(edit);
     edit.click();
     await fixture.whenStable(); fixture.detectChanges();
-    expect(navigate).toHaveBeenCalledOnceWith(['/projects', 'project', 'world-buildings', 'Buildings/house.tbx', 'edit']);
+    expect(decodeURIComponent(opened.calls.mostRecent().args[0] as string)).toBe('/projects/project/world-buildings/Buildings/house.tbx/edit');
+    expect(opened.calls.mostRecent().args.slice(1)).toEqual(['_blank', 'noopener']);
+    expect(navigate).not.toHaveBeenCalled();
     expect(component.contextMenu).toBeUndefined();
     expect(component.dragging).toBeFalse();
   });
@@ -232,14 +293,15 @@ describe('TileZed read-only viewer', () => {
   it('opens a new world building copy from the right-clicked source', async () => {
     await openBuilding(); rightClickBuilding();
     const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    const opened = spyOn(window, 'open').and.returnValue(null);
     const buttons = fixture.nativeElement.querySelectorAll('[role="menuitem"]') as NodeListOf<HTMLButtonElement>;
     expect(buttons[2].textContent).toBe('Create copy'); buttons[2].click(); await fixture.whenStable();
-    expect(navigate).toHaveBeenCalledOnceWith(['/projects', 'project', 'world-buildings', 'new'], {
-      queryParams: { copyFrom: 'Buildings/house.tbx' },
-    });
+    expect(decodeURIComponent(opened.calls.mostRecent().args[0] as string)).toBe('/projects/project/world-buildings/new?copyFrom=Buildings/house.tbx&openEditor=true');
+    expect(opened.calls.mostRecent().args.slice(1)).toEqual(['_blank', 'noopener']);
+    expect(navigate).not.toHaveBeenCalled();
     expect(component.contextMenu).toBeUndefined();
     rightClickBuilding(); Object.assign(TestBed.inject(AuthService), { isAdmin: false });
-    await component.copyContextBuilding(); expect(navigate).toHaveBeenCalledTimes(1);
+    await component.copyContextBuilding(); expect(opened).toHaveBeenCalledTimes(1);
   });
 
   it('rechecks admin permissions before creating a task from the context menu', async () => {

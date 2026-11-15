@@ -6,6 +6,9 @@ import { emptyIndexGrid, writeIndexGrid } from '../utils/tbx-grid';
 import { generateBuildingSquares, resolveFurniture } from './native-squares';
 import { buildRoofPlacements, defaultRoofCaps, resolveRoofDepth, ROOF_OPTIONS } from './roof-patterns';
 import { ViewportCanvasComponent } from '../viewport-canvas/viewport-canvas.component';
+import { setBuildingMaterial } from '../utils/object-materials';
+import { parseBuildingTilesDocument, serializeBuildingTiles, toTileEntries, updateCategoryEntries } from '../utils/building-tiles';
+import { WindowService } from './window.service';
 
 // Expected enums and pass ordering come from BuildingFloor::LayoutToSquares,
 // Square::Replace*, and RoofObject::*Tiles in the supplied C++ source.
@@ -128,6 +131,41 @@ describe('Native square generation', () => {
         expect(tile(tiles, 1, 2, 'Walls')).toBe('inside-WestWindow3.png');
         expect(tile(tiles, 2, 1, 'Walls')).toBe('inside-NorthWindow.png');
         expect(tile(tiles, 1, 2, 'WallTrim2')).toBe('inner-trim-WestWindow.png');
+    });
+
+    it('places published custom windows using their marked opening and retains it through TBX save/reopen', () => {
+        let b = fixture(); room(b, 1, 1, 2, 2);
+        for (const material of [b.rooms[0].InteriorWall, b.rooms[0].InteriorWallTrim]) {
+            b.entries[material - 1].tiles.push({ enum: 'WestWindow7', tile: `frame_${material}_007` }, { enum: 'NorthWindow19', tile: `frame_${material}_019` });
+        }
+        const doc = updateCategoryEntries(parseBuildingTilesDocument('version = 4\n'), 'windows', () => [{
+            tiles: { West: 'custom_windows_000', North: 'custom_windows_001' }, windowShapes: { West: 7, North: 19 }
+        }]);
+        const entry = toTileEntries(parseBuildingTilesDocument(serializeBuildingTiles(doc)))[0];
+        b = setBuildingMaterial(b, 'Window', entry);
+        expect(b.entries[b.Window - 1].tiles[0].windowShape).toBe(7);
+        const scene = documentHarness(b), service = new WindowService(scene.grid, scene.buildings, scene.store as any);
+        service.placeWindow(1, 2, 0, 'W'); service.placeWindow(2, 1, 0, 'N');
+        const reopened = readBuildingFile(writeBuildingFile(scene.buildings.building));
+        const { tiles } = generateBuildingSquares(reopened);
+        expect(tile(tiles, 1, 2, 'Walls')).toBe(`frame_${b.rooms[0].InteriorWall}_007.png`);
+        expect(tile(tiles, 2, 1, 'Walls')).toBe(`frame_${b.rooms[0].InteriorWall}_019.png`);
+        expect(tile(tiles, 1, 2, 'WallTrim2')).toBe(`frame_${b.rooms[0].InteriorWallTrim}_007.png`);
+        expect(tile(tiles, 1, 2, 'Windows')).toBe('custom_windows_000.png');
+        expect(tile(tiles, 2, 1, 'Windows')).toBe('custom_windows_001.png');
+        scene.destroy();
+    });
+
+    it('keeps an explicit standard window opening distinct from auto-detected large artwork', () => {
+        let b = fixture(); room(b, 1, 1, 2, 2);
+        const automatic = { category: 'windows', tiles: [{ enum: 'West', tile: 'fixtures_windows_church_004' }] };
+        b = setBuildingMaterial(b, 'Window', automatic);
+        const autoId = b.Window;
+        b = setBuildingMaterial(b, 'Window', { ...automatic, tiles: automatic.tiles.map(tile => ({ ...tile, windowShape: 0 })) });
+        expect(b.Window).not.toBe(autoId);
+        b.entries[b.rooms[0].InteriorWall - 1].tiles.push({ enum: 'WestWindow3', tile: 'large_003' });
+        b.floors[0].objects.push(opening(b, 'window', 1, 2));
+        expect(tile(generateBuildingSquares(b).tiles, 1, 2, 'Walls')).toBe('inside-WestWindow.png');
     });
 
     it('puts exterior-window curtains inside and shutters across exterior neighbor squares', () => {

@@ -83,6 +83,9 @@ function commandLabel(action: Actions.ActionsUnion): string {
 /** Existing actions are edit commands; snapshots share their unchanged immutable data. */
 export function reducer(state = initialState, action: Actions.ActionsUnion): State {
     if (action.type === Actions.ActionTypes.ClearBuilding) return { ...initialState, documentId: state.documentId + 1 };
+    if (action.type === Actions.ActionTypes.SyncBuildingMaterials) {
+        return state.building === action.expectedBuilding ? { ...state, building: action.building } : state;
+    }
     if (action.type === Actions.ActionTypes.SetDocumentLocked) return { ...state, documentLocked: action.locked };
     if (state.documentLocked && ![
         Actions.ActionTypes.SetBuilding, Actions.ActionTypes.SetCurrentTool, Actions.ActionTypes.SetSelectedFurniture,

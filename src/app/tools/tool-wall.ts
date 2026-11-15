@@ -80,6 +80,7 @@ export default class ToolWall extends ToolDraw {
             if (handle >= 0) this.cursor = 'move';
             else if (!this.modifiers.alt && point.x >= 0 && point.y >= 0 && point.x <= b.width && point.y <= b.height)
                 this.overlay({ x: point.x - 0.2, y: point.y - 0.2, width: 0.4, height: 0.4 }, '#00ff0080');
+            this.statusText = handle >= 0 ? 'Left-click-drag to resize the wall.' : 'Left-click-drag to place a wall. Right-click removes an object.';
             return;
         }
         const outside = point.x < 0 || point.y < 0 || point.x > b.width || point.y > b.height;
@@ -89,6 +90,7 @@ export default class ToolWall extends ToolDraw {
         this.overlay(nativeWallShape(candidate), valid ? '#00ff0080' : '#ff000080');
         if (this.resizing) nativeWallHandles(candidate).forEach(r => this.overlay(r, '#fff'));
         this.settings.message = valid ? '' : 'Wall must fit inside the building.';
+        this.statusText = `Length = ${candidate.length}. ${this.settings.message || 'Right-click to cancel.'}`;
         if (!valid) return;
         const level = this.grid.getSelectedLevel();
         const resolved = resolveObjectMaterials(b, candidate, this.resizing ? {} : this.settings.wallMaterials);

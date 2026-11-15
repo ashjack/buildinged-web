@@ -1,11 +1,15 @@
 import { GridService } from '../services/grid.service';
 import { WindowService } from '../services/window.service';
 import { BuildingService } from '../services/building.service';
-import { wallEdgePlacement } from '../utils/tool-placement';
+import { canPlaceObject, wallEdgePlacement } from '../utils/tool-placement';
 import ToolDraw from './tool-draw';
+import { generateBuildingSquares } from '../services/native-squares';
+import { Building, SvgTile } from '../models/app.models';
 
 export default class ToolWindow extends ToolDraw {
     edge = '';
+    private preview?: { building: Building; x: number; y: number; dir: string; level: number; tiles: SvgTile[] };
+    override cancel(): void { super.cancel(); this.preview = undefined; }
 
     constructor(private windowService: WindowService, private gridService: GridService, private buildingService: BuildingService) { super(); }
 
@@ -13,6 +17,19 @@ export default class ToolWindow extends ToolDraw {
         this.edge = closestEdge || '';
         const placement = wallEdgePlacement(x, y, this.edge);
         const name = placement && this.windowService.getTile(placement.dir);
+        const building = this.buildingService.building, level = this.gridService.getSelectedLevel();
+        this.previewTiles = undefined;
+        if (placement && building && canPlaceObject(building, placement.x, placement.y, level)) {
+            const cached = this.preview;
+            if (!cached || cached.building !== building || cached.level !== level || cached.x !== placement.x || cached.y !== placement.y || cached.dir !== placement.dir) {
+                const object = { ...placement, uid: 'window-preview', type: 'window', Tile: building.Window,
+                    CurtainsTile: building.Curtains, ShuttersTile: building.Shutters };
+                const tiles = generateBuildingSquares({ ...building, floors: building.floors.map((floor, index) => index === level
+                    ? { ...floor, objects: [...floor.objects, object] } : floor) }).tiles;
+                this.preview = { building, level, ...placement, tiles };
+            }
+            this.previewTiles = this.preview!.tiles;
+        }
         this.tileGhosts = placement && name ? [{
             name: name + '.png', url: this.gridService.getIndividualTile(name + '.png'),
             x: placement.x, y: placement.y, layer: 'Windows', level: this.gridService.getSelectedLevel(),

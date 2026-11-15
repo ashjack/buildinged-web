@@ -46,6 +46,8 @@ export default class ToolSelect extends ToolDraw {
         const start = this.beginDragCoords;
         const area = this.isDragging && !this.moving ? this.clip(tileAreaBetween(start[0], start[1], x, y)) : this.area;
         const dx = this.isDragging && this.moving ? x - start[0] : 0, dy = this.isDragging && this.moving ? y - start[1] : 0;
+        this.statusText = this.isDragging && this.moving ? `Offset = ${dx},${dy}. Right-click to cancel.`
+            : area ? `Width,Height = ${area.width},${area.height}. Drag inside the selection to move.` : 'Left-click-drag to select.';
         this.dragTiles = []; this.tileGhosts = [];
         if (this.mode === 'objects' && (!this.isDragging || this.moving)) {
             this.buildings.building?.floors[this.level]?.objects.filter(o => this.uids.includes(o.uid)).forEach(o => {

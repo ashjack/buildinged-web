@@ -16,7 +16,7 @@ export function roomEntryFromTile(category: string, tile: string): TileEntry {
 }
 export function roomEntryKey(entry: TileEntry): string {
     return JSON.stringify([entry.category, entry.tiles.filter(t => t.tile && t.tile !== 'None').map(t => [t.enum || '', t.tile.replace(/\.png$/i, ''),
-        (t.offset || '0 0').trim().split(/\s+/).map(Number)]).sort((a, b) => String(a[0]).localeCompare(String(b[0])))]);
+        (t.offset || '0 0').trim().split(/\s+/).map(Number), ...(t.windowShape !== undefined ? [t.windowShape] : [])]).sort((a, b) => String(a[0]).localeCompare(String(b[0])))]);
 }
 export function roomEntryDisplay(entry: TileEntry | null | undefined): string {
     const preferred = entry?.category === 'floors' ? 'Floor' : 'West';

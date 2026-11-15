@@ -42,7 +42,7 @@
   <button (click)="session.save()" [disabled]="!session.editable || session.busy">{{session.newWorldBuilding ? 'Add building to world' : 'Save building to world'}}</button>
   <button (click)="exportBuilding()" [disabled]="session.busy">Export .tbx</button>
   <button *ngIf="!session.newWorldBuilding" (click)="reload()" [disabled]="session.busy">Reload cloud copy</button>
-  <a *ngIf="!session.newWorldBuilding && auth.isAdmin" [routerLink]="['/projects', item.projectId, 'world-buildings', 'new']" [queryParams]="{copyFrom: item.path}">Create copy</a>
+  <a *ngIf="!session.newWorldBuilding && auth.isAdmin" [routerLink]="['/projects', item.projectId, 'world-buildings', 'new']" [queryParams]="{copyFrom: item.path, openEditor: 'true'}" target="_blank" rel="noopener">Create copy</a>
 </div>
 <p class="project-editor-notice" role="status" *ngIf="session.message">{{session.message}}</p>
 <p class="project-editor-notice error" role="alert" *ngIf="error || session.error">{{error || session.error}} <a routerLink="/">Projects</a></p>
@@ -53,11 +53,16 @@
     <app-menu>
     <div class="editor-workspace">
       <app-tool-options></app-tool-options>
-      <app-viewport-canvas></app-viewport-canvas>
+      <app-viewport-canvas #viewport></app-viewport-canvas>
       <app-tile-selection-menu *ngIf="(selectedTool$|async) == 'tool-tile' || (selectedTool$|async) == 'tool-select-tiles'"></app-tile-selection-menu>
       <app-roof-selection-menu *ngIf="(selectedTool$|async) == 'tool-roof'"></app-roof-selection-menu>
       <app-tiles-furniture-sidebar *ngIf="!['tool-tile', 'tool-select-tiles'].includes((selectedTool$|async) || '')" [tool]="(selectedTool$|async) || ''"></app-tiles-furniture-sidebar>
     </div>
+    <footer data-editor-status class="editor-status" aria-label="Editor status">
+      <span class="status-coordinates" aria-label="Grid position">{{viewport.cursorCoordinates.x}},{{viewport.cursorCoordinates.y}}</span>
+      <span class="status-message" [title]="viewport.statusText" aria-label="Tool status">{{viewport.statusText}}</span>
+      <span class="status-zoom" aria-label="Viewport zoom">{{viewport.zoom * 100 | number:'1.0-1'}}%</span>
+    </footer>
     </app-menu>
   </div>
 </div>

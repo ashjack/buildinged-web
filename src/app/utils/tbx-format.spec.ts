@@ -7,6 +7,18 @@ const parse = (text: string) => new DOMParser().parseFromString(text, 'text/xml'
 const roundTrip = (text: string) => readBuildingFile(parse(new XMLSerializer().serializeToString(writeBuildingFile(readBuildingFile(parse(text))))));
 
 describe('TBX file compatibility', () => {
+    it('preserves manual window openings and rejects invalid or misplaced shape overrides', () => {
+        const building = readBuildingFile(parse(nativeBuildingXml));
+        building.entries.push({ category: 'windows', tiles: [
+            { enum: 'West', tile: 'windows_000', windowShape: 0 }, { enum: 'North', tile: 'windows_001', windowShape: 19 }
+        ] });
+        const xml = writeBuildingFile(building);
+        expect(xml.querySelector('tile[enum="West"][WindowShape="0"]')).not.toBeNull();
+        expect(readBuildingFile(xml).entries[1]).toEqual(building.entries[1]);
+        building.entries[1].tiles[1].windowShape = 20;
+        expect(() => writeBuildingFile(building)).toThrowError(/Window shapes/);
+        expect(() => readBuildingFile(parse(nativeBuildingXml.replace('offset="1 -2"', 'WindowShape="2"')))).toThrowError(/Window shapes/);
+    });
     it('round-trips native metadata, offsets, definitions and palette order', () => {
         const building = roundTrip(nativeBuildingXml);
         expect(building.version).toBe(3);

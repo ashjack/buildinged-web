@@ -1,7 +1,7 @@
 import { Building, Furniture, FurnitureTileEntry, Room, Tile } from '../models/app.models';
 import { GUID } from './guid';
 import { readIndexGrid, writeIndexGrid } from './tbx-grid';
-import { isExtendedSlot } from './building-tiles';
+import { isExtendedSlot, validWindowShape } from './building-tiles';
 
 export const TBX_VERSION = 3;
 const buildingTiles = ['ExteriorWall', 'ExteriorWallTrim', 'Door', 'DoorFrame', 'Window', 'Curtains',
@@ -32,6 +32,11 @@ function readTile(element: Element): Tile {
     const tile: Tile = { tile: element.getAttribute('tile') || '' };
     if (element.hasAttribute('enum')) tile.enum = element.getAttribute('enum')!;
     if (element.hasAttribute('offset')) tile.offset = element.getAttribute('offset')!;
+    if (element.hasAttribute('WindowShape')) {
+        const shape = integer(element.getAttribute('WindowShape'), 'window shape');
+        if (!validWindowShape(shape)) throw new Error('Window shapes must be between 0 and 19.');
+        tile.windowShape = shape;
+    }
     return tile;
 }
 
@@ -115,6 +120,11 @@ export function normalizeBuildingFile(building: Building): Building {
         return index;
     };
     buildingTiles.forEach(key => reference(building[key], building.entries.length, key));
+    building.entries.forEach(entry => entry.tiles.forEach(tile => {
+        if (tile.windowShape !== undefined && (entry.category !== 'windows' || !['West', 'North'].includes(tile.enum || '') || !tile.tile || !validWindowShape(tile.windowShape))) {
+            throw new Error('Window shapes must be between 0 and 19 on a West or North window tile.');
+        }
+    }));
     building.rooms.forEach(room => roomTiles.forEach(key => reference(room[key], building.entries.length, `Room ${room.Name} ${key}`)));
     const list = (value: string, count: number, label: string, zeroBased = false): string =>
         value.trim() ? value.trim().split(/\s+/).map(item => reference(item, count, label, zeroBased)).join(' ') : '';
@@ -181,7 +191,7 @@ export function writeBuildingFile(source: Building): XMLDocument {
         const element = append(root, 'tile_entry', { category: entry.category });
         // Empty fork-only slots are left out so the original desktop editor can still open the file.
         entry.tiles.filter(tile => tile.tile || !isExtendedSlot(tile.enum))
-            .forEach(tile => append(element, 'tile', { enum: tile.enum, tile: tile.tile, offset: tile.offset }));
+            .forEach(tile => append(element, 'tile', { enum: tile.enum, tile: tile.tile, offset: tile.offset, WindowShape: tile.windowShape }));
     });
     building.furniture.forEach((item: Furniture) => {
         const element = append(root, 'furniture', { layer: item.layer, corners: item.corners });

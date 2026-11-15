@@ -146,6 +146,9 @@ describe('Project workspace pages', () => {
     expect(fixture.nativeElement.querySelector('a[href="/projects/project/world-buildings/new"]')).not.toBeNull();
     const links = [...fixture.nativeElement.querySelectorAll('.building-row a')].filter((link: any) => link.textContent === 'Edit building') as HTMLAnchorElement[];
     expect(links.length).toBe(3);
+    expect(links.every(link => link.target === '_blank' && link.rel === 'noopener')).toBeTrue();
+    const copies = [...fixture.nativeElement.querySelectorAll('.building-row a')].filter((link: any) => link.textContent === 'Create copy') as HTMLAnchorElement[];
+    expect(copies.every(link => link.target === '_blank')).toBeTrue();
     expect(decodeURIComponent(links[0].getAttribute('href')!)).toBe('/projects/project/world-buildings/a/house2.TBX/edit');
   });
 

@@ -56,7 +56,7 @@ export class RoofService {
         const current = this.getSelectedRoofOption();
         return roofToolGroup(current) === group ? current
             : options.find(o => o.id === localStorage.getItem('roofTool-' + group))
-                || options.find(o => o.id === ({ standard: 'peak-vertical', shallow: 'shallow-peak-vertical', corners: 'corner-inner-nw' })[group])!;
+                || options.find(o => o.id === ({ standard: 'peak-vertical', shallow: 'shallow-peak-vertical', roof30: 'peak30-vertical', corners: 'corner-inner-nw', corners30: 'corner30-inner-nw' })[group])!;
     }
 
     getSelectedRoofOption() {

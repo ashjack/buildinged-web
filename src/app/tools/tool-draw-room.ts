@@ -29,6 +29,9 @@ export default class ToolDrawRoom extends ToolDraw {
     }
 
     override hoverTile(x: number, y: number): void {
+        this.statusText = this.isDragging
+            ? `Width,Height = ${Math.abs(x - this.beginDragCoords[0]) + 1},${Math.abs(y - this.beginDragCoords[1]) + 1}. Right-click to cancel.`
+            : 'Left-click-drag to draw a room. Ctrl erases. Right-click picks the room under the pointer.';
 
         if(this.isDragging)
         {
@@ -66,6 +69,7 @@ export default class ToolDrawRoom extends ToolDraw {
 
     override beginDrag(x: number, y: number): void {
         this.startGesture(x, y, this.gridService.getSelectedLevel());
+        this.hoverTile(x, y);
     }
 
     override endDrag(x: number, y: number): void {

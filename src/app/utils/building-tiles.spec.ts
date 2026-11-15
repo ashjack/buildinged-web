@@ -1,11 +1,49 @@
 import {
   BUILDING_TILE_CATEGORIES, buildingTilesEntryKey, buildingTilesLayout, entryFromSingleTile, parseBuildingTilesDocument, serializeBuildingTiles,
-  setEntryOffset, setEntryTile, toTileEntries, updateCategoryEntries, windowShape, windowTemplateOffset, windowWallEnum,
+  setEntryOffset, setEntryTile, setEntryWindowShape, toTileEntries, updateCategoryEntries, windowShape, windowTemplateOffset, windowWallEnum,
 } from './building-tiles';
 
 describe('BuildingTiles.txt', () => {
   let bundled: string;
   beforeAll(async () => bundled = await (await fetch('/assets/BuildingTiles.txt')).text());
+
+  it('publishes independent window openings, including explicit standard size, and restores them when reloaded', () => {
+    const document = parseBuildingTilesDocument('version = 4\n');
+    const entry = { tiles: { West: 'custom_windows_000', North: 'custom_windows_001' }, windowShapes: { West: 7, North: 0 } };
+    const edited = updateCategoryEntries(document, 'windows', () => [entry]);
+    const text = serializeBuildingTiles(edited);
+    expect(text).toContain('// window_shape = West 7');
+    const reopened = parseBuildingTilesDocument(text);
+    expect(reopened.categories.find(category => category.name === 'windows')!.entries).toEqual([entry]);
+    expect(toTileEntries(reopened)).toEqual([{ category: 'windows', tiles: [
+      { enum: 'West', tile: 'custom_windows_000', windowShape: 7 }, { enum: 'North', tile: 'custom_windows_001', windowShape: 0 }
+    ] }]);
+    expect(windowWallEnum('West', entry.tiles.West, entry.windowShapes.West)).toBe('WestWindow7');
+    expect(windowTemplateOffset('West', entry.tiles.West, entry.windowShapes.West)).toEqual([4, 2]);
+    expect(windowShape('fixtures_windows_church_004', 0)).toBe(0);
+  });
+
+  it('keeps opening overrides through offset edits and duplication, and clears them when replacing a tile or choosing Auto', () => {
+    const original = { tiles: { West: 'custom_000', North: 'custom_001' } };
+    const marked = setEntryWindowShape(setEntryWindowShape(original, 'West', 19), 'North', 0);
+    expect(buildingTilesEntryKey(marked)).not.toBe(buildingTilesEntryKey(original));
+    const offset = setEntryOffset(marked, 'West', 1, 0);
+    expect(setEntryOffset(offset, 'West', 0, 0)).toEqual(marked);
+    expect(setEntryWindowShape(marked, 'West', undefined).windowShapes).toEqual({ North: 0 });
+    expect(setEntryTile(marked, 'West', 'custom_005').windowShapes).toEqual({ North: 0 });
+    expect(setEntryWindowShape(original, 'West', 20)).toBe(original);
+    expect(setEntryWindowShape({ tiles: {} }, 'West', 2)).toEqual({ tiles: {} });
+    expect(windowShape('fixtures_windows_church_004', undefined)).toBe(3);
+  });
+
+  it('rejects malformed window opening metadata', () => {
+    const file = (comment: string, category = 'windows') => `version = 4\ncategory {\nname = ${category}\nentry {\nWest = custom_000\n${comment}\n}\n}`;
+    for (const value of ['West -1', 'West 20', 'West 1.5', 'West x', 'East 1', 'West 1 extra']) {
+      expect(() => parseBuildingTilesDocument(file('// window_shape = ' + value))).toThrowError(/window_shape/);
+    }
+    expect(() => parseBuildingTilesDocument(file('// window_shape = West 1', 'doors'))).toThrowError(/window_shape/);
+    expect(() => parseBuildingTilesDocument(file('// window_shape = North 1'))).toThrowError(/window tile/);
+  });
 
   it('round-trips the bundled file exactly as the desktop editor writes it', () => {
     const document = parseBuildingTilesDocument(bundled);

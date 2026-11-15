@@ -547,6 +547,7 @@ export class BuildingService {
                     enum: tile.enum,
                     tile: tile.tile,
                     offset: tile.offset,
+                    ...(tile.windowShape !== undefined ? { windowShape: tile.windowShape } : {}),
                 }))
             })) : [],
             furniture: catalog ? catalog.furniture.map(item => ({
