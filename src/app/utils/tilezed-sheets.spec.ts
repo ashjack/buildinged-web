@@ -35,6 +35,13 @@ describe('TileZed local tilesheets', () => {
     expect(() => tilezedSheetLayout(tileset, NaN, 512, 1024)).toThrowError(/does not contain/);
     expect(() => tilezedSheetLayout(tileset, 23, 512, 0)).toThrowError(/invalid dimensions/);
   });
+  it('scales tile frames, atlas spacing and margins consistently for 1x and 2x sheets', () => {
+    const spaced = { ...tileset, name: 'spaced', columns: 2, rows: 2, imageWidth: 136, imageHeight: 264, spacing: 2, margin: 3 };
+    expect(tilezedSheetGeometry(spaced, 136, 264)).toEqual({ tileWidth: 64, tileHeight: 128, spacing: 2, margin: 3, rows: 2, tileCount: 4 });
+    expect(tilezedSheetGeometry(spaced, 272, 528)).toEqual({ tileWidth: 128, tileHeight: 256, spacing: 4, margin: 6, rows: 2, tileCount: 4 });
+    expect(tilezedSheetLayout(spaced, 3, 272, 528)).toEqual({ tileWidth: 128, tileHeight: 256, spacing: 4, margin: 6 });
+    expect(() => tilezedSheetLayout(spaced, 4, 272, 528)).toThrowError(/does not contain tile 4/);
+  });
 
   it('accepts a shorter hosted sheet only when every referenced tile exists', () => {
     const natural = { ...tileset, name: 'blends_natural_01', imageHeight: 2560, rows: 20 };

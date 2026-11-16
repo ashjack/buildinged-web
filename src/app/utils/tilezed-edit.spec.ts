@@ -22,6 +22,44 @@ const layeredXml = xml.replace('<objectgroup',
   '<layer name="0_Overlay" width="4" height="3" visible="0"><data encoding="csv">0,2,0,0,0,0,0,0,0,0,0,0</data></layer><objectgroup');
 
 describe('TileZed manual editing document', () => {
+  it('preserves spaced, margined and offset tilesets on save and writes metadata for newly added sheets', async () => {
+    const source = xml.replace('tileheight="128"><image source="ground.png" width="192" height="128"/>',
+      'tileheight="128" spacing="2" margin="3"><tileoffset x="-15" y="20"/><image source="ground.png" width="202" height="134"/>');
+    const editor = await open(source), original = new DOMParser().parseFromString(source, 'text/xml');
+    editor.scene.map.tilesets.push({ name: 'new_sheet', source: 'new_sheet.png', firstGid: 4, tileWidth: 64, tileHeight: 128,
+      imageWidth: 136, imageHeight: 134, columns: 2, rows: 1, spacing: 2, margin: 3, offsetX: 6, offsetY: -7 });
+    editor.paintCells('0_Floor', [{ point: { x: 0, y: 0 }, gid: 5 }]);
+    const saved = await editor.serialize(), document = new DOMParser().parseFromString(saved, 'text/xml'), reloaded = await readTilezedMap(saved);
+    expect(document.querySelector('tileset[name="ground"]')!.outerHTML).toBe(original.querySelector('tileset[name="ground"]')!.outerHTML);
+    expect(reloaded.tilesets[1]).toEqual(editor.scene.map.tilesets[1]);
+    expect(reloaded.layers[0].gids[0]).toBe(5);
+  });
+  it('preserves empty legacy tileset declarations and upper floors through edit, undo and save/reopen', async () => {
+    const empty = '<tileset firstgid="1" name="Giblet_00" tilewidth="64" tileheight="128"><properties><property name="keep" value="yes"/></properties><image source="Giblet_00.png" width="32" height="32"/></tileset>';
+    const source = xml.replace('<layer', empty + '<layer'), editor = await open(source);
+    editor.paintCells('0_Floor', [{ point: { x: 0, y: 0 }, gid: 3 }]);
+    const saved = await editor.serialize(), parsed = new DOMParser().parseFromString(saved, 'text/xml');
+    const before = new DOMParser().parseFromString(source, 'text/xml');
+    expect(parsed.querySelector('tileset[name="Giblet_00"]')!.outerHTML).toBe(before.querySelector('tileset[name="Giblet_00"]')!.outerHTML);
+    expect(parsed.querySelector('layer[name="1_Floor"]')!.outerHTML).toBe(before.querySelector('layer[name="1_Floor"]')!.outerHTML);
+    expect((await readTilezedMap(saved)).layers[0].gids[0]).toBe(3);
+    editor.undo(); expect(editor.scene.map.layers[0].gids[0]).toBe(1);
+    expect((await readTilezedMap(await editor.serialize())).layers[0].gids[0]).toBe(1);
+  });
+
+  it('saves a new usable sheet even when an empty declaration already has its firstgid', async () => {
+    const empty = '<tileset firstgid="4" name="Giblet_00" tilewidth="64" tileheight="128"><image source="Giblet_00.png" width="32" height="32"/></tileset>';
+    const source = xml.replace('<layer', empty + '<layer'), editor = await open(source);
+    editor.scene.map.tilesets.push({ name: 'fencing_01', source: 'fencing_01.png', firstGid: 4,
+      tileWidth: 64, tileHeight: 128, columns: 8, rows: 1, imageWidth: 512, imageHeight: 128 });
+    editor.paintCells('0_Floor', [{ point: { x: 1, y: 1 }, gid: 4 }]);
+    const saved = await editor.serialize(), reloaded = await readTilezedMap(saved);
+    expect(reloaded.tilesets.map(s => s.name)).toEqual(['ground', 'fencing_01']);
+    expect(reloaded.layers[0].gids[5]).toBe(4);
+    const document = new DOMParser().parseFromString(saved, 'text/xml');
+    expect(document.querySelectorAll('tileset[firstgid="4"]').length).toBe(2);
+    expect(document.querySelector('tileset[name="Giblet_00"]')).not.toBeNull();
+  });
   it('moves and deletes existing TMX lots without duplicating them or changing group metadata', async () => {
     const source = xml.replace('<extension', '<objectgroup name="2_Buildings" custom="keep"><properties><property name="group" value="keep"/></properties>' +
       '<object id="17" name="lot" type="Buildings/house.tbx" x="32" y="64" width="64" height="96" custom="retain"><properties><property name="room" value="keep"/></properties></object>' +

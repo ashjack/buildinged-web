@@ -10,6 +10,15 @@ export interface TilezedTileset {
   imageHeight: number;
   columns: number;
   rows: number;
+  spacing?: number;
+  margin?: number;
+  offsetX?: number;
+  offsetY?: number;
+}
+
+/** Tileset::loadFromImage starts at the margin and accepts every complete frame. */
+export function tilezedAxisCount(size: number, tileSize: number, spacing = 0, margin = 0): number {
+  return Math.max(0, Math.floor((size - margin + spacing) / (tileSize + spacing)));
 }
 
 export interface TilezedLayer {
@@ -162,9 +171,6 @@ async function decodeWords(text: string, compression: string, count: number, lab
 
 function readTileset(element: Element): TilezedTileset {
   if (element.hasAttribute('source')) throw new Error('External TSX tilesets are not supported yet.');
-  if (element.hasAttribute('spacing') || element.hasAttribute('margin') || children(element, 'tileoffset').length) {
-    throw new Error('Tilesets with spacing, margins, or tile offsets are not supported yet.');
-  }
   const image = children(element, 'image')[0];
   if (!image) throw new Error(`Tileset ${required(element, 'name')} has no sheet image.`);
   const name = required(element, 'name');
@@ -172,9 +178,14 @@ function readTileset(element: Element): TilezedTileset {
   const tileHeight = integer(required(element, 'tileheight'), `${name} tile height`, 1, 4096);
   const width = integer(required(image, 'width'), `${name} image width`, 1, 65536);
   const height = integer(required(image, 'height'), `${name} image height`, 1, 65536);
-  const columns = Math.floor(width / tileWidth);
-  const rows = Math.floor(height / tileHeight);
-  if (!columns || !rows) throw new Error(`Tileset ${name} does not contain a complete tile.`);
+  const spacing = integer(element.getAttribute('spacing') ?? '0', `${name} spacing`, 0, 4096);
+  const margin = integer(element.getAttribute('margin') ?? '0', `${name} margin`, 0, 4096);
+  const offsets = children(element, 'tileoffset');
+  if (offsets.length > 1) throw new Error(`Tileset ${name} has duplicate tile offsets.`);
+  const offsetX = integer(offsets[0]?.getAttribute('x') ?? '0', `${name} tile offset x`, -65536, 65536);
+  const offsetY = integer(offsets[0]?.getAttribute('y') ?? '0', `${name} tile offset y`, -65536, 65536);
+  const columns = tilezedAxisCount(width, tileWidth, spacing, margin);
+  const rows = tilezedAxisCount(height, tileHeight, spacing, margin);
   return {
     name,
     source: required(image, 'source'),
@@ -185,6 +196,8 @@ function readTileset(element: Element): TilezedTileset {
     imageHeight: height,
     columns,
     rows,
+    ...(spacing ? { spacing } : {}), ...(margin ? { margin } : {}),
+    ...(offsetX ? { offsetX } : {}), ...(offsetY ? { offsetY } : {}),
   };
 }
 
@@ -294,19 +307,23 @@ export async function readTilezedMap(xml: string): Promise<TilezedMap> {
   const width = integer(required(root, 'width'), 'map width', 1, MAX_CELLS);
   const height = integer(required(root, 'height'), 'map height', 1, MAX_CELLS);
   if (width * height > MAX_CELLS) throw new Error(`Maps larger than ${MAX_CELLS.toLocaleString()} cells are not supported.`);
+  const declaredTilesets = children(root, 'tileset').map(readTileset).sort((a, b) => a.firstGid - b.firstGid);
+  // Native TileZed permits unused sprite images smaller than one map tile.
+  // They reserve no GIDs and must not shadow a complete sheet with the same firstgid.
+  const emptyTilesets = declaredTilesets.filter(sheet => !sheet.columns || !sheet.rows);
   const map: TilezedMap = {
     width,
     height,
     tileWidth: integer(required(root, 'tilewidth'), 'map tile width', 1, 4096),
     tileHeight: integer(required(root, 'tileheight'), 'map tile height', 1, 4096),
-    tilesets: children(root, 'tileset').map(readTileset).sort((a, b) => a.firstGid - b.firstGid),
+    tilesets: declaredTilesets.filter(sheet => sheet.columns > 0 && sheet.rows > 0),
     layers: [],
     bitmaps: new Map(),
     aliases: new Map(),
     rules: [],
     blends: [],
     blendEdgesEverywhere: false,
-    warnings: [],
+    warnings: emptyTilesets.map(sheet => `Tileset ${sheet.name} has no complete map tiles (${sheet.imageWidth}×${sheet.imageHeight} image, ${sheet.tileWidth}×${sheet.tileHeight} tiles); its unused declaration was skipped.`),
     lots: [],
     zones: [],
     noBlend: new Map(),

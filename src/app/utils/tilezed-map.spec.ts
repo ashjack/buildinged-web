@@ -136,6 +136,44 @@ describe('TileZed TMX terrain', () => {
     expect(map.tilesets[0].rows).toBe(1);
     expect(map.tilesets[0].imageWidth).toBe(519);
   });
+  it('accepts explicitly zero spacing, margins and tile offsets', async () => {
+    const source = await fixture();
+    const withZeros = source.replace('name="ground_01"', 'spacing="0" margin="0" name="ground_01"')
+      .replace('<image source="ground_01.png"', '<tileoffset x="0" y="0"/><image source="ground_01.png"');
+    expect((await readTilezedMap(withZeros)).tilesets).toEqual((await readTilezedMap(source)).tilesets);
+  });
+  it('reads spaced and margined atlas geometry and signed native tile offsets', async () => {
+    const source = `<map orientation="levelisometric" width="2" height="1" tilewidth="64" tileheight="32">
+      <tileset firstgid="1" name="spaced" tilewidth="64" tileheight="128" spacing="2" margin="3"><tileoffset x="-20" y="35"/>
+      <image source="spaced.png" width="136" height="264"/></tileset><layer name="0_Floor" width="2" height="1"><data encoding="csv">1,4</data></layer></map>`;
+    const map = await readTilezedMap(source);
+    expect(map.tilesets[0]).toEqual(jasmine.objectContaining({ columns: 2, rows: 2, spacing: 2, margin: 3, offsetX: -20, offsetY: 35 }));
+    expect(Array.from(map.layers[0].gids)).toEqual([1, 4]);
+    await expectAsync(readTilezedMap(source.replace('spacing="2"', 'spacing="-1"'))).toBeRejectedWithError(/Invalid spaced spacing/);
+    await expectAsync(readTilezedMap(source.replace('margin="3"', 'margin="-2"'))).toBeRejectedWithError(/Invalid spaced margin/);
+    await expectAsync(readTilezedMap(source.replace('x="-20"', 'x="0.5"'))).toBeRejectedWithError(/Invalid spaced tile offset x/);
+  });
+
+  it('opens native maps with unused undersized sprite sheets without changing GIDs or terrain', async () => {
+    const original = await fixture(), base = await readTilezedMap(original);
+    const sprites = `<tileset firstgid="1" name="Giblet_00" tilewidth="64" tileheight="128"><image source="Giblet_00.png" width="32" height="32"/></tileset>
+      <tileset firstgid="5" name="small_sprite" tilewidth="64" tileheight="128"><image source="small_sprite.png" width="32" height="256"/></tileset>
+      <tileset firstgid="9" name="short_sprite" tilewidth="64" tileheight="128"><image source="short_sprite.png" width="512" height="32"/></tileset>`;
+    const map = await readTilezedMap(original.replace('<layer', sprites + '<layer'));
+    expect(map.tilesets).toEqual(base.tilesets);
+    expect(map.layers).toEqual(base.layers);
+    expect(map.warnings.filter(w => w.includes('no complete map tiles')).length).toBe(3);
+    expect(map.warnings.some(w => w.includes('Giblet_00'))).toBeTrue();
+    expect(generateTilezedScene(map).layers).toEqual(generateTilezedScene(base).layers);
+    expect(generateTilezedScene(map).usedSheets).toEqual(generateTilezedScene(base).usedSheets);
+  });
+
+  it('still rejects genuinely unknown GIDs after skipping an empty declaration', async () => {
+    const source = `<map orientation="levelisometric" width="1" height="1" tilewidth="64" tileheight="32">
+      <tileset firstgid="1" name="Giblet_00" tilewidth="64" tileheight="128"><image source="Giblet_00.png" width="32" height="32"/></tileset>
+      <layer name="0_Floor" width="1" height="1"><data encoding="csv">1</data></layer></map>`;
+    await expectAsync(readTilezedMap(source)).toBeRejectedWithError(/unknown tile ID 1/);
+  });
 
   it('reports invalid maps, corrupt data and unsupported tiles instead of showing an empty map', async () => {
     await expectAsync(readTilezedMap('<map>')).toBeRejectedWithError(/valid XML/);

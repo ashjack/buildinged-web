@@ -22,10 +22,10 @@ export function tilezedBounds(map: TilezedMap): TilezedBounds {
   const maxHeight = Math.max(map.tileHeight, ...map.tilesets.map(tileset => tileset.tileHeight));
   const horizontalOverhang = Math.max(0, maxWidth - map.tileWidth);
   return {
-    left: -horizontalOverhang,
-    right: (map.width + map.height) * map.tileWidth / 2 + horizontalOverhang,
-    top: map.tileHeight - maxHeight,
-    bottom: (map.width + map.height - 2) * map.tileHeight / 2 + map.tileHeight,
+    left: -horizontalOverhang + Math.min(0, ...map.tilesets.map(sheet => sheet.offsetX ?? 0)),
+    right: (map.width + map.height) * map.tileWidth / 2 + horizontalOverhang + Math.max(0, ...map.tilesets.map(sheet => sheet.offsetX ?? 0)),
+    top: map.tileHeight - maxHeight + Math.min(0, ...map.tilesets.map(sheet => sheet.offsetY ?? 0)),
+    bottom: (map.width + map.height - 2) * map.tileHeight / 2 + map.tileHeight + Math.max(0, ...map.tilesets.map(sheet => sheet.offsetY ?? 0)),
   };
 }
 
@@ -63,6 +63,8 @@ export interface Sprite {
   sourceY: number;
   width: number;
   height: number;
+  offsetX: number;
+  offsetY: number;
 }
 
 export function spriteForGid(gid: number, map: TilezedMap, images: ReadonlyMap<number, TilezedImage>): Sprite | null {
@@ -70,10 +72,13 @@ export function spriteForGid(gid: number, map: TilezedMap, images: ReadonlyMap<n
   const image = tileset ? images.get(tileset.firstGid) : undefined;
   if (!tileset || !image) return null;
   const index = gid - tileset.firstGid;
-  const sourceX = (index % tileset.columns) * image.layout.tileWidth;
-  const sourceY = Math.floor(index / tileset.columns) * image.layout.tileHeight;
+  const scale = image.layout.tileWidth / tileset.tileWidth;
+  const spacing = image.layout.spacing ?? (tileset.spacing ?? 0) * scale, margin = image.layout.margin ?? (tileset.margin ?? 0) * scale;
+  const sourceX = margin + (index % tileset.columns) * (image.layout.tileWidth + spacing);
+  const sourceY = margin + Math.floor(index / tileset.columns) * (image.layout.tileHeight + spacing);
   if (sourceX + image.layout.tileWidth > image.bitmap.width || sourceY + image.layout.tileHeight > image.bitmap.height) return null;
-  return { image, sourceX, sourceY, width: tileset.tileWidth, height: tileset.tileHeight };
+  return { image, sourceX, sourceY, width: tileset.tileWidth, height: tileset.tileHeight,
+    offsetX: tileset.offsetX ?? 0, offsetY: tileset.offsetY ?? 0 };
 }
 
 /** Sample actual image pixels in reverse draw order, including transparent overhangs. */
@@ -81,24 +86,28 @@ export function pickTilezedTile(scene: TilezedScene, images: ReadonlyMap<number,
   { gid: number; layer: string } | undefined {
   const { map } = scene, hw = map.tileWidth / 2, hh = map.tileHeight / 2, origin = map.height * hw;
   const layers = tilezedLayersForPass(scene, pass);
-  const maxWidth = Math.max(map.tileWidth, ...map.tilesets.map(sheet => sheet.tileWidth));
-  const maxHeight = Math.max(map.tileHeight, ...map.tilesets.map(sheet => sheet.tileHeight));
+  const maxOffsetX = Math.max(0, ...map.tilesets.map(sheet => Math.abs(sheet.offsetX ?? 0)));
+  const maxWidth = Math.max(map.tileWidth, ...map.tilesets.map(sheet => sheet.tileWidth)) + maxOffsetX;
+  const maxHeight = Math.max(map.tileHeight, ...map.tilesets.map(sheet => sheet.tileHeight + Math.abs(sheet.offsetY ?? 0)));
+  const maxDown = Math.max(0, ...map.tilesets.map(sheet => sheet.offsetY ?? 0));
   const sample = document.createElement('canvas'); sample.width = sample.height = 1;
   const context = sample.getContext('2d', { willReadFrequently: true })!;
-  const first = Math.max(0, Math.floor((worldY - map.tileHeight) / hh));
+  const first = Math.max(0, Math.floor((worldY - map.tileHeight - maxDown) / hh));
   const last = Math.min(map.width + map.height - 2, Math.ceil((worldY + maxHeight - map.tileHeight) / hh));
   for (let row = last; row >= first; row--) {
     const from = Math.max(0, row - map.height + 1, Math.floor((row + (worldX - origin + hw - maxWidth) / hw) / 2));
-    const to = Math.min(map.width - 1, row, Math.ceil((row + (worldX - origin + hw) / hw) / 2));
+    const to = Math.min(map.width - 1, row, Math.ceil((row + (worldX - origin + hw + maxOffsetX) / hw) / 2));
     for (let x = to; x >= from; x--) {
       const y = row - x, drawX = origin + (x - y) * hw - hw, bottom = row * hh + map.tileHeight;
       for (let i = layers.length - 1; i >= 0; i--) {
         const layer = layers[i], gid = layer.gids[y * map.width + x];
         if (!gid || !layer.visible || !layer.opacity) continue;
         const sprite = spriteForGid(gid, map, images);
-        if (!sprite || worldX < drawX || worldX >= drawX + sprite.width || worldY < bottom - sprite.height || worldY >= bottom) continue;
-        const sx = sprite.sourceX + Math.floor((worldX - drawX) * sprite.image.layout.tileWidth / sprite.width);
-        const sy = sprite.sourceY + Math.floor((worldY - bottom + sprite.height) * sprite.image.layout.tileHeight / sprite.height);
+        if (!sprite) continue;
+        const left = drawX + sprite.offsetX, top = bottom - sprite.height + sprite.offsetY;
+        if (worldX < left || worldX >= left + sprite.width || worldY < top || worldY >= top + sprite.height) continue;
+        const sx = sprite.sourceX + Math.floor((worldX - left) * sprite.image.layout.tileWidth / sprite.width);
+        const sy = sprite.sourceY + Math.floor((worldY - top) * sprite.image.layout.tileHeight / sprite.height);
         context.clearRect(0, 0, 1, 1); context.drawImage(sprite.image.bitmap, sx, sy, 1, 1, 0, 0, 1, 1);
         if (context.getImageData(0, 0, 1, 1).data[3]) return { gid, layer: layer.name };
       }
@@ -123,8 +132,8 @@ export function drawTilezedStamp(context: CanvasRenderingContext2D, map: Tilezed
       const sprite = gid ? spriteForGid(gid, map, images) : null;
       if (!sprite) continue;
       context.drawImage(sprite.image.bitmap, sprite.sourceX, sprite.sourceY, sprite.image.layout.tileWidth, sprite.image.layout.tileHeight,
-        map.height * halfWidth + (x - y) * halfWidth - halfWidth,
-        (x + y) * halfHeight + map.tileHeight - sprite.height, sprite.width, sprite.height);
+        map.height * halfWidth + (x - y) * halfWidth - halfWidth + sprite.offsetX,
+        (x + y) * halfHeight + map.tileHeight - sprite.height + sprite.offsetY, sprite.width, sprite.height);
     }
   }
   context.restore();
@@ -154,13 +163,14 @@ export function drawTilezedScene(context: CanvasRenderingContext2D, scene: Tilez
   const halfWidth = map.tileWidth / 2;
   const halfHeight = map.tileHeight / 2;
   const originX = map.height * halfWidth;
-  const maxWidth = Math.max(map.tileWidth, ...scene.usedSheets.map(item => item.tileset.tileWidth));
-  const maxHeight = Math.max(map.tileHeight, ...scene.usedSheets.map(item => item.tileset.tileHeight));
+  const maxWidth = Math.max(map.tileWidth, ...scene.usedSheets.map(item => item.tileset.tileWidth + Math.abs(item.tileset.offsetX ?? 0)));
+  const maxHeight = Math.max(map.tileHeight, ...scene.usedSheets.map(item => item.tileset.tileHeight + Math.abs(item.tileset.offsetY ?? 0)));
+  const maxDown = Math.max(0, ...scene.usedSheets.map(item => item.tileset.offsetY ?? 0));
   const left = camera.x - viewport.width / (2 * camera.zoom);
   const right = camera.x + viewport.width / (2 * camera.zoom);
   const top = camera.y - viewport.height / (2 * camera.zoom);
   const bottom = camera.y + viewport.height / (2 * camera.zoom);
-  const firstRow = Math.max(0, Math.floor((top - map.tileHeight) / halfHeight) - 1);
+  const firstRow = Math.max(0, Math.floor((top - map.tileHeight - maxDown) / halfHeight) - 1);
   const lastRow = Math.min(map.width + map.height - 2, Math.ceil((bottom + maxHeight - map.tileHeight) / halfHeight) + 1);
   const sprites = new Map<number, Sprite | null>();
   let opacity = 1;
@@ -203,7 +213,7 @@ export function drawTilezedScene(context: CanvasRenderingContext2D, scene: Tilez
         }
         context.drawImage(sprite.image.bitmap, sprite.sourceX, sprite.sourceY,
           sprite.image.layout.tileWidth, sprite.image.layout.tileHeight,
-          drawX, drawBottom - sprite.height, sprite.width, sprite.height);
+          drawX + sprite.offsetX, drawBottom - sprite.height + sprite.offsetY, sprite.width, sprite.height);
       }
     }
   }

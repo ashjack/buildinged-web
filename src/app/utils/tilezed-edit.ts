@@ -1,4 +1,4 @@
-import { TilezedLayer, tilezedLayerName, tilesetForGid } from './tilezed-map';
+import { TilezedLayer, tilezedLayerName, tilesetForGid, tilezedAxisCount } from './tilezed-map';
 import { TilezedScene } from './tilezed-terrain';
 import { TilezedCamera, TilezedViewport } from './tilezed-renderer';
 import { WorldedLot } from './worlded-world';
@@ -323,11 +323,23 @@ export class TilezedEditDocument {
     this.finish();
     const document = this.source.cloneNode(true) as Document;
     const root = document.documentElement;
-    const existingTilesets = new Set(Array.from(root.children).filter(item => item.tagName === 'tileset').map(item => Number(item.getAttribute('firstgid'))));
+    const existingTilesets = new Set(Array.from(root.children).filter(item => {
+      if (item.tagName !== 'tileset') return false;
+      const image = Array.from(item.children).find(child => child.tagName === 'image');
+      // An empty legacy declaration can share its firstgid with a newly added usable sheet.
+      const spacing = Number(item.getAttribute('spacing') ?? 0), margin = Number(item.getAttribute('margin') ?? 0);
+      return image && tilezedAxisCount(Number(image.getAttribute('width')), Number(item.getAttribute('tilewidth')), spacing, margin) > 0
+        && tilezedAxisCount(Number(image.getAttribute('height')), Number(item.getAttribute('tileheight')), spacing, margin) > 0;
+    }).map(item => Number(item.getAttribute('firstgid'))));
     for (const sheet of this.scene.map.tilesets) {
       if (existingTilesets.has(sheet.firstGid)) continue;
       const element = document.createElement('tileset');
       for (const [key, value] of Object.entries({ firstgid: sheet.firstGid, name: sheet.name, tilewidth: sheet.tileWidth, tileheight: sheet.tileHeight })) element.setAttribute(key, String(value));
+      if (sheet.spacing) element.setAttribute('spacing', String(sheet.spacing));
+      if (sheet.margin) element.setAttribute('margin', String(sheet.margin));
+      if (sheet.offsetX || sheet.offsetY) {
+        const offset = document.createElement('tileoffset'); offset.setAttribute('x', String(sheet.offsetX ?? 0)); offset.setAttribute('y', String(sheet.offsetY ?? 0)); element.appendChild(offset);
+      }
       const image = document.createElement('image');
       image.setAttribute('source', sheet.source); image.setAttribute('width', String(sheet.imageWidth)); image.setAttribute('height', String(sheet.imageHeight));
       element.appendChild(image); root.insertBefore(element, Array.from(root.children).find(item => item.tagName === 'layer') ?? null);

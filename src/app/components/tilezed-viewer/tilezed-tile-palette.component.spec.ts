@@ -7,6 +7,30 @@ describe('TileZed stamp palette', () => {
   beforeEach(() => TestBed.configureTestingModule({ imports: [TilezedTilePaletteComponent], providers: [
     { provide: TilezedAssetsService, useValue: { load: async () => ({ sheets: new Map(), errors: new Map(), warnings: [] }) } },
   ] }));
+  it('removes atlas padding from the selectable preview without changing stamp GIDs', async () => {
+    const source = document.createElement('canvas'); source.width = 136; source.height = 134;
+    const context = source.getContext('2d')!; context.fillStyle = '#ff00ff'; context.fillRect(0, 0, 136, 134);
+    context.fillStyle = '#ff0000'; context.fillRect(3, 3, 64, 128); context.fillStyle = '#00ff00'; context.fillRect(69, 3, 64, 128);
+    const blob = await new Promise<Blob>(resolve => source.toBlob(value => resolve(value!), 'image/png'));
+    const assets = TestBed.inject(TilezedAssetsService); spyOn(assets, 'load').and.resolveTo({ sheets: new Map([[1, blob]]), errors: new Map(), warnings: [] });
+    const fixture = TestBed.createComponent(TilezedTilePaletteComponent);
+    fixture.componentRef.setInput('tilesets', [{ name: 'spaced', source: 'spaced.png', firstGid: 1, tileWidth: 64, tileHeight: 128,
+      imageWidth: 136, imageHeight: 134, columns: 2, rows: 1, spacing: 2, margin: 3 }]);
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    for (let attempt = 0; attempt < 50 && fixture.componentInstance.loading; attempt++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    fixture.detectChanges();
+    const palette = fixture.componentInstance; expect(palette.error).toBe('');
+    expect(palette.url).toMatch(/^blob:/);
+    const bitmap = await createImageBitmap(await (await fetch(palette.url)).blob());
+    expect([bitmap.width, bitmap.height]).toEqual([128, 128]);
+    const output = document.createElement('canvas'); output.width = output.height = 128;
+    const pixels = output.getContext('2d')!; pixels.drawImage(bitmap, 0, 0);
+    expect(Array.from(pixels.getImageData(0, 0, 1, 1).data)).toEqual([255, 0, 0, 255]);
+    expect(Array.from(pixels.getImageData(64, 0, 1, 1).data)).toEqual([0, 255, 0, 255]);
+    const emit = spyOn(palette.stampChange, 'emit'); palette.choose(1);
+    expect(Array.from(emit.calls.mostRecent().args[0]!.gids)).toEqual([2]);
+    bitmap.close(); fixture.destroy();
+  });
   it('selects a rectangular stamp by dragging on the continuous native sheet', async () => {
     const fixture = TestBed.createComponent(TilezedTilePaletteComponent);
     fixture.componentRef.setInput('tilesets', [{ name: 'ground', source: 'ground.png', firstGid: 1,

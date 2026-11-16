@@ -194,10 +194,24 @@ export class TilezedTilePaletteComponent implements OnChanges, OnDestroy {
         const layout = tilezedSheetGeometry(sheet, bitmap.width, bitmap.height);
         if (!layout.tileCount) throw new Error(`Sheet ${sheet.name} does not contain a complete tile.`);
         const scale = sheet.tileWidth / layout.tileWidth;
-        this.imageWidth = bitmap.width * scale; this.imageHeight = bitmap.height * scale;
+        let preview = blob;
+        if (layout.spacing || layout.margin) {
+          // Display a tight selectable grid while cropping the original spaced atlas correctly.
+          const canvas = document.createElement('canvas'); canvas.width = sheet.columns * layout.tileWidth; canvas.height = layout.rows * layout.tileHeight;
+          const context = canvas.getContext('2d')!; context.imageSmoothingEnabled = false;
+          for (let i = 0; i < layout.tileCount; i++) {
+            const x = i % sheet.columns, y = Math.floor(i / sheet.columns);
+            context.drawImage(bitmap, (layout.margin ?? 0) + x * (layout.tileWidth + (layout.spacing ?? 0)),
+              (layout.margin ?? 0) + y * (layout.tileHeight + (layout.spacing ?? 0)), layout.tileWidth, layout.tileHeight,
+              x * layout.tileWidth, y * layout.tileHeight, layout.tileWidth, layout.tileHeight);
+          }
+          preview = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('Could not prepare the tilesheet preview.')), 'image/png'));
+          if (generation !== this.generation) return;
+          this.imageWidth = canvas.width * scale; this.imageHeight = canvas.height * scale;
+        } else { this.imageWidth = bitmap.width * scale; this.imageHeight = bitmap.height * scale; }
         this.availableRows = layout.rows;
         this.anchor = Math.min(this.anchor, layout.tileCount - 1); this.end = Math.min(this.end, layout.tileCount - 1);
-        this.url = URL.createObjectURL(blob);
+        this.url = URL.createObjectURL(preview);
       } finally { bitmap.close(); }
     } catch (error) { if (generation === this.generation) this.error = error instanceof Error ? error.message : String(error); }
     finally { if (generation === this.generation) this.loading = false; }

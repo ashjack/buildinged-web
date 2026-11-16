@@ -51,9 +51,10 @@ export function tilezedComposition(scene: TilezedScene, images: ReadonlyMap<numb
     if (!value) { value = { x, y, level, normal: [], above: [], lots: new Map() }; squares.set(key, value); }
     return value;
   };
-  const maxWidth = Math.max(map.tileWidth, ...map.tilesets.map(sheet => sheet.tileWidth));
-  const maxHeight = Math.max(map.tileHeight, ...map.tilesets.map(sheet => sheet.tileHeight));
-  const first = Math.max(0, Math.floor((top - map.tileHeight) / hh) - 1);
+  const maxWidth = Math.max(map.tileWidth, ...map.tilesets.map(sheet => sheet.tileWidth + Math.abs(sheet.offsetX ?? 0)));
+  const maxHeight = Math.max(map.tileHeight, ...map.tilesets.map(sheet => sheet.tileHeight + Math.abs(sheet.offsetY ?? 0)));
+  const maxDown = Math.max(0, ...map.tilesets.map(sheet => sheet.offsetY ?? 0));
+  const first = Math.max(0, Math.floor((top - map.tileHeight - maxDown) / hh) - 1);
   const last = Math.min(map.width + map.height - 2, Math.ceil((bottom + maxHeight - map.tileHeight) / hh) + 1);
   for (let depth = first; depth <= last && (onlyLevel === undefined || onlyLevel === 0); depth++) {
     const from = Math.max(0, depth - map.height + 1, Math.floor((depth + (left - origin - maxWidth) / hw) / 2));
@@ -72,7 +73,7 @@ export function tilezedComposition(scene: TilezedScene, images: ReadonlyMap<numb
         }
         const draw: TilezedCompositionDraw = { bitmap: sprite.image.bitmap, sx: sprite.sourceX, sy: sprite.sourceY,
           sw: sprite.image.layout.tileWidth, sh: sprite.image.layout.tileHeight,
-          x: origin + (x - y) * hw - hw, y: depth * hh + map.tileHeight - sprite.height,
+          x: origin + (x - y) * hw - hw + sprite.offsetX, y: depth * hh + map.tileHeight - sprite.height + sprite.offsetY,
           width: sprite.width, height: sprite.height, opacity: layer.opacity, layer: layer.name, gid };
         if (visible(draw)) (tilezedLayerAboveLots(layer.name) ? square(x, y, 0).above : square(x, y, 0).normal).push(draw);
       }

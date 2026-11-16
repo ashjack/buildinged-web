@@ -941,6 +941,17 @@ describe('TileZed read-only viewer', () => {
     expect(close).toHaveBeenCalledTimes(1);
   });
 
+  it('opens a cell containing an unused Giblet_00 declaration and only loads usable sheets', async () => {
+    const xml = mapXml.replace('<layer', '<tileset firstgid="1" name="Giblet_00" tilewidth="64" tileheight="128"><image source="Giblet_00.png" width="32" height="32"/></tileset><layer');
+    await component.openMap(new File([xml], 'ChinnorNew_3_3.tmx'));
+    expect(component.error).toBe(''); expect(component.scene).toBeDefined();
+    expect(component.scene!.layers[0].gids[0]).toBe(1);
+    expect(component.scene!.map.warnings.some(w => w.includes('Giblet_00'))).toBeTrue();
+    expect(assets.load.calls.allArgs().every(([sheets]) => sheets.every(sheet => sheet.name !== 'Giblet_00'))).toBeTrue();
+    expect(component.dirty).toBeFalse();
+    expect(await component.editor!.serialize()).toContain('name="Giblet_00"');
+  });
+
   it('keeps the existing map when a new file is invalid', async () => {
     await component.openMap(new File([mapXml], 'valid.tmx'));
     const previous = component.scene;

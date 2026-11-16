@@ -2,11 +2,49 @@ import { readTilezedMap, TilezedMap, TilezedTileset } from './tilezed-map';
 import {
   constrainTilezedCamera, drawTilezedScene, drawTilezedStamp, fitTilezedCamera, TilezedBounds,
   TilezedCamera, TilezedImage, zoomTilezedCamera, pickTilezedTile, tilezedLayerAboveLots, tilezedLayersForPass,
+  applyTilezedCamera, tilezedBounds,
 } from './tilezed-renderer';
 import { generateTilezedScene, TilezedScene } from './tilezed-terrain';
 import { TilezedEditDocument } from './tilezed-edit';
+import { tilezedSheetGeometry } from './tilezed-sheets';
+import { drawTilezedComposition, pickTilezedComposition, tilezedComposition } from './tilezed-composition';
 
 describe('TileZed canvas navigation and rendering', () => {
+  it('crops padded atlases and draws, stamps and picks offset sprites at 1x and 2x, including outside their original cell viewport', async () => {
+    for (const scale of [1, 2]) {
+      const source = document.createElement('canvas'); source.width = 136 * scale; source.height = 264 * scale;
+      const fill = source.getContext('2d')!; fill.fillStyle = '#ff00ff'; fill.fillRect(0, 0, source.width, source.height);
+      ['#ff0000', '#00ff00', '#0000ff', '#ffff00'].forEach((color, i) => {
+        fill.fillStyle = color; fill.fillRect((3 + i % 2 * 66) * scale, (3 + Math.floor(i / 2) * 130) * scale, 64 * scale, 128 * scale);
+      });
+      const bitmap = await createImageBitmap(source);
+      try {
+        for (const [offsetX, offsetY] of [[0, 0], [300, 300], [-300, -300], [300, -300], [-300, 300]]) {
+          const scene = sceneFor(1, 1, Uint32Array.of(4));
+          const sheet = { ...scene.map.tilesets[0], columns: 2, rows: 2, imageWidth: 136, imageHeight: 264, spacing: 2, margin: 3, offsetX, offsetY };
+          scene.map.tilesets = [sheet]; scene.usedSheets = [{ tileset: sheet, maxIndex: 3 }];
+          const images = new Map<number, TilezedImage>([[1, { bitmap, layout: tilezedSheetGeometry(sheet, source.width, source.height) }]]);
+          const canvas = document.createElement('canvas'); canvas.width = canvas.height = 128;
+          const context = canvas.getContext('2d')!, camera = { x: offsetX + 32, y: offsetY - 32, zoom: 1 }, viewport = { width: 128, height: 128 };
+          drawTilezedScene(context, scene, images, camera, viewport, 1);
+          expect(Array.from(context.getImageData(64, 64, 1, 1).data)).withContext(`${scale}x ${offsetX},${offsetY}`).toEqual([255, 255, 0, 255]);
+          expect(pickTilezedTile(scene, images, camera.x, camera.y)?.gid).toBe(4);
+          const commands = tilezedComposition(scene, images, [], camera, viewport);
+          expect(commands.length).toBe(1);
+          expect(commands[0]).toEqual(jasmine.objectContaining({ x: offsetX, y: offsetY - 96, sx: 69 * scale, sy: 133 * scale }));
+          drawTilezedComposition(context, commands, camera, viewport, 1);
+          expect(Array.from(context.getImageData(64, 64, 1, 1).data)).toEqual([255, 255, 0, 255]);
+          expect(pickTilezedComposition(commands, camera.x, camera.y)?.gid).toBe(4);
+          context.setTransform(1, 0, 0, 1, 0, 0); context.clearRect(0, 0, 128, 128); applyTilezedCamera(context, camera, viewport, 1);
+          drawTilezedStamp(context, scene.map, images, { width: 1, height: 1, gids: Uint32Array.of(4) }, { x: 0, y: 0 }, undefined, 1);
+          expect(Array.from(context.getImageData(64, 64, 1, 1).data)).toEqual([255, 255, 0, 255]);
+          const bounds = tilezedBounds(scene.map);
+          expect(bounds.left).toBeLessThanOrEqual(offsetX); expect(bounds.right).toBeGreaterThanOrEqual(offsetX + 64);
+          expect(bounds.top).toBeLessThanOrEqual(offsetY - 96); expect(bounds.bottom).toBeGreaterThanOrEqual(offsetY + 32);
+        }
+      } finally { bitmap.close(); }
+    }
+  });
   it('draws and picks the newly raised layer and restores the original order on undo', async () => {
     const scene = sceneFor(1, 1, Uint32Array.of(1));
     scene.layers.push({ name: '0_Detail', gids: Uint32Array.of(2), visible: true, opacity: 1 });

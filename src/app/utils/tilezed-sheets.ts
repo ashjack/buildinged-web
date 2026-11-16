@@ -1,4 +1,4 @@
-import { TilezedTileset } from './tilezed-map';
+import { TilezedTileset, tilezedAxisCount } from './tilezed-map';
 
 export interface TilezedSheetIndex {
   files: Map<string, File>;
@@ -8,6 +8,8 @@ export interface TilezedSheetIndex {
 export interface TilezedSheetLayout {
   tileWidth: number;
   tileHeight: number;
+  spacing?: number;
+  margin?: number;
 }
 
 export interface TilezedSheetGeometry extends TilezedSheetLayout {
@@ -51,12 +53,15 @@ export function tilezedSheetGeometry(tileset: TilezedTileset, width: number, hei
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) {
     throw new Error(`Sheet ${tileset.name} has invalid dimensions.`);
   }
-  const scale = [1, 2].find(value => Math.floor(width / (tileset.tileWidth * value)) === tileset.columns);
+  const scale = [1, 2].find(value => tilezedAxisCount(width, tileset.tileWidth * value,
+    (tileset.spacing ?? 0) * value, (tileset.margin ?? 0) * value) === tileset.columns);
   if (!scale) {
     throw new Error(`Sheet ${tileset.name} does not match the columns recorded in the TMX (at 1x or 2x).`);
   }
-  const rows = Math.min(tileset.rows, Math.floor(height / (tileset.tileHeight * scale)));
-  return { tileWidth: tileset.tileWidth * scale, tileHeight: tileset.tileHeight * scale, rows, tileCount: tileset.columns * rows };
+  const spacing = (tileset.spacing ?? 0) * scale, margin = (tileset.margin ?? 0) * scale;
+  const rows = Math.min(tileset.rows, tilezedAxisCount(height, tileset.tileHeight * scale, spacing, margin));
+  return { tileWidth: tileset.tileWidth * scale, tileHeight: tileset.tileHeight * scale, rows, tileCount: tileset.columns * rows,
+    ...(spacing ? { spacing } : {}), ...(margin ? { margin } : {}) };
 }
 
 /** Strict check for callers that need one specific tile. Whole-sheet previews use geometry instead. */
@@ -66,5 +71,6 @@ export function tilezedSheetLayout(tileset: TilezedTileset, maxIndex: number, wi
       maxIndex >= geometry.tileCount) {
     throw new Error(`Sheet ${tileset.name} does not contain tile ${maxIndex}.`);
   }
-  return { tileWidth: geometry.tileWidth, tileHeight: geometry.tileHeight };
+  return { tileWidth: geometry.tileWidth, tileHeight: geometry.tileHeight,
+    ...(geometry.spacing ? { spacing: geometry.spacing } : {}), ...(geometry.margin ? { margin: geometry.margin } : {}) };
 }
