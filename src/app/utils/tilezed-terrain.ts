@@ -8,6 +8,17 @@ export interface TilezedScene {
   usedSheets: { tileset: TilezedTileset; maxIndex: number }[];
   warnings: string[];
 }
+export interface TerrainRegion { x: number; y: number; width: number; height: number; }
+export interface TerrainDisplay { bmp: boolean; map: boolean; overlays: boolean; }
+export function mergeTerrainRegions(a: TerrainRegion | undefined, b: TerrainRegion): TerrainRegion {
+  if (!a) return { ...b };
+  const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+  return { x, y, width: Math.max(a.x + a.width, b.x + b.width) - x, height: Math.max(a.y + a.height, b.y + b.height) - y };
+}
+export function terrainColorWarnings(map: TilezedMap, warnings: string[]): string[] {
+  return [...warnings.filter(warning => !/^(Ground|Vegetation) BMP:/.test(warning)),
+    ...[0, 1].flatMap(index => unknownColors(map.bitmaps.get(index)?.pixels ?? new Uint32Array(), map.rules, index))];
+}
 
 interface PreparedRule {
   rule: TilezedRule;
@@ -41,7 +52,7 @@ function directionMatches(direction: TilezedDirection, neighbors: number): boole
   }
 }
 
-function tileResolver(map: TilezedMap): (name: string) => number[] {
+export function tileResolver(map: TilezedMap): (name: string) => number[] {
   const sheets = new Map(map.tilesets.map(tileset => [tileset.name.toLowerCase(), tileset]));
   const cache = new Map<string, number[]>();
   const resolve = (name: string, stack: Set<string>): number[] => {
@@ -95,7 +106,7 @@ function unknownColors(pixels: Uint32Array, rules: TilezedRule[], bitmap: number
 }
 
 /** Generates the embedded BMP rules and transition tiles without changing the source map. */
-export function generateTilezedScene(map: TilezedMap): TilezedScene {
+export function generateTilezedScene(map: TilezedMap, display = { bmp: true, map: true, overlays: true }, random?: Uint32Array[]): TilezedScene {
   const count = map.width * map.height;
   const ground = map.bitmaps.get(0)?.pixels ?? new Uint32Array(count);
   const vegetation = map.bitmaps.get(1)?.pixels ?? new Uint32Array(count);
@@ -155,6 +166,7 @@ export function generateTilezedScene(map: TilezedMap): TilezedScene {
 
   const seeds = new Map<number, Uint32Array>();
   const randomFor = (bitmap: number): Uint32Array => {
+    if (random) return random[bitmap];
     const seed = map.bitmaps.get(bitmap)?.seed ?? 0;
     let values = seeds.get(seed);
     if (!values) {
@@ -237,11 +249,11 @@ export function generateTilezedScene(map: TilezedMap): TilezedScene {
 
   const sceneLayers = map.layers.map(layer => {
     const additions = generated.get(layer.name);
-    if (!additions) return layer;
+    if ((!additions || !display.bmp) && display.map) return display.overlays || !/^\d+_FloorOverlay/.test(layer.name) ? layer : { ...layer, visible: false };
     const gids = new Uint32Array(count);
     const noBlend = map.noBlend?.get(layer.name);
-    for (let i = 0; i < count; i++) gids[i] = noBlend?.[i] ? layer.gids[i] : (additions[i] || layer.gids[i]);
-    return { ...layer, gids };
+    for (let i = 0; i < count; i++) gids[i] = (display.bmp && !noBlend?.[i] ? additions?.[i] : 0) || (display.map ? layer.gids[i] : 0);
+    return { ...layer, gids, visible: layer.visible && (display.overlays || !/^\d+_FloorOverlay/.test(layer.name)) };
   });
   const used = new Map<number, { tileset: TilezedTileset; maxIndex: number }>();
   const gidCache = new Map<number, TilezedTileset>();
@@ -261,4 +273,58 @@ export function generateTilezedScene(map: TilezedMap): TilezedScene {
     }
   }
   return { map, layers: sceneLayers, usedSheets: [...used.values()], warnings };
+}
+
+/** Regenerate a brush-sized patch, retaining native whole-map random choices and edge context. */
+export class TilezedTerrainUpdater {
+  private readonly random = new Map<string, Uint32Array>();
+  update(scene: TilezedScene, dirty: TerrainRegion, display: TerrainDisplay = { bmp: true, map: true, overlays: true }): TerrainRegion {
+    const map = scene.map;
+    const expand = (rect: TerrainRegion, margin: number): TerrainRegion => {
+      const x = Math.max(0, rect.x - margin), y = Math.max(0, rect.y - margin);
+      return { x, y, width: Math.min(map.width, rect.x + rect.width + margin) - x, height: Math.min(map.height, rect.y + rect.height + margin) - y };
+    };
+    // Blending uses adjacent floors and a 5x5 bitmap neighbourhood for inferred floors.
+    const output = expand(dirty, 2), sample = expand(output, 2);
+    // Floor-targeting blends can feed later floor neighbours in native scan order.
+    if (sample.width * sample.height >= map.width * map.height / 2 || map.blends.some(blend => blend.layer === '0_Floor')) {
+      Object.assign(scene, generateTilezedScene(map, display));
+      return { x: 0, y: 0, width: map.width, height: map.height };
+    }
+    const crop = <T extends Uint32Array | Uint8Array>(values: T): T => {
+      const result = new (values.constructor as { new(length: number): T })(sample.width * sample.height);
+      for (let y = 0; y < sample.height; y++) result.set(values.subarray((sample.y + y) * map.width + sample.x,
+        (sample.y + y) * map.width + sample.x + sample.width), y * sample.width);
+      return result;
+    };
+    const random = [0, 1].map(index => {
+      const seed = map.bitmaps.get(index)?.seed ?? 0, key = `${map.width}:${map.height}:${seed}`;
+      if (!this.random.has(key)) this.random.set(key, tilezedRandomGrid(map.width, map.height, seed));
+      return crop(this.random.get(key)!);
+    });
+    const patchMap: TilezedMap = { ...map, width: sample.width, height: sample.height,
+      layers: map.layers.map(layer => ({ ...layer, gids: crop(layer.gids) })),
+      bitmaps: new Map([...map.bitmaps].map(([index, bitmap]) => [index, { ...bitmap, pixels: crop(bitmap.pixels) }])),
+      noBlend: new Map([...(map.noBlend ?? [])].map(([name, bits]) => [name, crop(bits)])),
+    };
+    const patch = generateTilezedScene(patchMap, display, random);
+    const targets = new Map(scene.layers.map(layer => [layer.name, layer]));
+    for (const layer of patch.layers) {
+      const target = targets.get(layer.name)!;
+      for (let y = output.y; y < output.y + output.height; y++) {
+        const start = (y - sample.y) * sample.width + output.x - sample.x;
+        target.gids.set(layer.gids.subarray(start, start + output.width), y * map.width + output.x);
+      }
+    }
+    // Keep existing sheet coverage during a stroke; only newly encountered sheets need loading.
+    const used = new Map(scene.usedSheets.map(item => [item.tileset.firstGid, item]));
+    let changed = false;
+    for (const item of patch.usedSheets) {
+      const previous = used.get(item.tileset.firstGid);
+      if (!previous || previous.maxIndex < item.maxIndex) { used.set(item.tileset.firstGid, item); changed = true; }
+    }
+    if (changed) scene.usedSheets = [...used.values()];
+    for (const warning of patch.warnings) if (!/^(Ground|Vegetation) BMP:/.test(warning) && !scene.warnings.includes(warning)) scene.warnings = [...scene.warnings, warning];
+    return output;
+  }
 }

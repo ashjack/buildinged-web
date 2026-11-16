@@ -34,6 +34,7 @@ export interface TilezedBitmap {
 }
 
 export interface TilezedRule {
+  label?: string;
   bitmap: number;
   color: number;
   condition: number;
@@ -252,6 +253,7 @@ function readSettings(map: TilezedMap, element: Element): void {
   const ruleGroup = children(element, 'rules')[0];
   for (const entry of ruleGroup ? children(ruleGroup, 'rule') : []) {
     map.rules.push({
+      ...(entry.hasAttribute('label') ? { label: entry.getAttribute('label')! } : {}),
       bitmap: integer(required(entry, 'bitmapIndex'), 'BMP rule image index', 0, 1),
       color: color(required(entry, 'color'), 'BMP rule color'),
       condition: color(entry.getAttribute('condition') ?? '0 0 0', 'BMP rule condition'),

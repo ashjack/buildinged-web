@@ -15,6 +15,7 @@ import { TilezedBuildingContext } from '../../services/tilezed-handoff.service';
 import { tilezedTileToPixel } from '../../utils/tilezed-overlays';
 import { TilezedTilePaletteComponent } from './tilezed-tile-palette.component';
 import { TilezedBuildingPaletteComponent } from './tilezed-building-palette.component';
+import { TilezedTerrainPanelComponent } from './tilezed-terrain-panel.component';
 import { ProjectApiService } from '../../services/project-api.service';
 import { readTilezedMap } from '../../utils/tilezed-map';
 import { nativeBuildingXml } from '../../testing/native-building.fixture';
@@ -52,7 +53,7 @@ describe('TileZed read-only viewer', () => {
     buildingChanges = new Subject<WorldBuildingSaved>();
     TestBed.configureTestingModule({
       declarations: [TilezedViewerComponent],
-      imports: [CommonModule, RouterTestingModule, TilezedTilePaletteComponent, TilezedBuildingPaletteComponent],
+      imports: [CommonModule, RouterTestingModule, TilezedTerrainPanelComponent, TilezedTilePaletteComponent, TilezedBuildingPaletteComponent],
       providers: [
         { provide: BuildingPreviewService, useValue: previews },
         { provide: AuthService, useValue: { isAdmin: false } },
@@ -389,6 +390,106 @@ describe('TileZed read-only viewer', () => {
       button: 0, clientX: rect.left + viewport.width / 2 + (px - camera.x) * camera.zoom,
       clientY: rect.top + viewport.height / 2 + (py - camera.y) * camera.zoom, ...extra }));
   }
+
+  it('opens native terrain controls, paints through rules, and keeps the layer picker in sync', async () => {
+    await openEditableMap();
+    component.importTerrainSettings({ kind: 'rules', text: 'version = 1\nrule\n{\nlabel = Grass\nbitmap = 0\ncolor = 10 0 0\nlayer = 0_Floor\ntiles = sheet_01_000\n}' });
+    component.setTool('terrain'); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('[aria-label="Terrain tools"] button').length).toBe(9);
+    expect(fixture.nativeElement.querySelector('[aria-label="Terrain colour"]').textContent).toContain('Grass');
+    expect(fixture.nativeElement.querySelector('app-tilezed-tile-palette')).toBeNull();
+    pointerAt('pointerdown', 0); pointerAt('pointermove', 3); pointerAt('pointerup', 3); fixture.detectChanges();
+    expect([...component.editor!.scene.map.bitmaps.get(0)!.pixels]).toEqual(Array(4).fill(0x0a0000));
+    expect([...component.scene!.layers[0].gids]).toEqual([1, 1, 1, 1]);
+    expect((fixture.nativeElement.querySelector('[aria-label="Active tile layer"]') as HTMLSelectElement).value).toBe(component.activeLayer);
+    component.history(); expect(component.editor!.scene.map.bitmaps.get(0)!.pixels.some(Boolean)).toBeFalse();
+    component.history(true); expect(component.editor!.scene.map.bitmaps.get(0)!.pixels[3]).toBe(0x0a0000);
+  });
+  for (const mode of ['terrain', 'tile']) it(`undoes and redoes a ${mode} cell without rebuilding all layers or refreshing buildings`, async () => {
+    await openEditableMap();
+    if (mode === 'terrain') {
+      component.importTerrainSettings({ kind: 'rules', text: 'version = 1\nrule\n{\nbitmap = 0\ncolor = 10 0 0\nlayer = 0_Floor\ntiles = sheet_01_000\n}' });
+      component.setTool('terrain');
+    } else component.chooseStamp({ width: 1, height: 1, gids: Uint32Array.of(1) });
+    pointerAt('pointerdown', 1); pointerAt('pointerup', 1);
+    const fullRefresh = spyOn(component as any, 'updateEditedScene').and.callThrough();
+    const buildings = spyOn(component as any, 'syncBuildingPlacements').and.callThrough();
+    component.history(); expect(component.scene!.layers[0].gids[1]).toBe(0);
+    component.history(true); expect(component.scene!.layers[0].gids[1]).toBe(1);
+    expect(fullRefresh).not.toHaveBeenCalled(); expect(buildings).not.toHaveBeenCalled();
+  });
+  it('keeps the terrain canvas cache when undoing only a BMP selection', async () => {
+    await openEditableMap(); component.setTool('terrain'); component.terrainTools!.setTool('select');
+    pointerAt('pointerdown', 0); pointerAt('pointermove', 2); pointerAt('pointerup', 2);
+    const scene = component.scene;
+    const fullRefresh = spyOn(component as any, 'updateEditedScene').and.callThrough();
+    component.history(); expect(component.scene).toBe(scene); expect(component.terrainTools!.selection.size).toBe(0);
+    component.history(true); expect(component.scene).toBe(scene); expect(component.terrainTools!.selection.size).toBe(3);
+    expect(fullRefresh).not.toHaveBeenCalled(); expect(component.dirty).toBeFalse();
+  });
+
+  it('batches terrain pointer moves without losing the stroke before release or save', async () => {
+    await openEditableMap(); component.setTool('terrain'); component.terrainTools!.color = 0x0a0000;
+    pointerAt('pointerdown', 0);
+    const revision = component.editor!.terrainRevision;
+    pointerAt('pointermove', 1); pointerAt('pointermove', 3); pointerAt('pointermove', 2);
+    expect(component.editor!.terrainRevision).toBe(revision);
+    pointerAt('pointerup', 2);
+    expect(component.editor!.terrainRevision).toBe(revision + 1);
+    expect([...component.editor!.scene.map.bitmaps.get(0)!.pixels]).toEqual(Array(4).fill(0x0a0000));
+    component.history(); expect(component.editor!.scene.map.bitmaps.get(0)!.pixels.some(Boolean)).toBeFalse();
+    pointerAt('pointerdown', 0); pointerAt('pointermove', 3);
+    const exported = spyOn(component as any, 'downloadMap'); await component.exportMap();
+    const file = exported.calls.mostRecent().args[0] as File;
+    expect([...(await readTilezedMap(await file.text())).bitmaps.get(0)!.pixels]).toEqual(Array(4).fill(0x0a0000));
+  });
+  it('uses already loaded sheet frames when a brush introduces a different terrain tile', async () => {
+    await openEditableMap(); const blob = await opaqueSheet();
+    assets.load.and.resolveTo({ sheets: new Map([[1, blob]]), errors: new Map(), warnings: [] });
+    await component.openMap(new File([mapXml.replace('width="64" height="128"', 'width="512" height="128"')], 'loaded.tmx'));
+    component.importTerrainSettings({ kind: 'rules', text: 'version = 1\nrule\n{\nbitmap = 0\ncolor = 10 0 0\nlayer = 0_Floor\ntiles = sheet_01_007\n}' });
+    component.setTool('terrain'); assets.load.calls.reset();
+    pointerAt('pointerdown', 0); pointerAt('pointerup', 0);
+    expect(component.scene!.layers[0].gids[0]).toBe(8); expect(assets.load).not.toHaveBeenCalled();
+  });
+  it('finishes loading a newly painted sheet while subsequent brush frames change the scene', async () => {
+    await openEditableMap();
+    component.importTerrainSettings({ kind: 'rules', text: 'version = 1\nrule\n{\nbitmap = 0\ncolor = 10 0 0\nlayer = 0_Floor\ntiles = sheet_01_000\n}' });
+    component.setTool('terrain');
+    const canvas = document.createElement('canvas'); canvas.width = 64; canvas.height = 128;
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/png'));
+    let complete!: (result: any) => void;
+    assets.load.and.callFake(() => new Promise(resolve => complete = resolve));
+    const reload = spyOn(component as any, 'reloadSheets').and.callThrough();
+    pointerAt('pointerdown', 0); const loadingScene = component.scene;
+    pointerAt('pointermove', 3); pointerAt('pointerup', 3);
+    expect(component.scene).not.toBe(loadingScene);
+    complete({ sheets: new Map([[1, blob]]), errors: new Map(), warnings: [] });
+    await reload.calls.mostRecent().returnValue;
+    expect(component.loadingSheets).toBeFalse(); expect((component as any).images.get(1)?.bitmap.width).toBe(64);
+  });
+
+  it('cancels uncommitted terrain rectangles and finalizes brush edits when tools change', async () => {
+    await openEditableMap(); component.setTool('terrain'); component.terrainTools!.color = 0x0a0000;
+    component.terrainTools!.setTool('rectangle'); pointerAt('pointerdown', 0); pointerAt('pointermove', 3); pointerAt('pointercancel', 3);
+    expect(component.editor!.scene.map.bitmaps.size).toBe(0); expect(component.dirty).toBeFalse();
+    component.terrainTools!.setTool('brush'); pointerAt('pointerdown', 0); component.setTool('pan');
+    expect(component.editor!.canUndo).toBeTrue(); expect(component.editor!.scene.map.bitmaps.get(0)!.pixels[0]).toBe(0x0a0000);
+    component.history(); expect(component.dirty).toBeFalse();
+  });
+  it('handles terrain keyboard tools from the sidebar and preserves input editing', async () => {
+    await openEditableMap(); component.setTool('terrain'); fixture.detectChanges();
+    const panel = fixture.nativeElement.querySelector('app-tilezed-terrain-panel') as HTMLElement;
+    const button = panel.querySelector('button')!;
+    button.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', bubbles: true, cancelable: true }));
+    expect(component.terrainTools!.tool).toBe('wand');
+    const size = panel.querySelector('[aria-label="Terrain brush size"]') as HTMLInputElement;
+    size.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', bubbles: true, cancelable: true }));
+    expect(component.terrainTools!.tool).toBe('wand');
+    button.dispatchEvent(new KeyboardEvent('keydown', { key: ']', bubbles: true, cancelable: true })); expect(component.terrainTools!.size).toBe(2);
+    Object.assign(TestBed.inject(AuthService), { isAdmin: false }); pointerAt('pointerdown', 1); pointerAt('pointerup', 1);
+    expect(component.editor!.scene.map.bitmaps.size).toBe(0);
+  });
 
   async function opaqueSheet(): Promise<Blob> {
     const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 1024;

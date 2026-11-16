@@ -42,7 +42,7 @@
               (click)="setTool(item.id)"><img [src]="'assets/tilezed-tools/' + item.icon" alt="" width="24" height="24"></button>
     </div>
     <label>Layer <select aria-label="Active tile layer" [value]="activeLayer" [disabled]="!canEdit" (change)="selectLayer($any($event.target).value)">
-      <option *ngFor="let layer of layerOptions" [value]="layer.name" [disabled]="!layer.visible || !layer.opacity">{{layer.name}}</option>
+      <option *ngFor="let layer of layerOptions" [value]="layer.name" [selected]="layer.name === activeLayer" [disabled]="!layer.visible || !layer.opacity">{{layer.name}}</option>
     </select></label>
     <button class="button compact tool-icon" type="button" (click)="moveLayer('up')" [disabled]="!canEdit || !editor.canMoveLayer(activeLayer, 'up')" aria-label="Raise layer" title="Raise layer"><img src="assets/icons/go-up.png" alt=""></button>
     <button class="button compact tool-icon" type="button" (click)="moveLayer('down')" [disabled]="!canEdit || !editor.canMoveLayer(activeLayer, 'down')" aria-label="Lower layer" title="Lower layer"><img src="assets/icons/go-down.png" alt=""></button>
@@ -57,9 +57,9 @@
     </dialog>
     <button class="button compact tool-icon" type="button" (click)="history()" [disabled]="(!canEdit && !canPlaceBuildings) || !editor.canUndo" aria-label="Undo" title="Undo (Ctrl+Z)"><img src="assets/tilezed-tools/edit-undo.png" alt=""></button>
     <button class="button compact tool-icon" type="button" (click)="history(true)" [disabled]="(!canEdit && !canPlaceBuildings) || !editor.canRedo" aria-label="Redo" title="Redo (Ctrl+Y)"><img src="assets/tilezed-tools/edit-redo.png" alt=""></button>
-    <button class="button compact tool-icon" type="button" (click)="captureSelection()" [disabled]="!canEdit || !editor.selection" aria-label="Use selection as stamp" title="Use selection as stamp (Ctrl+C)"><img src="assets/tilezed-tools/edit-copy.png" alt=""></button>
-    <button class="button compact tool-icon" type="button" (click)="eraseSelection()" [disabled]="!canEdit || !editor.selection" aria-label="Erase selection" title="Erase selection (Delete)"><img src="assets/tilezed-tools/stock-tool-eraser.png" alt=""></button>
-    <button class="button compact tool-icon" type="button" (click)="clearSelection()" [disabled]="!canEdit || !editor.selection" aria-label="Clear selection" title="Clear selection (Escape)"><img src="assets/tilezed-tools/edit-clear.png" alt=""></button>
+    <button class="button compact tool-icon" type="button" (click)="captureSelection()" [disabled]="!canEdit || !hasSelection" aria-label="Use selection as stamp" title="Use selection as stamp (Ctrl+C)"><img src="assets/tilezed-tools/edit-copy.png" alt=""></button>
+    <button class="button compact tool-icon" type="button" (click)="eraseSelection()" [disabled]="!canEdit || !hasSelection" aria-label="Erase selection" title="Erase selection (Delete)"><img src="assets/tilezed-tools/stock-tool-eraser.png" alt=""></button>
+    <button class="button compact tool-icon" type="button" (click)="clearSelection()" [disabled]="!canEdit || !hasSelection" aria-label="Clear selection" title="Clear selection (Escape)"><img src="assets/tilezed-tools/edit-clear.png" alt=""></button>
     <label *ngIf="tool === 'fence'">Fence <select aria-label="Fence style" [value]="fenceIndex" [disabled]="!canEdit || preparingFence" (change)="fenceIndex = +$any($event.target).value; prepareFence()"><option *ngFor="let fence of fences; let i = index" [value]="i">{{fence.label}}</option></select></label>
     <span *ngIf="tool === 'fence'" class="fence-help" role="status">{{preparingFence ? 'Loading fence tiles…' : 'Drag to draw · Alt: gate · Ctrl: toggle post'}}</span>
     <span *ngIf="tool === 'building'" class="fence-help" role="status">{{preparingBuilding ? 'Preparing building preview…' : selectedBuilding ? 'Click to place · Escape or right-click to cancel' : 'Choose a building preview in the sidebar'}}</span>
@@ -127,10 +127,12 @@
       <button class="button primary" type="button" (click)="mapInput.click()" [disabled]="loadingMap">Open .tmx</button>
     </div>
   </main>
-  <aside class="tile-palette" [attr.aria-label]="tool === 'building' ? 'Building palette' : 'Tile palette'" *ngIf="auth.isAdmin && editor && scene as mapScene" [attr.inert]="(tool === 'building' ? !canPlaceBuildings : !canEdit) ? '' : null">
-    <div class="dock-title"><h2>{{tool === 'building' ? 'Buildings' : 'Tilesets'}}</h2><span [title]="selectedTileLabel" *ngIf="tool !== 'building'">{{stamp.width}} × {{stamp.height}}</span></div>
+  <aside class="tile-palette" [attr.aria-label]="tool === 'terrain' ? 'Terrain palette' : tool === 'building' ? 'Building palette' : 'Tile palette'" *ngIf="auth.isAdmin && editor && scene as mapScene" [attr.inert]="(tool === 'building' ? !canPlaceBuildings : !canEdit) ? '' : null">
+    <div class="dock-title"><h2>{{tool === 'terrain' ? 'BMP Tools' : tool === 'building' ? 'Buildings' : 'Tilesets'}}</h2><span [title]="selectedTileLabel" *ngIf="tool !== 'building' && tool !== 'terrain'">{{stamp.width}} × {{stamp.height}}</span></div>
+    <app-tilezed-terrain-panel *ngIf="tool === 'terrain' && terrainTools" [terrain]="terrainTools" [activeLayer]="activeLayer" [showBmp]="terrainDisplay.bmp" [showMap]="terrainDisplay.map" [showOverlays]="terrainDisplay.overlays"
+      (changed)="terrainChanged()" (displayChanged)="setTerrainDisplay($event)" (edgesChanged)="setTerrainEdges($event)" (importSettings)="importTerrainSettings($event)" (exportSettings)="exportTerrainSettings($event)"></app-tilezed-terrain-panel>
     <app-tilezed-building-palette *ngIf="tool === 'building'" [files]="buildingFiles" [disabled]="!canPlaceBuildings || preparingBuilding" (buildingChange)="chooseBuilding($event)"></app-tilezed-building-palette>
-    <app-tilezed-tile-palette *ngIf="tool !== 'building'" [tilesets]="mapScene.map.tilesets" [selectedGid]="stamp.gids[0]" (stampChange)="chooseStamp($event)"></app-tilezed-tile-palette>
+    <app-tilezed-tile-palette *ngIf="tool !== 'building' && tool !== 'terrain'" [tilesets]="mapScene.map.tilesets" [selectedGid]="stamp.gids[0]" (stampChange)="chooseStamp($event)"></app-tilezed-tile-palette>
   </aside>
   </div>
 

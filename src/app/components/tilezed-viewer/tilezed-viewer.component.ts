@@ -26,13 +26,16 @@ import {
   TilezedViewport, tilezedBounds, zoomTilezedCamera,
 } from '../../utils/tilezed-renderer';
 import { indexTilezedSheets, localTilezedSheet, TilezedSheetIndex, tilezedSheetGeometry, tilezedSheetName } from '../../utils/tilezed-sheets';
-import { generateTilezedScene, TilezedScene } from '../../utils/tilezed-terrain';
+import { generateTilezedScene, mergeTerrainRegions, TerrainRegion, TilezedScene, TilezedTerrainUpdater } from '../../utils/tilezed-terrain';
+import { drawTilezedTerrainRegion } from '../../utils/tilezed-terrain-render';
 import { drawTilezedOverlays, summarizeZones, tilezedLotAtPixel, TilezedZoneSummary } from '../../utils/tilezed-overlays';
 import { WorldedLot, WorldedZone } from '../../utils/worlded-world';
 import { isTextEditing } from '../../utils/editor-shortcuts';
 import { openBuildingEditor } from '../../utils/open-building-editor';
 import { WorldBuildingSaved, WorldBuildingUpdatesService } from '../../services/world-building-updates.service';
 import { readBuildingPreviewFile } from '../../utils/tbx-format';
+import { TerrainTool, TilezedTerrainTools } from '../../utils/tilezed-terrain-tools';
+import { readTerrainSettings, terrainSettings, writeTerrainSettings } from '../../utils/tilezed-terrain-settings';
 
 const SHOW_ZONES_KEY = 'tilezed:showZones';
 const SHOW_LOTS_KEY = 'tilezed:showLotOutlines';
@@ -56,12 +59,21 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   selectedLot?: WorldedLot;
   private lotDrag?: { id: number; lot: WorldedLot; start: TilePoint; point: TilePoint };
   editor?: TilezedEditDocument;
+  terrainTools?: TilezedTerrainTools;
+  private terrainPointer?: number;
+  private terrainRevisionSeen = 0;
+  private terrainMoves: { point: TilePoint; ctrlKey: boolean; shiftKey: boolean; metaKey: boolean }[] = [];
+  private terrainDisplayUpdater = new TilezedTerrainUpdater();
+  private terrainDirty?: TerrainRegion;
+  private terrainDirtyBase?: TilezedScene;
+  terrainDisplay = { bmp: true, map: true, overlays: true };
   tool: TilezedTool = 'pan';
   readonly toolOptions: { id: TilezedTool; label: string; key?: string; icon: string }[] = [
     { id: 'pan', label: 'Pan', icon: 'pan.svg' }, { id: 'stamp', label: 'Stamp brush', key: 'B', icon: 'stock-tool-clone.png' },
     { id: 'bucket', label: 'Bucket', key: 'F', icon: 'stock-tool-bucket-fill.png' }, { id: 'eraser', label: 'Eraser', key: 'E', icon: 'stock-tool-eraser.png' },
     { id: 'select', label: 'Rectangular select', key: 'R', icon: 'stock-tool-rect-select.png' }, { id: 'pick', label: 'Pick tile', key: 'I', icon: 'icon_eyedrop.png' },
     { id: 'fence', label: 'Draw fence', key: 'G', icon: 'fence-tool.svg' },
+    { id: 'terrain', label: 'Terrain / BMP tools', key: 'T', icon: 'bmp-tool.png' },
     { id: 'building', label: 'Place building', key: 'L', icon: 'building-tool.svg' },
     { id: 'move-building', label: 'Move buildings', key: 'M', icon: 'move-buildings.svg' },
   ];
@@ -288,6 +300,10 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
       const embedded = !buildings?.projectId && map.lots?.length && contextLots?.length === map.lots.length &&
         contextLots.every((lot, i) => ['x', 'y', 'width', 'height', 'level', 'map'].every(key => (lot as any)[key] === (map.lots![i] as any)[key]));
       this.editor = new TilezedEditDocument(xml, scene, embedded ? undefined : contextLots);
+      this.terrainTools = new TilezedTerrainTools(this.editor); this.terrainPointer = undefined;
+      this.terrainMoves = []; this.terrainRevisionSeen = 0; this.terrainDirty = this.terrainDirtyBase = undefined;
+      this.terrainDisplayUpdater = new TilezedTerrainUpdater();
+      this.terrainDisplay = { bmp: true, map: true, overlays: true };
       this.scene = this.editor.scene;
       this.activeLayer = map.layers.find(layer => layer.visible && layer.opacity)?.name ?? '';
       this.stamp = { width: 1, height: 1, gids: new Uint32Array(1) };
@@ -568,7 +584,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
       }
     }
 
-    if (this.destroyed || generation !== this.sheetGeneration || this.scene !== scene) {
+    if (this.destroyed || generation !== this.sheetGeneration || this.scene?.map !== scene.map) {
       this.releaseImages(images);
       return;
     }
@@ -621,6 +637,11 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   onPointerDown(event: PointerEvent): void {
     this.closeContextMenu();
     if (this.saving || this.loadingMap) return;
+    if (event.button === 0 && !this.spaceDown && this.tool === 'terrain' && this.canEdit && this.terrainTools) {
+      event.preventDefault(); this.canvas.nativeElement.focus({ preventScroll: true });
+      this.terrainPointer = event.pointerId; this.canvas.nativeElement.setPointerCapture(event.pointerId);
+      this.hoverTile = this.tileAtEvent(event); this.terrainTools.down(this.hoverTile, event); this.updateEditedTerrain(); return;
+    }
     if (event.button === 0 && this.tool !== 'move-building') this.selectedLot = undefined;
     if (event.button === 0 && !this.spaceDown && this.tool === 'move-building' && this.canPlaceBuildings) {
       event.preventDefault(); this.canvas.nativeElement.focus({ preventScroll: true });
@@ -674,6 +695,22 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   onPointerMove(event: PointerEvent): void {
+    if (this.scene && this.tool === 'terrain' && this.canEdit && !this.pointer && !this.spaceDown && this.terrainTools) {
+      const point = this.tileAtEvent(event), previous = this.hoverTile;
+      this.hoverTile = point;
+      if (this.terrainPointer === undefined || this.terrainPointer === event.pointerId) {
+        if (this.terrainPointer !== undefined) {
+          const last = this.terrainMoves.at(-1);
+          if (!last || last.point.x !== point.x || last.point.y !== point.y || last.ctrlKey !== event.ctrlKey || last.metaKey !== event.metaKey || last.shiftKey !== event.shiftKey) {
+            this.terrainMoves.push({ point, ctrlKey: event.ctrlKey, metaKey: event.metaKey, shiftKey: event.shiftKey });
+          }
+          this.requestDraw();
+        } else if (!previous || previous.x !== point.x || previous.y !== point.y) {
+          this.terrainTools.move(point, event); this.requestDraw();
+        }
+      }
+      return;
+    }
     if (this.lotDrag?.id === event.pointerId) {
       if (!this.canPlaceBuildings) { this.cancelLotDrag(); return; }
       const point = this.tileAtEvent(event), drag = this.lotDrag;
@@ -723,6 +760,11 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   onPointerLeave(): void { this.hoverTile = undefined; this.buildingCursor = undefined; if (!this.fenceStart) this.fenceCursor = undefined; this.requestDraw(); }
 
   onPointerEnd(event: PointerEvent): void {
+    if (this.terrainPointer === event.pointerId) {
+      this.flushTerrainMoves();
+      if (event.type === 'pointerup' && this.canEdit) this.terrainTools?.up(this.tileAtEvent(event), event, this.activeLayer);
+      this.finishEditing(); this.updateEditedTerrain(); return;
+    }
     if (this.lotDrag?.id === event.pointerId) {
       const drag = this.lotDrag;
       if (event.type === 'pointerup' && this.canPlaceBuildings) {
@@ -763,12 +805,22 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
       if (ctrl && ['z', 'y'].includes(event.key.toLowerCase())) {
         event.preventDefault(); this.history(event.key.toLowerCase() === 'y' || event.shiftKey); return;
       }
+      if (this.tool === 'terrain' && this.terrainTools) {
+        const terrain = this.terrainTools, key = event.key.toLowerCase();
+        if (ctrl && (key === 'c' || key === 'x')) { event.preventDefault(); terrain.copy(); if (key === 'x') { terrain.eraseSelection(); this.updateEditedScene(true); } this.requestDraw(); return; }
+        if (ctrl && key === 'v') { event.preventDefault(); terrain.startPaste(); this.requestDraw(); return; }
+        if (event.key === 'Escape') { event.preventDefault(); this.finishEditing(); terrain.cancel(); terrain.selection.clear(); this.requestDraw(); return; }
+        if (['Delete', 'Backspace'].includes(event.key)) { event.preventDefault(); terrain.eraseSelection(); this.updateEditedScene(true); return; }
+        if (event.key === '[' || event.key === ']') { event.preventDefault(); terrain.size = Math.max(1, Math.min(300, terrain.size + (event.key === '[' ? -1 : 1))); this.requestDraw(); return; }
+        const terrainKeys: Record<string, TerrainTool> = { b: 'brush', r: 'rectangle', f: 'bucket', s: 'select', w: 'wand', e: 'eraser', k: 'bake', n: 'no-blend', i: 'pick' };
+        if (!ctrl && terrainKeys[key]) { event.preventDefault(); this.finishEditing(); terrain.setTool(terrainKeys[key]); this.requestDraw(); return; }
+      }
       if (ctrl && event.key.toLowerCase() === 'c' && this.editor?.selection) { event.preventDefault(); this.captureSelection(); return; }
       if (ctrl && event.key.toLowerCase() === 'v') { event.preventDefault(); this.setTool('stamp'); return; }
       if (event.key === ' ') { event.preventDefault(); this.spaceDown = true; this.requestDraw(); return; }
       if (event.key === 'Escape') { this.fenceStart = undefined; this.finishEditing(); this.selectedLot = undefined; this.editor!.selection = undefined; if (this.tool === 'building') this.setTool('pan'); this.requestDraw(); return; }
       if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); this.selectedLot ? this.deleteSelectedBuilding() : this.eraseSelection(); return; }
-      const shortcuts: Record<string, TilezedTool> = { b: 'stamp', f: 'bucket', e: 'eraser', r: 'select', i: 'pick', g: 'fence', l: 'building', m: 'move-building' };
+      const shortcuts: Record<string, TilezedTool> = { b: 'stamp', f: 'bucket', e: 'eraser', r: 'select', i: 'pick', g: 'fence', l: 'building', m: 'move-building', t: 'terrain' };
       if (!ctrl && shortcuts[event.key.toLowerCase()]) { event.preventDefault(); this.setTool(shortcuts[event.key.toLowerCase()]); return; }
     }
     const distance = 80 / this.camera.zoom;
@@ -926,6 +978,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   }
   captureSelection(): void {
     if (!this.canEdit) return;
+    if (this.tool === 'terrain') { this.terrainTools?.copy(); this.requestDraw(); return; }
     const stamp = this.editor?.capture(this.activeLayer);
     if (!stamp || !stamp.gids.some(gid => gid)) { this.message = 'The selection has no tiles on this layer.'; return; }
     this.stamp = stamp;
@@ -934,25 +987,54 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   }
   eraseSelection(): void {
     if (!this.canEdit) return;
+    if (this.tool === 'terrain') { this.terrainTools?.eraseSelection(); this.updateEditedScene(true); return; }
     this.editor?.eraseSelection(this.activeLayer);
     this.updateEditedScene(true);
   }
-  clearSelection(): void { if (this.editor) this.editor.selection = undefined; this.requestDraw(); }
+  clearSelection(): void { if (this.tool === 'terrain') this.terrainTools?.selection.clear(); else if (this.editor) this.editor.selection = undefined; this.requestDraw(); }
+  get hasSelection(): boolean { return this.tool === 'terrain' ? !!this.terrainTools?.selection.size : !!this.editor?.selection; }
+  terrainChanged(): void { if (this.canEdit) this.updateEditedScene(true); }
+  setTerrainDisplay(display: { bmp: boolean; map: boolean; overlays: boolean }): void { this.terrainDisplay = display; this.updateEditedScene(true); }
+  setTerrainEdges(value: boolean): void {
+    if (!this.canEdit || !this.editor) return;
+    this.finishEditing(); this.editor.changeTerrainSettings({ ...terrainSettings(this.editor.scene.map), blendEdgesEverywhere: value }); this.updateEditedScene(true);
+  }
+  importTerrainSettings(event: { kind: 'rules' | 'blends'; text: string }): void {
+    if (!this.canEdit || !this.editor) return;
+    try {
+      this.finishEditing();
+      this.editor.changeTerrainSettings(readTerrainSettings(event.text, event.kind, terrainSettings(this.editor.scene.map)));
+      this.terrainTools?.chooseBitmap(this.terrainTools.bitmap); this.updateEditedScene(true);
+      this.message = `Imported ${event.kind === 'rules' ? 'Rules.txt' : 'Blends.txt'}. Save the map to keep these definitions.`;
+    } catch (error) { this.error = error instanceof Error ? error.message : 'Could not import terrain settings.'; }
+  }
+  exportTerrainSettings(kind: 'rules' | 'blends'): void {
+    if (!this.editor) return;
+    this.downloadMap(new File([writeTerrainSettings(terrainSettings(this.editor.scene.map), kind)], kind === 'rules' ? 'Rules.txt' : 'Blends.txt', { type: 'text/plain' }));
+  }
   history(redo = false): void {
     if (!this.canEdit && !this.canPlaceBuildings) return;
     this.finishEditing();
     const previousLayers = new Set(this.editor!.scene.map.layers.map(layer => layer.name));
-    redo ? this.editor!.redo() : this.editor!.undo();
-    if (this.selectedLot && !this.allLots.includes(this.selectedLot)) this.selectedLot = undefined;
+    const change = redo ? this.editor!.redo() : this.editor!.undo();
+    if (change === 'region') { this.updateEditedTerrain(); return; }
+    if (change === 'lots') {
+      if (this.selectedLot && !this.allLots.includes(this.selectedLot)) this.selectedLot = undefined;
+      this.syncBuildingPlacements(); this.requestDraw(); return;
+    }
+    if (!change || change === 'selection') { this.requestDraw(); return; }
     const restored = this.editor!.scene.map.layers.find(layer => !previousLayers.has(layer.name));
     if (restored) this.activeLayer = restored.name;
     else if (!this.editor!.scene.map.layers.some(layer => layer.name === this.activeLayer)) {
       this.activeLayer = this.editor!.scene.map.layers.filter(layer => layer.visible && layer.opacity).at(-1)?.name ?? '';
     }
     this.updateEditedScene(true);
-    this.syncBuildingPlacements();
   }
   private finishEditing(): void {
+    this.flushTerrainMoves();
+    this.terrainTools?.finish();
+    const terrainPointer = this.terrainPointer; this.terrainPointer = undefined;
+    if (terrainPointer !== undefined && this.canvas?.nativeElement.hasPointerCapture(terrainPointer)) this.canvas.nativeElement.releasePointerCapture(terrainPointer);
     this.cancelLotDrag();
     this.fenceStart = undefined;
     this.editor?.finish();
@@ -981,8 +1063,11 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
   }
   private updateEditedScene(sheets = false): void {
     if (!this.editor) return;
+    this.terrainDirty = this.terrainDirtyBase = undefined;
+    this.terrainRevisionSeen = this.editor.terrainRevision;
     const previous = this.scene!.usedSheets;
     this.scene = { ...this.editor.scene };
+    if (!this.terrainDisplay.bmp || !this.terrainDisplay.map || !this.terrainDisplay.overlays) this.scene = generateTilezedScene(this.editor.scene.map, this.terrainDisplay);
     if (sheets) {
       const used = new Map<number, { tileset: TilezedTileset; maxIndex: number }>();
       for (const layer of this.scene.layers) {
@@ -1000,6 +1085,34 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     }
     this.message = '';
     this.requestDraw();
+  }
+  private flushTerrainMoves(): void {
+    if (!this.terrainMoves.length || !this.terrainTools || !this.editor) return;
+    const moves = this.terrainMoves; this.terrainMoves = [];
+    for (const move of moves) this.terrainTools.move(move.point, move, false);
+    this.editor.refreshTerrain(); this.updateEditedTerrain(false);
+  }
+  private updateEditedTerrain(draw = true): void {
+    if (!this.editor || !this.scene) return;
+    if (this.terrainRevisionSeen !== this.editor.terrainRevision) {
+      const region = this.editor.terrainRegion!;
+      this.terrainDirtyBase ??= this.scene;
+      this.terrainDirty = mergeTerrainRegions(this.terrainDirty, region);
+      const previous = this.scene.usedSheets;
+      if (!this.terrainDisplay.bmp || !this.terrainDisplay.map || !this.terrainDisplay.overlays) {
+        this.terrainDisplayUpdater.update(this.scene, region, this.terrainDisplay);
+        this.scene = { ...this.scene };
+      } else this.scene = { ...this.editor.scene };
+      this.terrainRevisionSeen = this.editor.terrainRevision;
+      if (this.scene.usedSheets !== previous && this.scene.usedSheets.some(item => {
+        const image = this.images.get(item.tileset.firstGid);
+        return (!image || item.maxIndex >= tilezedSheetGeometry(item.tileset, image.bitmap.width, image.bitmap.height).tileCount) && !previous.some(prior =>
+          prior.tileset === item.tileset && prior.maxIndex >= item.maxIndex);
+      })) void this.reloadSheets();
+    }
+    this.scene.warnings = this.editor.scene.warnings;
+    this.message = '';
+    if (draw) this.requestDraw();
   }
 
   @HostListener('document:keyup', ['$event']) releasePanKey(event: KeyboardEvent): void {
@@ -1052,6 +1165,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     finally { this.saving = false; }
   }
   async exportMap(): Promise<void> {
+    this.finishEditing();
     if (!this.editor || this.saving || this.editPointer) return;
     try { this.downloadMap(new File([await this.editor.serialize()], this.fileName, { type: 'application/xml' })); }
     catch (error) { this.error = error instanceof Error ? error.message : String(error); }
@@ -1072,12 +1186,30 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
       context.closePath(); context.fillStyle = color; context.fill(); context.strokeStyle = '#8ac7ff'; context.stroke();
     };
     context.save(); context.lineWidth = 1.5 / this.camera.zoom;
+    if (this.tool === 'terrain' && this.terrainTools) {
+      const region = (cells: Set<number>, color: string) => {
+        const width = this.scene!.map.width;
+        // One polygon per horizontal run keeps large selections and 300px brushes responsive.
+        for (const index of cells) {
+          if (index % width && cells.has(index - 1)) continue;
+          let end = index;
+          while (end % width < width - 1 && cells.has(end + 1)) end++;
+          rectangle(index % width, Math.floor(index / width), end - index + 1, 1, color);
+        }
+      };
+      region(this.terrainTools.selection, '#3c99ee35');
+      if (this.terrainTools.tool === 'no-blend') {
+        const mask = this.editor.scene.map.noBlend?.get(this.activeLayer), cells = new Set<number>();
+        mask?.forEach((value, index) => { if (value) cells.add(index); }); region(cells, '#ff555550');
+      }
+      if (!this.spaceDown && !this.dragging && this.hoverTile) region(this.terrainTools.preview, this.terrainTools.tool === 'eraser' ? '#ff555540' : '#ffffff30');
+    }
     const selection = this.editor.selection;
     if (this.selectedLot && (this.onlyLevel === undefined || Math.max(0, this.selectedLot.level) === this.onlyLevel)) {
       const position = this.lotDrag?.point ?? this.selectedLot;
       rectangle(position.x, position.y, this.selectedLot.width, this.selectedLot.height, '#3c99ee35', this.selectedLot.level);
     }
-    if (selection) rectangle(selection.x, selection.y, selection.width, selection.height, '#3c99ee35');
+    if (selection && this.tool !== 'terrain') rectangle(selection.x, selection.y, selection.width, selection.height, '#3c99ee35');
     const point = this.hoverTile;
     const lot = this.tool === 'building' && !this.spaceDown && !this.dragging ? this.hoverBuilding() : undefined;
     if (lot && this.buildingPreview) {
@@ -1094,7 +1226,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
         rectangle(cell.point.x, cell.point.y, 1, 1, '#00ff0018');
       }
     }
-    if (point && this.editor.contains(point) && !['pan', 'pick', 'fence', 'building', 'move-building'].includes(this.tool) && this.canEdit && !this.spaceDown && !this.dragging) {
+    if (point && this.editor.contains(point) && !['pan', 'pick', 'fence', 'building', 'move-building', 'terrain'].includes(this.tool) && this.canEdit && !this.spaceDown && !this.dragging) {
       const width = this.tool === 'stamp' ? this.stamp.width : 1, height = this.tool === 'stamp' ? this.stamp.height : 1;
       if (this.tool === 'stamp') {
         const opacity = this.scene.layers.find(layer => layer.name === this.activeLayer)?.opacity ?? 1;
@@ -1107,6 +1239,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
 
   onContextMenu(event: MouseEvent): void {
     event.preventDefault();
+    if (this.tool === 'terrain') { this.finishEditing(); this.terrainTools?.cancel(); this.requestDraw(); return; }
     if (this.lotDrag) { this.cancelLotDrag(); return; }
     if (this.tool === 'building') { this.setTool('pan'); return; }
     if (this.tool === 'fence' && this.fenceStart) { this.fenceStart = undefined; this.finishEditing(); this.requestDraw(); return; }
@@ -1176,6 +1309,11 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     if (!this.contextMenu && event.target !== this.canvas?.nativeElement && this.canPlaceBuildings &&
         (event.key === 'Escape' && this.lotDrag || this.tool === 'move-building' && ['Delete', 'Backspace'].includes(event.key) ||
          !event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === 'm')) {
+      this.onKeyDown(event); return;
+    }
+    if (!this.contextMenu && event.target !== this.canvas?.nativeElement && this.canEdit &&
+        this.tool === 'terrain' && ((event.ctrlKey || event.metaKey) && ['c', 'x', 'v', 'z', 'y'].includes(event.key.toLowerCase()) ||
+          !event.ctrlKey && !event.metaKey && ['b', 'r', 'f', 's', 'w', 'e', 'k', 'n', 'i', '[', ']', 'escape', 'delete', 'backspace'].includes(event.key.toLowerCase()))) {
       this.onKeyDown(event); return;
     }
     if (!this.contextMenu && event.target !== this.canvas?.nativeElement && this.canEdit &&
@@ -1250,9 +1388,20 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
     this.zone.runOutsideAngular(() => {
       this.frame = requestAnimationFrame(() => {
         this.frame = undefined;
+        this.flushTerrainMoves();
         if (this.context && this.scene) {
           const target = this.canvas.nativeElement;
           let terrain = this.terrain;
+          if (terrain && this.terrainDirty && this.terrainDirtyBase === terrain.scene && terrain.images === this.images && terrain.camera === this.camera &&
+              terrain.onlyLevel === this.onlyLevel && terrain.dragPoint === this.lotDrag?.point && terrain.buildings === this.buildings &&
+              terrain.buildingRevision === (this.buildings?.revision ?? 0) && terrain.width === target.width && terrain.height === target.height && terrain.pixelRatio === this.pixelRatio) {
+            const context = terrain.canvas.getContext('2d');
+            if (context) {
+              terrain.commands = drawTilezedTerrainRegion(context, this.scene, this.images, this.buildings?.compositionSprites ?? [],
+                this.terrainDirty, this.camera, this.viewport, this.pixelRatio, this.onlyLevel);
+              terrain.scene = this.scene;
+            }
+          }
           if (!terrain || terrain.scene !== this.scene || terrain.images !== this.images || terrain.camera !== this.camera ||
               terrain.onlyLevel !== this.onlyLevel || terrain.dragPoint !== this.lotDrag?.point ||
               terrain.buildings !== this.buildings || terrain.buildingRevision !== (this.buildings?.revision ?? 0) ||
@@ -1277,6 +1426,7 @@ export class TilezedViewerComponent implements AfterViewInit, OnDestroy {
               scene: this.scene, images: this.images, camera: this.camera,
               width: target.width, height: target.height, pixelRatio: this.pixelRatio, onlyLevel: this.onlyLevel, dragPoint: this.lotDrag?.point };
           }
+          this.terrainDirty = this.terrainDirtyBase = undefined;
           this.context.setTransform(1, 0, 0, 1, 0, 0);
           this.context.globalAlpha = 1;
           this.context.drawImage(terrain.canvas, 0, 0);

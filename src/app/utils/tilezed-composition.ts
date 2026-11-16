@@ -11,7 +11,7 @@ export interface TilezedCompositionDraw {
 interface Square {
   x: number; y: number; level: number;
   normal: TilezedCompositionDraw[]; above: TilezedCompositionDraw[];
-  lots: Map<number, TilezedCompositionDraw[]>;
+  lots: Map<number, { draws: TilezedCompositionDraw[]; layers: Set<string> }>;
 }
 const layerName = (name: string) => name.replace(/^-?\d+_/, '');
 const missingFloors = new Map<string, HTMLCanvasElement>();
@@ -88,7 +88,7 @@ export function tilezedComposition(scene: TilezedScene, images: ReadonlyMap<numb
       const draw: TilezedCompositionDraw = { bitmap: building.bitmap, sx: 0, sy: 0, sw: building.bitmap.width,
         sh: building.bitmap.height, x: b.left, y: b.top, width: b.right - b.left, height: b.bottom - b.top,
         opacity: 1, layer: '', building: true };
-      if (visible(draw)) square(building.squares.maxX, building.squares.maxY, building.level).lots.set(order, [draw]);
+      if (visible(draw)) square(building.squares.maxX, building.squares.maxY, building.level).lots.set(order, { draws: [draw], layers: new Set(['']) });
       return;
     }
     for (const tile of composition.tiles) {
@@ -100,9 +100,15 @@ export function tilezedComposition(scene: TilezedScene, images: ReadonlyMap<numb
         sw: 64, sh: 128, x: origin + (x - y) * hw - hw,
         y: (x + y) * hh + map.tileHeight - 128 * scale - level * 96 * scale,
         width: 64 * scale, height: 128 * scale, opacity: 1, layer: tile.layer, sheet: tile.sheet, index: tile.index };
-      if (!visible(draw)) continue;
-      const cell = square(x, y, level), group = cell.lots.get(order) ?? [];
-      group.push(draw); cell.lots.set(order, group);
+      const inView = visible(draw);
+      // A lot floor can suppress a tree whose overhang is visible even when the
+      // floor's own image lies outside this viewport/dirty clip.
+      const cell = inView ? square(x, y, level) : squares.get(`${level}:${x}:${y}`);
+      if (!cell) continue;
+      const group = cell.lots.get(order) ?? { draws: [], layers: new Set<string>() };
+      group.layers.add(layerName(tile.layer));
+      if (inView) group.draws.push(draw);
+      cell.lots.set(order, group);
     }
   });
   const commands: TilezedCompositionDraw[] = [];
@@ -110,9 +116,9 @@ export function tilezedComposition(scene: TilezedScene, images: ReadonlyMap<numb
   for (const cell of ordered) {
     let ordinary = cell.normal;
     for (const [, replacements] of [...cell.lots].sort(([a], [b]) => a - b)) {
-      ordinary = ordinary.filter(existing => !replacements.some(replacement =>
-        lotLayerSuppressesLayer(layerName(replacement.layer), layerName(existing.layer))));
-      ordinary.push(...replacements);
+      ordinary = ordinary.filter(existing => ![...replacements.layers].some(replacement =>
+        lotLayerSuppressesLayer(replacement, layerName(existing.layer))));
+      ordinary.push(...replacements.draws);
     }
     commands.push(...ordinary, ...cell.above);
   }

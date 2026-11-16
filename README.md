@@ -223,6 +223,36 @@ tooltips and accessible labels. Tools follow the desktop TileZed behavior:
   toggles a post. Missing optional gate/post shapes do nothing. Escape or right-click
   cancels a pending run. The selection limits fence placement too.
 
+Choose **Terrain / BMP tools (T)** to edit terrain through the same embedded BMP
+rules and blends as desktop TileZed. The **BMP Tools** dock provides:
+
+- **Brush (B)**, **Rectangle (R)** and **Bucket (F)** for ground or vegetation
+  colours from the map's rules. Brush size ranges from 1 to 300, with square,
+  native circular and custom PNG masks. PNG pixels with alpha at least 32 and
+  Qt greyscale at most 127 form the brush. Ctrl paints black to erase; Shift
+  constrains rectangles to squares. Brackets change brush size by one.
+- **Selection (S)** and **Magic wand (W)** for arbitrary BMP regions. Ctrl adds,
+  Shift subtracts and Ctrl+Shift intersects. Flood fill follows native BMP
+  diagonal connectivity. Drag inside a selection to move it; hold Ctrl during
+  the drag to copy, or Shift to affect both BMPs. Ctrl+C / Ctrl+V copies and
+  pastes both bitmaps, including black pixels. Right-click cancels pasting.
+- **Eraser (E)** clears the active bitmap channel. **Bake to layers (K)** copies
+  generated tiles, including blends within two squares of the brush, into
+  regular map layers and clears both BMPs under the brush.
+- **Prevent blending (N)** toggles the active blend layer's no-blend mask within
+  a rectangle and removes hand-placed known blend tiles there. Shift applies
+  the active layer's result to every blend layer. Choose a blend target in the
+  main Layer control first. **Pick colour (I)** samples the active BMP.
+
+The dock's **Options** tab restricts drawing to the selection, lets the bucket
+fill disconnected matching pixels in that selection, and independently shows
+BMP-generated tiles, manual map tiles and FloorOverlay layers. It also imports
+and exports native version-1 Rules.txt and Blends.txt, and toggles **Blend edges
+everywhere**. Rules, blends, aliases, bitmap palettes, random seeds and no-blend
+masks are saved in native embedded TMX format. Terrain editing shares undo and
+manual saving with tile and building edits. Selection changes are undoable and
+do not mark map content dirty; display options do not change saved map content.
+
 Undo/redo is available in the toolbar and with Ctrl+Z / Ctrl+Y. Edits remain in
 memory until **Save map to project** (hosted cells) or **Save .tmx** (local map
 download). Ctrl+S also saves. Hosted saves require an invited admin and the world
