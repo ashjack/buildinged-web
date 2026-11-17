@@ -1,6 +1,6 @@
 import { SvgTile } from "../models/app.models";
 import { isRoof30, normalizeRoof30, roof30CapMatrices, roof30SlopeMatrix } from './roof-30';
-import { compoundRoofCells, compoundRoofRotation, isCompoundRoof, normalizeCompoundRoofSize } from './compound-roof';
+import { compoundRoofCaps, compoundRoofCells, compoundRoofRotation, isCompoundRoof, isOpenCompoundRoof, normalizeCompoundRoofSize } from './compound-roof';
 
 export interface RoofTileSource { enum?: string; tile: string; offset?: string; }
 export interface RoofTileSet { capTiles: RoofTileSource[]; slopeTiles: RoofTileSource[]; topTiles: RoofTileSource[]; }
@@ -53,8 +53,10 @@ export const ROOF_OPTIONS: RoofOption[] = [
     ...['Inner', 'Outer'].flatMap(kind => ['NW', 'NE', 'SE', 'SW'].map(side => ({ id: `corner30-${kind.toLowerCase()}-${side.toLowerCase()}`,
         label: `30° Corner ${kind} (${side})`, roofType: `CornerSlope30${kind}${side}`, group: '30 degree corners' }))),
     { id: 'l-roof', label: 'L-Roof', roofType: 'LRoof', group: 'Compound' },
+    { id: 'l-roof-open', label: 'L-Roof (Open)', roofType: 'LRoofOpen', group: 'Compound' },
     { id: 't-roof', label: 'T-Roof', roofType: 'TRoof', group: 'Compound' },
     { id: 'l-roof30', label: 'L-Roof (30°)', roofType: 'LRoof30', group: 'Compound' },
+    { id: 'l-roof-open30', label: 'L-Roof (Open, 30°)', roofType: 'LRoofOpen30', group: 'Compound' },
     { id: 't-roof30', label: 'T-Roof (30°)', roofType: 'TRoof30', group: 'Compound' },
 ];
 
@@ -66,6 +68,7 @@ export function getDefaultRoofOption(): RoofOption { return ROOF_OPTIONS.find(o 
 export function getRoofOptionById(id: string): RoofOption { return ROOF_OPTIONS.find(o => o.id === id) || getDefaultRoofOption(); }
 
 export function defaultRoofCaps(type: string) {
+    if (isOpenCompoundRoof(type)) return { cappedW: true, cappedN: true, cappedE: true, cappedS: true };
     if (isCompoundRoof(type)) return { cappedW: false, cappedN: false, cappedE: false, cappedS: false };
     if (isRoof30(type)) {
         if (type === 'Peak30Quad') return { cappedW: false, cappedN: false, cappedE: false, cappedS: false };
@@ -164,6 +167,15 @@ export function buildRoofPlacements(input: RoofPlacementOptions): SvgTile[] {
             const top = cell.face === 'Top';
             add(find(top ? options.tileset.topTiles : options.tileset.slopeTiles, cell.tile), cell.x, cell.y,
                 top ? 'Floor' : 'Roof', top, top ? 'compound-roof-top' : undefined, options.level + (top ? 1 : 0));
+        }
+        for (const cap of compoundRoofCaps(options)) {
+            if (options[`capped${cap.side}`] === false) continue;
+            const source = find(options.tileset.capTiles, cap.tile), previous = output.length;
+            add(source, cap.x, cap.y, 'RoofCap', false, `capped${cap.side}`);
+            if (cap.clip && output.length > previous) {
+                const [dx, dy] = parseOffset(source?.offset);
+                output[output.length - 1].clip = cap.clip.map(polygon => polygon.map(p => ({ x: p.x - (dx - dy) / 2, y: p.y - (dx + dy) / 8 })));
+            }
         }
         return output;
     }

@@ -7,7 +7,8 @@ export interface CompoundRoof {
     RoofMainWidth?: number | string; RoofReturnWidth?: number | string;
 }
 type Face = 'W' | 'N' | 'E' | 'S';
-export const isCompoundRoof = (type: string) => /^(L|T)Roof(30)?$/.test(type);
+export const isCompoundRoof = (type: string) => /^(?:[LT]Roof|LRoofOpen)(30)?$/.test(type);
+export const isOpenCompoundRoof = (type: string) => /^LRoofOpen(30)?$/.test(type);
 export const compoundRoofRotation = (o: Pick<CompoundRoof, 'RoofRotation'>) => {
     const angle = Number(o.RoofRotation);
     return Number.isFinite(angle) ? ((Math.trunc(angle) % 4) + 4) % 4 : 0;
@@ -57,8 +58,15 @@ function geometry(o: CompoundRoof) {
         const a = point(x, y), b = point(x + w, y + h);
         return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y) };
     };
-    return { width, height, main, wing, stem, point, rects: [rect(0, 0, width, main), rect(stem, 0, wing, height)] };
+    const rects = [rect(0, 0, width, main), rect(stem, 0, wing, height)];
+    const direction = (x: number, y: number): Face => {
+        const a = point(0, 0), b = point(x, y);
+        return b.x < a.x ? 'W' : b.x > a.x ? 'E' : b.y < a.y ? 'N' : 'S';
+    };
+    const ends = isOpenCompoundRoof(o.roofType) ? [{ rect: rects[0], side: direction(-1, 0) }, { rect: rects[1], side: direction(0, 1) }] : [];
+    return { width, height, main, wing, stem, point, rects, ends };
 }
+export const compoundRoofEnds = (o: CompoundRoof) => geometry(o).ends;
 
 export function compoundRoofOutline(o: CompoundRoof): Point[] {
     const { width: w, height: h, main: a, wing: b, stem: s, point } = geometry(o);
@@ -79,19 +87,56 @@ export function compoundRoofIntersects(o: CompoundRoof, area: TileArea): boolean
 export interface CompoundRoofPart { tile: string; clip: TileClip; }
 export interface CompoundRoofCell { x: number; y: number; tile: string | null; face: string; parts?: CompoundRoofPart[]; }
 
-export function compoundRoofCells(o: CompoundRoof): CompoundRoofCell[] {
-    const { rects } = geometry(o), cells = new Set<string>();
-    // The upper envelope joins both hipped wings: convex hips on the outside, concave valleys inside.
+function surface(o: CompoundRoof) {
+    const shape = geometry(o), { rects, ends } = shape;
+    // Omit only the two free end planes for open roofs. The elbow keeps its hip and valley.
     const sample = (x: number, y: number): { height: number; face: Face } => {
         let result = { height: -Infinity, face: 'N' as Face };
-        for (const r of rects) {
+        for (const [index, r] of rects.entries()) {
             if (x < r.x || x > r.x + r.width || y < r.y || y > r.y + r.height) continue;
             const distances: [number, Face][] = [[x - r.x, 'W'], [y - r.y, 'N'], [r.x + r.width - x, 'E'], [r.y + r.height - y, 'S']];
-            const nearest = distances.reduce((a, b) => a[0] <= b[0] ? a : b);
+            const nearest = distances.filter(([, face]) => face !== ends[index]?.side).reduce((a, b) => a[0] <= b[0] ? a : b);
             if (nearest[0] > result.height) result = { height: nearest[0], face: nearest[1] };
         }
         return result;
     };
+    return { ...shape, sample };
+}
+
+export interface CompoundRoofCap { x: number; y: number; tile: string; side: Face; clip?: TileClip; }
+/** Native cap enums along the actual free-end profile, including odd-width half peaks. */
+export function compoundRoofCaps(o: CompoundRoof): CompoundRoofCap[] {
+    const { ends, sample } = surface(o), result: CompoundRoofCap[] = [];
+    const shallow = o.roofType.endsWith('30'), limit = compoundRoofSlopeSpan(o.roofType) / 2;
+    for (const { rect: r, side } of ends) {
+        const vertical = side === 'W' || side === 'E', axis = vertical ? 'E' : 'S';
+        for (let p = 0; p < (vertical ? r.height : r.width); p++) {
+            const x = r.x + (side === 'E' ? r.width : vertical ? 0 : p);
+            const y = r.y + (side === 'S' ? r.height : vertical ? p : 0);
+            const height = (fraction: number) => Math.min(limit, sample(x + (vertical ? 0 : fraction), y + (vertical ? fraction : 0)).height);
+            const a = height(0), middle = height(.5), b = height(1), band = Math.ceil(middle);
+            if (!(middle > 0)) continue;
+            let tile: string, clip: TileClip | undefined;
+            if (middle > Math.max(a, b)) tile = shallow ? `CapPeak30${axis}${band}` : `Peak${['Pt5', 'OnePt5', 'TwoPt5'][band - 1]}${axis}`;
+            else if (a !== b) tile = `${shallow ? 'CapSlope30' : 'Cap'}${(a < b) === vertical ? 'Fall' : 'Rise'}${axis}${Math.ceil(Math.max(a, b))}`;
+            else {
+                const physicalHeight = middle * (shallow ? .5 : 1);
+                tile = `CapGap${axis}${Math.ceil(physicalHeight)}`;
+                // A short wing can limit a 30-degree gable to a half-storey cap height.
+                if (!Number.isInteger(physicalHeight)) {
+                    const project = (fraction: number, h: number): Point => ({ x: (32 + (vertical ? -fraction : fraction) * 32) / 64,
+                        y: (96 + fraction * 16 - h * 32) / 128 });
+                    clip = [[project(0, physicalHeight), project(1, physicalHeight), project(1, 0), project(0, 0)]];
+                }
+            }
+            result.push({ x, y, tile, side, ...(clip ? { clip } : {}) });
+        }
+    }
+    return result;
+}
+
+export function compoundRoofCells(o: CompoundRoof): CompoundRoofCell[] {
+    const { rects, sample } = surface(o), cells = new Set<string>();
     const result: CompoundRoofCell[] = [];
     for (const r of rects) for (let y = r.y; y < r.y + r.height; y++) for (let x = r.x; x < r.x + r.width; x++) {
         const key = `${x},${y}`; if (cells.has(key)) continue; cells.add(key);
@@ -101,7 +146,14 @@ export function compoundRoofCells(o: CompoundRoof): CompoundRoofCell[] {
             result.push({ x, y, tile: 'West3', face: 'Top' }); continue;
         }
         const faces = new Set<Face>();
-        for (const dx of [-.2, .2]) for (const dy of [-.2, .2]) faces.add(sample(cx + dx, cy + dy).face);
+        // Unequal binary fractions stay off x+y/x-y seam lines. Symmetric probes
+        // can land on a zero-area contact between the wings and invent a corner
+        // face on an otherwise continuous slope (depending on world position).
+        // Sample both sides of each diagonal as well as every quadrant, retaining
+        // all four faces at a pyramid peak and all facets at a ridge junction.
+        for (const [a, b] of [[.1875, .28125], [.28125, .1875]]) {
+            for (const dx of [-a, a]) for (const dy of [-b, b]) faces.add(sample(cx + dx, cy + dy).face);
+        }
         const band = Math.ceil(height - 1e-6), shallow = o.roofType.endsWith('30');
         const ns = faces.has('N') && faces.has('S'), we = faces.has('W') && faces.has('E');
         const halfDepth = ['Pt5', 'OnePt5', 'TwoPt5'][band - 1];
@@ -131,7 +183,8 @@ export function compoundRoofCells(o: CompoundRoof): CompoundRoofCell[] {
                 const center = { x: u + .25, y: v + .25 }, corners = [{ x: u, y: v }, { x: u + .5, y: v }, { x: u + .5, y: v + .5 }, { x: u, y: v + .5 }];
                 for (let i = 0; i < 4; i++) {
                     const triangle = [center, corners[i], corners[(i + 1) % 4]], middle = triangle.reduce((p, q) => ({ x: p.x + q.x / 3, y: p.y + q.y / 3 }), { x: 0, y: 0 });
-                    const face = sample(x + middle.x, y + middle.y).face;
+                    // A triangle centroid can also lie exactly on a contact line.
+                    const face = sample(x + middle.x + 1 / 1048576, y + middle.y + 1 / 524288).face;
                     if (!shallow && face !== 'E' && face !== 'S') continue;
                     const index = active.findIndex(g => g.faces.includes(face));
                     if (index >= 0) parts[index].clip.push(triangle.map(project));

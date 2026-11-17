@@ -229,7 +229,7 @@ describe('Native toolbar controls', () => {
         const fixture = TestBed.createComponent(MenuComponent); fixture.detectChanges();
         const menu = fixture.componentInstance, el: HTMLElement = fixture.nativeElement;
         expect(el.querySelectorAll('.roof-split').length).toBe(5);
-        expect(ROOF_TOOL_GROUPS.map(g => g.options.length)).toEqual([15, 6, 11, 8, 8]);
+        expect(ROOF_TOOL_GROUPS.map(g => g.options.length)).toEqual([17, 6, 11, 8, 8]);
         (el.querySelector('[aria-label="Shallow roofs types"]') as HTMLButtonElement).click(); fixture.detectChanges();
         const options = el.querySelectorAll('.roof-menu button'); expect(options.length).toBe(6);
         (options[1] as HTMLButtonElement).click(); fixture.detectChanges();

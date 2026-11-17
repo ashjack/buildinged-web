@@ -653,6 +653,13 @@ icons. Standard roofs (including dormers and flat tops), shallow roofs and roof
 corners each have a split button: click the icon to reuse that group's last roof,
 or open its arrow menu to select a type. Roof type selection lives in the toolbar.
 
+The main roof dropdown includes **L-Roof (Open)** and **L-Roof (Open, 30°)**.
+These extend both wing ridges to capped gable ends while retaining the joined
+corner and valley. They use the selected Roof Caps material, including native
+half-peak cap tiles for odd wing widths. Each wing keeps its own length and
+width; rotation, mirroring, cap toggles, undo and TBX save/reopen are supported.
+The existing L-Roof choices retain their hipped ends.
+
 Click the `Floor n/count` label to open Floors. Floors are listed highest first;
 add and duplicate insert above the selected floor, and the arrows reorder whole
 floors with their rooms, objects and manual tiles. Add, duplicate, remove and

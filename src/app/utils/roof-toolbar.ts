@@ -7,7 +7,7 @@ export const roofToolGroup = (option: RoofOption): RoofToolGroup => isCompoundRo
         : option.roofType.includes('30') ? 'roof30' : 'standard';
 const option = (id: string) => ROOF_OPTIONS.find(o => o.id === id)!;
 export const ROOF_TOOL_GROUPS: { id: RoofToolGroup; label: string; options: RoofOption[] }[] = [
-    { id: 'standard', label: 'Roofs', options: ['slope-w', 'slope-e', 'slope-n', 'slope-s', 'peak-horizontal', 'peak-vertical', 'dormer-w', 'dormer-e', 'dormer-n', 'dormer-s', 'flat-top', 'l-roof', 't-roof', 'l-roof30', 't-roof30'].map(option) },
+    { id: 'standard', label: 'Roofs', options: ['slope-w', 'slope-e', 'slope-n', 'slope-s', 'peak-horizontal', 'peak-vertical', 'dormer-w', 'dormer-e', 'dormer-n', 'dormer-s', 'flat-top', 'l-roof', 'l-roof-open', 't-roof', 'l-roof30', 'l-roof-open30', 't-roof30'].map(option) },
     { id: 'shallow', label: 'Shallow roofs', options: ['shallow-slope-w', 'shallow-slope-e', 'shallow-slope-n', 'shallow-slope-s', 'shallow-peak-horizontal', 'shallow-peak-vertical'].map(option) },
     { id: 'roof30', label: '30-degree roofs', options: ['slope30-w', 'slope30-e', 'slope30-n', 'slope30-s', 'peak30-horizontal', 'peak30-vertical', 'peak30-quad', 'dormer30-w', 'dormer30-e', 'dormer30-n', 'dormer30-s'].map(option) },
     { id: 'corners', label: 'Roof corners', options: ['corner-inner-nw', 'corner-inner-ne', 'corner-inner-se', 'corner-inner-sw', 'corner-outer-nw', 'corner-outer-ne', 'corner-outer-se', 'corner-outer-sw'].map(option) },

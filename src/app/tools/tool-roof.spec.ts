@@ -29,7 +29,7 @@ function setup() {
 }
 
 describe('Native roof mouse interactions', () => {
-    for (const id of ['l-roof', 'l-roof30', 't-roof', 't-roof30']) {
+    for (const id of ['l-roof', 'l-roof30', 'l-roof-open', 'l-roof-open30', 't-roof', 't-roof30']) {
         it(`places the four entered ${id} dimensions on a click and keeps lengths attached when rotated`, () => {
             const h = setup(); h.roofs.setSelectedRoofOptionId(id);
             h.roofs.configureDimension('mainLength', 9); h.roofs.configureDimension('returnLength', 8);
@@ -54,6 +54,21 @@ describe('Native roof mouse interactions', () => {
             h.destroy();
         });
     }
+    for (const id of ['l-roof-open', 'l-roof-open30']) it(`keeps each ${id} cap attached to its wing when mirroring and rotating`, () => {
+        const h = setup(); h.roofs.setSelectedRoofOptionId(id);
+        h.roofs.configureDimension('mainLength', 9); h.roofs.configureDimension('returnLength', 8);
+        h.roofs.configureDimension('mainWidth', 5); h.roofs.configureDimension('returnWidth', 3);
+        h.point(1.2, 1.2); h.tool.beginDrag(1, 1); h.tool.endDrag(1, 1);
+        const object = h.buildings.building.floors[0].objects[0];
+        expect(object.cappedW).toBeTrue(); expect(object.cappedS).toBeTrue();
+        h.roofs.update(object.uid, { cappedW: false }); h.roofs.editingRoofId = object.uid;
+        h.roofs.configureCompound('RoofMirror', true);
+        expect(h.buildings.building.floors[0].objects[0].cappedE).toBeFalse();
+        h.roofs.configureCompound('RoofRotation', 1);
+        expect(h.buildings.building.floors[0].objects[0].cappedS).toBeFalse();
+        expect(h.buildings.building.floors[0].objects[0].cappedW).toBeTrue(); h.destroy();
+    });
+
     it('allows a drag to replace the preset lengths while preserving independent wing widths', () => {
         const h = setup(); h.roofs.setSelectedRoofOptionId('l-roof30');
         h.roofs.configureDimension('mainLength', 9); h.roofs.configureDimension('returnLength', 8);

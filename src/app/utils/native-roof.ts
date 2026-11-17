@@ -2,7 +2,7 @@ import { Point, TileArea } from '../models/app.models';
 import { normalizeRoofSize, resolveRoofDepth } from '../services/roof-patterns';
 import { rectanglePoints } from './native-pointer';
 import { isRoof30, roof30SlopeMatrix } from '../services/roof-30';
-import { compoundRoofOutline, compoundRoofRotation, isCompoundRoof, normalizeCompoundRoofSize } from '../services/compound-roof';
+import { compoundRoofEnds, compoundRoofOutline, compoundRoofRotation, isCompoundRoof, normalizeCompoundRoofSize } from '../services/compound-roof';
 
 export type RoofHandleKind = 'resize' | 'depthUp' | 'depthDown' | 'cappedW' | 'cappedN' | 'cappedE' | 'cappedS';
 export interface RoofHandle { kind: RoofHandleKind; bounds: TileArea; crossed: boolean; }
@@ -64,7 +64,15 @@ export function resizeNativeRoof(o: any, width: number, height: number, half: bo
 export function nativeRoofHandles(o: any): RoofHandle[] {
     const r = roofRect(o), t = String(o.RoofType).replace('CornerSlope30', 'Corner').replace('30', ''), right = r.x + r.width, bottom = r.y + r.height;
     const handles: RoofHandle[] = [{ kind: 'resize', bounds: { x: right - 0.5, y: bottom - 0.5, width: 0.5, height: 0.5 }, crossed: false }];
-    if (isCompoundRoof(o.RoofType)) return handles;
+    if (isCompoundRoof(o.RoofType)) {
+        for (const { rect, side } of compoundRoofEnds({ ...o, ...r, roofType: o.RoofType })) {
+            const vertical = side === 'W' || side === 'E';
+            const bounds = vertical ? { x: rect.x + (side === 'E' ? rect.width - .5 : 0), y: rect.y + .5, width: .5, height: rect.height - 1 }
+                : { x: rect.x + .5, y: rect.y + (side === 'S' ? rect.height - .5 : 0), width: rect.width - 1, height: .5 };
+            if (bounds.width > 0 && bounds.height > 0) handles.push({ kind: `capped${side}`, bounds, crossed: o[`capped${side}`] === false || o[`capped${side}`] === 'false' });
+        }
+        return handles;
+    }
     if (t === 'FlatTop') {
         const x = r.x + r.width / 2 - 7 / 30, y = r.y + r.height / 2;
         handles.push({ kind: 'depthUp', bounds: { x, y: y - 14 / 30, width: 14 / 30, height: 14 / 30 }, crossed: o.Depth === 'Three' },

@@ -13,7 +13,7 @@ import { generateBuildingSquares } from './native-squares';
 import { resizeNativeRoof } from '../utils/native-roof';
 import { validObject } from '../utils/selection-edits';
 import { RoofToolGroup, ROOF_TOOL_GROUPS, roofToolGroup } from '../utils/roof-toolbar';
-import { compoundRoofMaxWing, compoundRoofRotation, compoundRoofSlopeSpan, compoundRoofWings, isCompoundRoof } from './compound-roof';
+import { compoundRoofEnds, compoundRoofMaxWing, compoundRoofRotation, compoundRoofSlopeSpan, compoundRoofWings, isCompoundRoof, isOpenCompoundRoof } from './compound-roof';
 
 export type RoofDimension = 'mainLength' | 'mainWidth' | 'returnLength' | 'returnWidth';
 export interface RoofDimensions { mainLength: number; mainWidth: number; returnLength: number; returnWidth: number; }
@@ -97,7 +97,13 @@ export class RoofService {
             const swap = key === 'RoofRotation' && Number(value) % 2 !== compoundRoofRotation(roof) % 2;
             const next = resizeNativeRoof({ ...roof, [key]: value }, Number(swap ? roof.height : roof.width), Number(swap ? roof.width : roof.height), false);
             if (!validObject(this.building, next)) { this.message = 'This shape would extend outside the building. Resize or move the roof first.'; return; }
-            this.update(roof.uid, { [key]: value, width: next.width, height: next.height, Depth: next.Depth });
+            const caps: Record<string, boolean> = {};
+            if (isOpenCompoundRoof(roof.RoofType) && (key === 'RoofRotation' || key === 'RoofMirror')) {
+                Object.assign(caps, defaultRoofCaps(roof.RoofType));
+                const before = compoundRoofEnds({ ...roof, roofType: roof.RoofType }), after = compoundRoofEnds({ ...next, roofType: next.RoofType });
+                before.forEach((end, index) => caps[`capped${after[index].side}`] = roof[`capped${end.side}`] !== false && roof[`capped${end.side}`] !== 'false');
+            }
+            this.update(roof.uid, { [key]: value, width: next.width, height: next.height, Depth: next.Depth, ...caps });
             // Document edits cancel pointer gestures; keep this roof selected for the next settings change.
             this.editingRoofId = roof.uid;
         }
